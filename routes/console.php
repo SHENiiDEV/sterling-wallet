@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('bots:dispatch')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('reports:reconcile')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('reserve:release')->dailyAt('06:10')->withoutOverlapping();

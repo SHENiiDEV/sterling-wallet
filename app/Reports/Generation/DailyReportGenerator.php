@@ -14,6 +14,7 @@ use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\ReserveLedgerEntry;
 use App\Reports\Reconciliation\ReconciliationService;
+use App\Settlements\SettlementService;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
@@ -39,6 +40,11 @@ class DailyReportGenerator
     {
         $task->load('merchantMid.merchant.cryptoProvider', 'merchantMid.bankProvider', 'merchantMid.gateProvider');
 
+        // Money was approved or paid on it: late data must not change it silently.
+        if ($task->status === ReportStatus::Completed && $task->lockReason() !== null) {
+            return $task;
+        }
+
         if ($task->missingProviderIds() !== []) {
             $task->update(['status' => ReportStatus::Partial]);
 
@@ -55,6 +61,7 @@ class DailyReportGenerator
         }
 
         $this->documents->write($task);
+        app(SettlementService::class)->syncReport($task->refresh());
 
         $email = $task->merchant->invoice_email;
         if ($sendEmail && $email && ! $task->is_email_sent) {

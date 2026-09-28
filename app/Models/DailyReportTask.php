@@ -4,6 +4,9 @@ namespace App\Models;
 
 use App\Casts\DateOnly;
 use App\Enums\ReportStatus;
+use App\Enums\ReserveEntryType;
+use App\Enums\SettlementLineType;
+use App\Enums\SettlementStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -91,5 +94,45 @@ class DailyReportTask extends Model
         $received = $this->sources()->pluck('provider_id')->all();
 
         return array_values(array_diff($this->merchantMid->requiredProviderIds(), $received));
+    }
+
+    /**
+     * @return HasMany<SettlementLine, $this>
+     */
+    public function settlementLines(): HasMany
+    {
+        return $this->hasMany(SettlementLine::class)->where('type', SettlementLineType::Report);
+    }
+
+    /**
+     * Why the report can no longer be regenerated or deleted, if it can't:
+     * money was approved or paid on it, or its reserve was released.
+     */
+    public function lockReason(): ?string
+    {
+        $settlement = Settlement::query()
+            ->whereIn('status', [SettlementStatus::Approved, SettlementStatus::Settled])
+            ->whereHas('lines', fn ($q) => $q->where('type', SettlementLineType::Report)->where('daily_report_task_id', $this->id))
+            ->first(['number', 'status']);
+        if ($settlement !== null) {
+            return "It is in settlement {$settlement->number} ({$settlement->status->value}).";
+        }
+
+        if (ReserveLedgerEntry::query()->where('daily_report_task_id', $this->id)->where('type', ReserveEntryType::Release)->exists()) {
+            return 'Its rolling reserve has already been released.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The active settlement (draft, approved or settled) that pays this report.
+     */
+    public function activeSettlement(): ?Settlement
+    {
+        return Settlement::query()
+            ->whereIn('status', SettlementStatus::active())
+            ->whereHas('lines', fn ($q) => $q->where('type', SettlementLineType::Report)->where('daily_report_task_id', $this->id))
+            ->first();
     }
 }

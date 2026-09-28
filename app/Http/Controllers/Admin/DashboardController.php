@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\MidStatus;
+use App\Enums\Module;
 use App\Enums\ReportStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
@@ -14,17 +15,38 @@ use App\Models\DocumentActivity;
 use App\Models\DocumentStatus;
 use App\Models\MerchantMid;
 use App\Models\User;
+use App\Profit\ProfitQuery;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(): Response
+    public function __invoke(Request $request, ProfitQuery $profit): Response
     {
+        $user = $request->user();
+        $canProfit = $user->canAccess(Module::Profit);
+        $canDocuments = $user->canAccess(Module::Documents);
+
         $open = fn (Builder $q) => $q->whereHas('status', fn (Builder $q) => $q->where('is_final', false));
 
+        [$from, $to] = ProfitController::period($request);
+        [$prevFrom, $prevTo] = ProfitQuery::previous($from, $to);
+
         return Inertia::render('admin/dashboard', [
+            'profit' => $canProfit ? [
+                'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+                'baseCurrency' => config('sterling.base_currency'),
+                'summary' => $profit->summary($from, $to),
+                'previous' => $profit->summary($prevFrom, $prevTo),
+                'daily' => $profit->daily($from, $to),
+                'byCurrency' => $profit->byCurrency($from, $to),
+                'byPair' => $profit->byProviderPair($from, $to),
+                'byMerchant' => $profit->byMerchant($from, $to, 8),
+            ] : null,
+            'operations' => $user->canAccess(Module::Reports) || $canProfit ? $profit->operations() : null,
+            'documents' => $canDocuments,
             'stats' => [
                 'documents_open' => Document::query()->where($open)->count(),
                 'documents_overdue' => Document::query()->overdue()->count(),
