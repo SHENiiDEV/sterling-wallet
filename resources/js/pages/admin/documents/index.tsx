@@ -58,8 +58,10 @@ import { formatDate, formatRelative } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 import type {
+    CompanyRef,
     DocumentItem,
     DocumentStatus,
+    MerchantRef,
     Option,
     Paginated,
     StaffMember,
@@ -71,6 +73,8 @@ type Filters = {
     type?: string;
     owner?: string;
     overdue?: string;
+    company?: string;
+    merchant?: string;
 };
 
 type Props = {
@@ -80,6 +84,8 @@ type Props = {
     filters: Filters;
     types: Option[];
     staff: StaffMember[];
+    companies: CompanyRef[];
+    merchants: MerchantRef[];
 };
 
 const ALL = 'all';
@@ -91,6 +97,8 @@ export default function DocumentsIndex({
     filters,
     types,
     staff,
+    companies,
+    merchants,
 }: Props) {
     const [creating, setCreating] = useState(false);
     const [search, setSearch] = useState(filters.search ?? '');
@@ -269,6 +277,8 @@ export default function DocumentsIndex({
                                             search: '',
                                             type: '',
                                             owner: '',
+                                            company: '',
+                                            merchant: '',
                                         });
                                     }}
                                 >
@@ -349,8 +359,9 @@ export default function DocumentsIndex({
                                             </Link>
                                             <span className="block truncate text-xs text-muted-foreground">
                                                 {document.type_label}
-                                                {document.counterparty &&
-                                                    ` · ${document.counterparty}`}
+                                                {(document.merchant?.name ??
+                                                    document.counterparty) &&
+                                                    ` · ${document.merchant?.name ?? document.counterparty}`}
                                             </span>
                                         </TableCell>
                                         <TableCell
@@ -448,6 +459,9 @@ export default function DocumentsIndex({
                 statuses={statuses}
                 types={types}
                 staff={staff}
+                companies={companies}
+                merchants={merchants}
+                initialMerchant={filters.merchant}
             />
         </>
     );
@@ -497,13 +511,22 @@ function CreateDocumentDialog({
     statuses,
     types,
     staff,
+    companies,
+    merchants,
+    initialMerchant,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     statuses: DocumentStatus[];
     types: Option[];
     staff: StaffMember[];
+    companies: CompanyRef[];
+    merchants: MerchantRef[];
+    initialMerchant?: string;
 }) {
+    const linkedMerchant = merchants.find(
+        (m) => String(m.id) === initialMerchant,
+    );
     const defaultStatus =
         statuses.find((status) => status.is_default) ?? statuses[0];
 
@@ -514,6 +537,10 @@ function CreateDocumentDialog({
         owner_id: '',
         due_date: '',
         notes: '',
+        company_id: linkedMerchant?.company_id
+            ? String(linkedMerchant.company_id)
+            : '',
+        merchant_id: linkedMerchant ? String(linkedMerchant.id) : '',
         document_status_id: defaultStatus ? String(defaultStatus.id) : '',
         files: [],
     });
@@ -548,6 +575,8 @@ function CreateDocumentDialog({
                         types={types}
                         staff={staff}
                         statuses={statuses}
+                        companies={companies}
+                        merchants={merchants}
                     />
 
                     <FileDrop

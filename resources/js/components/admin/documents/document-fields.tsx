@@ -10,7 +10,13 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { DocumentStatus, Option, StaffMember } from '@/types';
+import type {
+    CompanyRef,
+    DocumentStatus,
+    MerchantRef,
+    Option,
+    StaffMember,
+} from '@/types';
 
 export type DocumentFormData = {
     title: string;
@@ -19,6 +25,8 @@ export type DocumentFormData = {
     owner_id: string;
     due_date: string;
     notes: string;
+    company_id: string;
+    merchant_id: string;
     document_status_id?: string;
 };
 
@@ -31,6 +39,8 @@ export function DocumentFields({
     types,
     staff,
     statuses,
+    companies,
+    merchants,
 }: {
     data: DocumentFormData;
     setData: <K extends keyof DocumentFormData>(
@@ -41,7 +51,13 @@ export function DocumentFields({
     types: Option[];
     staff: StaffMember[];
     statuses?: DocumentStatus[];
+    companies: CompanyRef[];
+    merchants: MerchantRef[];
 }) {
+    const merchantOptions = data.company_id
+        ? merchants.filter((m) => String(m.company_id) === data.company_id)
+        : merchants;
+
     return (
         <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
@@ -85,6 +101,66 @@ export function DocumentFields({
                     placeholder="Company or merchant"
                 />
                 <InputError message={errors.counterparty} />
+            </div>
+
+            <div className="grid gap-2">
+                <Label>Company</Label>
+                <Select
+                    value={data.company_id || NONE}
+                    onValueChange={(value) => {
+                        setData('company_id', value === NONE ? '' : value);
+                        setData('merchant_id', '');
+                    }}
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NONE}>Not linked</SelectItem>
+                        {companies.map((company) => (
+                            <SelectItem
+                                key={company.id}
+                                value={String(company.id)}
+                            >
+                                {company.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <InputError message={errors.company_id} />
+            </div>
+
+            <div className="grid gap-2">
+                <Label>Merchant</Label>
+                <Select
+                    value={data.merchant_id || NONE}
+                    onValueChange={(value) => {
+                        const merchant = merchants.find(
+                            (m) => String(m.id) === value,
+                        );
+                        setData('merchant_id', value === NONE ? '' : value);
+
+                        if (merchant?.company_id && !data.company_id) {
+                            setData('company_id', String(merchant.company_id));
+                        }
+                    }}
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NONE}>Not linked</SelectItem>
+                        {merchantOptions.map((merchant) => (
+                            <SelectItem
+                                key={merchant.id}
+                                value={String(merchant.id)}
+                            >
+                                {merchant.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <InputError message={errors.merchant_id} />
             </div>
 
             {statuses && (

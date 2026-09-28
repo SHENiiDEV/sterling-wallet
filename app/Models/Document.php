@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\DateOnly;
 use App\Enums\DocumentActivityType;
 use App\Enums\DocumentType;
 use Database\Factories\DocumentFactory;
@@ -27,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $status_changed_at
  * @property-read DocumentStatus $status
  */
-#[Fillable(['title', 'type', 'counterparty', 'document_status_id', 'owner_id', 'created_by', 'due_date', 'notes', 'status_changed_at'])]
+#[Fillable(['title', 'type', 'counterparty', 'company_id', 'merchant_id', 'document_status_id', 'owner_id', 'created_by', 'due_date', 'notes', 'status_changed_at'])]
 class Document extends Model
 {
     /** @use HasFactory<DocumentFactory> */
@@ -37,7 +38,7 @@ class Document extends Model
     {
         return [
             'type' => DocumentType::class,
-            'due_date' => 'date',
+            'due_date' => DateOnly::class,
             'status_changed_at' => 'datetime',
         ];
     }
@@ -48,6 +49,22 @@ class Document extends Model
     public function status(): BelongsTo
     {
         return $this->belongsTo(DocumentStatus::class, 'document_status_id');
+    }
+
+    /**
+     * @return BelongsTo<Company, $this>
+     */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<Merchant, $this>
+     */
+    public function merchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class);
     }
 
     /**

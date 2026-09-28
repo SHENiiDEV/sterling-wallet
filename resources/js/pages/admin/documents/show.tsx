@@ -43,8 +43,10 @@ import {
 import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 import type {
+    CompanyRef,
     DocumentItem,
     DocumentStatus,
+    MerchantRef,
     Option,
     StaffMember,
 } from '@/types';
@@ -82,6 +84,8 @@ type Props = {
     statuses: DocumentStatus[];
     types: Option[];
     staff: StaffMember[];
+    companies: CompanyRef[];
+    merchants: MerchantRef[];
 };
 
 export default function DocumentShow({
@@ -91,6 +95,8 @@ export default function DocumentShow({
     statuses,
     types,
     staff,
+    companies,
+    merchants,
 }: Props) {
     const [editing, setEditing] = useState(false);
 
@@ -166,6 +172,8 @@ export default function DocumentShow({
                 document={document}
                 types={types}
                 staff={staff}
+                companies={companies}
+                merchants={merchants}
             />
         </>
     );
@@ -203,6 +211,20 @@ function Card({
 function DetailsCard({ document }: { document: DocumentItem }) {
     const rows: [string, React.ReactNode][] = [
         ['Counterparty', document.counterparty ?? '—'],
+        ['Company', document.company?.name ?? '—'],
+        [
+            'Merchant',
+            document.merchant ? (
+                <Link
+                    href={admin.merchants.show(document.merchant.public_id)}
+                    className="font-medium text-brand hover:underline"
+                >
+                    {document.merchant.name}
+                </Link>
+            ) : (
+                '—'
+            ),
+        ],
         ['Owner', document.owner?.name ?? 'Unassigned'],
         [
             'Due date',
@@ -634,12 +656,16 @@ function EditDialog({
     document,
     types,
     staff,
+    companies,
+    merchants,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     document: DocumentItem;
     types: Option[];
     staff: StaffMember[];
+    companies: CompanyRef[];
+    merchants: MerchantRef[];
 }) {
     const form = useForm<DocumentFormData>({
         title: document.title,
@@ -648,6 +674,8 @@ function EditDialog({
         owner_id: document.owner ? String(document.owner.id) : '',
         due_date: document.due_date ?? '',
         notes: document.notes ?? '',
+        company_id: document.company ? String(document.company.id) : '',
+        merchant_id: document.merchant ? String(document.merchant.id) : '',
     });
 
     const submit = (e: React.FormEvent) => {
@@ -675,6 +703,8 @@ function EditDialog({
                         errors={form.errors}
                         types={types}
                         staff={staff}
+                        companies={companies}
+                        merchants={merchants}
                     />
                     <DialogFooter>
                         <DialogClose asChild>

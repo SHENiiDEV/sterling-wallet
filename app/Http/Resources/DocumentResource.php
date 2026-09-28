@@ -26,6 +26,8 @@ class DocumentResource extends JsonResource
             'due_date' => $this->due_date?->toDateString(),
             'is_overdue' => $this->isOverdue(),
             'status' => DocumentStatusResource::make($this->status)->resolve(),
+            'company' => $this->company ? ['id' => $this->company->id, 'name' => $this->company->name] : null,
+            'merchant' => $this->merchant ? ['id' => $this->merchant->id, 'name' => $this->merchant->name, 'public_id' => $this->merchant->public_id] : null,
             'owner' => $this->owner ? ['id' => $this->owner->id, 'name' => $this->owner->name] : null,
             'files_count' => $this->whenCounted('files'),
             'status_changed_at' => $this->status_changed_at?->toIso8601String(),

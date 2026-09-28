@@ -25,6 +25,8 @@ class DocumentRequest extends FormRequest
             'title' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(DocumentType::class)],
             'counterparty' => ['nullable', 'string', 'max:255'],
+            'company_id' => ['nullable', 'exists:companies,id'],
+            'merchant_id' => ['nullable', 'exists:merchants,id'],
             'owner_id' => ['nullable', Rule::exists('users', 'id')->whereNot('role', UserRole::Merchant->value)],
             'due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:5000'],

@@ -9,8 +9,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DocumentRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\DocumentStatusResource;
+use App\Models\Company;
 use App\Models\Document;
 use App\Models\DocumentStatus;
+use App\Models\Merchant;
 use App\Models\User;
 use App\Services\Documents\DocumentFileStorage;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,10 +33,12 @@ class DocumentController extends Controller
             'type' => ['nullable', 'string'],
             'owner' => ['nullable', 'integer'],
             'overdue' => ['nullable', 'boolean'],
+            'company' => ['nullable', 'integer'],
+            'merchant' => ['nullable', 'integer'],
         ]);
 
         $documents = Document::query()
-            ->with(['status', 'owner'])
+            ->with(['status', 'owner', 'company:id,name', 'merchant:id,name,public_id'])
             ->withCount('files')
             ->when($filters['search'] ?? null, fn (Builder $q, string $search) => $q->where(
                 fn (Builder $q) => $q->where('title', 'like', "%{$search}%")->orWhere('counterparty', 'like', "%{$search}%"),
@@ -43,6 +47,8 @@ class DocumentController extends Controller
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('type', $type))
             ->when($filters['owner'] ?? null, fn (Builder $q, int $owner) => $q->where('owner_id', $owner))
             ->when($filters['overdue'] ?? false, fn (Builder $q) => $q->overdue())
+            ->when($filters['company'] ?? null, fn (Builder $q, int $company) => $q->where('company_id', $company))
+            ->when($filters['merchant'] ?? null, fn (Builder $q, int $merchant) => $q->where('merchant_id', $merchant))
             ->latest('updated_at')
             ->paginate(20)
             ->withQueryString()
@@ -55,9 +61,10 @@ class DocumentController extends Controller
                 'all' => Document::query()->count(),
                 'overdue' => Document::query()->overdue()->count(),
             ],
-            'filters' => (object) Arr::only($filters, ['search', 'status', 'type', 'owner', 'overdue']),
+            'filters' => (object) Arr::only($filters, ['search', 'status', 'type', 'owner', 'overdue', 'company', 'merchant']),
             'types' => DocumentType::options(),
             'staff' => $this->staff(),
+            ...$this->links(),
         ]);
     }
 
@@ -90,7 +97,7 @@ class DocumentController extends Controller
     public function show(Document $document): Response
     {
         $document->load([
-            'status', 'owner',
+            'status', 'owner', 'company:id,name', 'merchant:id,name,public_id',
             'files.uploader:id,name',
             'activities' => fn ($q) => $q->with(['user:id,name', 'fromStatus', 'toStatus'])->limit(100),
         ]);
@@ -118,6 +125,7 @@ class DocumentController extends Controller
             'statuses' => DocumentStatusResource::collection(DocumentStatus::query()->ordered()->get())->resolve(),
             'types' => DocumentType::options(),
             'staff' => $this->staff(),
+            ...$this->links(),
         ]);
     }
 
@@ -143,6 +151,19 @@ class DocumentController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Document archived.']);
 
         return to_route('admin.documents.index');
+    }
+
+    /**
+     * Companies and merchants a document can be linked to.
+     *
+     * @return array<string, mixed>
+     */
+    private function links(): array
+    {
+        return [
+            'companies' => Company::query()->orderBy('name')->get(['id', 'name']),
+            'merchants' => Merchant::query()->orderBy('name')->get(['id', 'name', 'company_id']),
+        ];
     }
 
     /**

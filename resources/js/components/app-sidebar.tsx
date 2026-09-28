@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import {
     ArrowLeftRight,
+    ArrowRightLeft as ArrowRightLeftIcon,
     Bot,
     Building2,
     CalendarCheck,
@@ -46,8 +47,16 @@ const navGroups: NavGroup[] = [
     {
         title: 'Merchants',
         items: [
-            { title: 'Merchants & MIDs', href: '#', icon: Store, soon: true },
-            { title: 'Companies', href: '#', icon: Building2, soon: true },
+            {
+                title: 'Merchants & MIDs',
+                href: admin.merchants.index(),
+                icon: Store,
+            },
+            {
+                title: 'Companies',
+                href: admin.companies.index(),
+                icon: Building2,
+            },
             {
                 title: 'Operations',
                 href: '#',
@@ -67,10 +76,14 @@ const navGroups: NavGroup[] = [
             },
             { title: 'Settlements', href: '#', icon: Wallet, soon: true },
             {
-                title: 'Providers & Profit',
-                href: '#',
+                title: 'Providers',
+                href: admin.providers.index(),
                 icon: PieChart,
-                soon: true,
+            },
+            {
+                title: 'FX rates',
+                href: admin.fxRates.index(),
+                icon: ArrowRightLeftIcon,
             },
             { title: 'Profit share', href: '#', icon: Handshake, soon: true },
         ],
@@ -90,10 +103,9 @@ const navGroups: NavGroup[] = [
             },
             { title: 'Bots', href: '#', icon: Bot, soon: true },
             {
-                title: 'Banks & holidays',
-                href: '#',
+                title: 'Bank holidays',
+                href: admin.bankHolidays.index(),
                 icon: Landmark,
-                soon: true,
             },
             { title: 'Offers', href: '#', icon: FileStack, soon: true },
             { title: 'Team & access', href: '#', icon: Users, soon: true },
