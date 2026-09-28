@@ -17,7 +17,6 @@
 
         /* Page footer */
         .footer { position: fixed; bottom: -12mm; left: 0; right: 0; height: 8mm; border-top: 1px solid #e6e3f0; padding-top: 2mm; font-size: 7.5px; color: #8a86a0; }
-        .footer .page:after { content: counter(page) " / " counter(pages); }
 
         /* Header band */
         .brand { border-bottom: 2px solid #2a1e56; padding-bottom: 10px; margin-bottom: 14px; }
@@ -76,12 +75,7 @@
 </head>
 <body>
     <div class="footer">
-        <table>
-            <tr>
-                <td>{{ config('app.name') }} · @yield('footer')</td>
-                <td class="num page"></td>
-            </tr>
-        </table>
+        {{ config('app.name') }} · @yield('footer')
     </div>
 
     @hasSection('watermark')
