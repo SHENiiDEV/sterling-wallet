@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('merchant_name')->nullable();
 
             $table->string('payment_id', 128)->nullable()->index();
-            $table->string('ex_id', 128)->nullable()->index();
+            $table->string('sp_id', 128)->nullable()->index();
             $table->string('arn', 64)->nullable()->index();
             $table->string('rrn', 64)->nullable();
             $table->string('approval_code', 16)->nullable();

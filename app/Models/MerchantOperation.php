@@ -21,7 +21,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'merchant_id', 'merchant_mid_id', 'source', 'mid', 'merchant_name',
-    'payment_id', 'ex_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'customer_email',
+    'payment_id', 'sp_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'customer_email',
     'ips', 'region', 'issuer_country', 'issuer_name',
     'trn_type', 'operation_type', 'processing_code', 'resolution',
     'report_date', 'transaction_at', 'processing_at', 'amount', 'currency',
