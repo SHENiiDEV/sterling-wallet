@@ -14,6 +14,7 @@
     </style>
 </head>
 <body>
+    <div style="margin-bottom: 14px">@include('partials.pdf-logo')</div>
     <h1>{{ config('app.name') }} — daily report</h1>
     <p class="sub">{{ $task->merchant->name }} · MID {{ $task->merchantMid->mid }} · {{ $task->period_from->toDateString() }} — {{ $task->period_to->toDateString() }}</p>
     <table>

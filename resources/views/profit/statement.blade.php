@@ -15,6 +15,7 @@
     </style>
 </head>
 <body>
+    <div style="margin-bottom: 14px">@include('partials.pdf-logo')</div>
     <h1>Profit share · {{ $statement->month }}</h1>
     <p class="muted">{{ config('app.name') }} · {{ ucfirst($statement->status->value) }} · amounts in {{ $statement->base_currency }}</p>
 
