@@ -44,6 +44,12 @@ type Props = {
     pipeline: DocumentStatus[];
     attention: DocumentItem[];
     activity: ActivityItem[];
+    reportAlerts: {
+        key: string;
+        label: string;
+        count: number;
+        detail: string | null;
+    }[];
 };
 
 const roadmap = [
@@ -84,6 +90,7 @@ export default function Dashboard({
     pipeline,
     attention,
     activity,
+    reportAlerts,
 }: Props) {
     const { auth } = usePage().props;
     const total = pipeline.reduce(
@@ -107,6 +114,43 @@ export default function Dashboard({
                         {greeting()}, {auth.user.name.split(' ')[0]}
                     </h1>
                 </div>
+
+                {reportAlerts.length > 0 && (
+                    <div className="grid gap-2 rounded-xl border border-warning/40 bg-warning/5 p-4">
+                        <p className="flex items-center gap-2 text-sm font-semibold">
+                            <AlertTriangle className="size-4 text-warning" />
+                            Reports need attention
+                        </p>
+                        <ul className="grid gap-1 text-sm">
+                            {reportAlerts.map((alert) => (
+                                <li
+                                    key={alert.key}
+                                    className="flex flex-wrap items-center gap-x-2"
+                                >
+                                    <span className="font-medium tabular-nums">
+                                        {alert.count}
+                                    </span>
+                                    <span>{alert.label}</span>
+                                    {alert.detail && (
+                                        <span className="text-muted-foreground">
+                                            — {alert.detail}
+                                        </span>
+                                    )}
+                                    {alert.key === 'review_mids' && (
+                                        <Link
+                                            href={admin.merchants.index({
+                                                query: { status: 'review' },
+                                            })}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Review merchants
+                                        </Link>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <StatCard

@@ -16,9 +16,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $code
  * @property ProviderType $type
  * @property bool $is_active
+ * @property string|null $report_format
+ * @property string|null $connector
+ * @property string $timezone
+ * @property int $report_delay_days
+ * @property array<string, mixed>|null $matching
  */
 #[Fillable([
     'name', 'code', 'type', 'is_active', 'logo_path',
+    'report_format', 'connector', 'timezone', 'report_delay_days', 'matching',
     'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
     'cost_acq_eu_percent', 'cost_acq_non_eu_percent',
     'cost_success_fixed', 'cost_decline_fixed', 'cost_refund_fixed', 'cost_chargeback_fixed', 'cost_crypto_percent',
@@ -46,6 +52,8 @@ class Provider extends Model
             'type' => ProviderType::class,
             'is_active' => 'boolean',
             'rolling_reserve_days' => 'integer',
+            'report_delay_days' => 'integer',
+            'matching' => 'array',
             ...array_fill_keys(self::PERCENT_FIELDS, 'decimal:3'),
             ...array_fill_keys(self::FIXED_FIELDS, 'decimal:4'),
         ];
@@ -73,6 +81,39 @@ class Provider extends Model
     public function cryptoMerchants(): HasMany
     {
         return $this->hasMany(Merchant::class, 'crypto_provider_id');
+    }
+
+    /**
+     * Reconciliation rules for this provider, falling back to the defaults.
+     *
+     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>}
+     */
+    public function matchingRules(): array
+    {
+        /** @var array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>} $defaults */
+        $defaults = config('sterling.matching');
+
+        return array_replace($defaults, array_intersect_key($this->matching ?? [], $defaults));
+    }
+
+    /**
+     * @return HasMany<IntegrationAccount, $this>
+     */
+    public function integrationAccounts(): HasMany
+    {
+        return $this->hasMany(IntegrationAccount::class);
+    }
+
+    /**
+     * MIDs where this provider is the acquirer or the gateway.
+     *
+     * @return Builder<MerchantMid>
+     */
+    public function servedMids(): Builder
+    {
+        return MerchantMid::query()->where(
+            fn (Builder $q) => $q->where('bank_provider_id', $this->id)->orWhere('gate_provider_id', $this->id),
+        );
     }
 
     /**

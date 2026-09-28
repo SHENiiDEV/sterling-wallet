@@ -21,6 +21,14 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->string('logo_path')->nullable();
 
+            // How the core talks to this provider. The core never branches on
+            // provider codes: parsers and bots are looked up by these keys.
+            $table->string('report_format', 32)->nullable();
+            $table->string('connector', 32)->nullable();
+            $table->string('timezone', 64)->default('Europe/Riga');
+            $table->unsignedTinyInteger('report_delay_days')->default(1);
+            $table->json('matching')->nullable();
+
             $table->decimal('cost_visa_eu_percent', 6, 3)->nullable();
             $table->decimal('cost_visa_non_eu_percent', 6, 3)->nullable();
             $table->decimal('cost_mastercard_eu_percent', 6, 3)->nullable();

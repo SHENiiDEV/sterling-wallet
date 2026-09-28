@@ -27,6 +27,11 @@ class ProviderResource extends JsonResource
             'settlement_cycle' => $this->settlement_cycle,
             'rolling_reserve_days' => $this->rolling_reserve_days,
             'notes' => $this->notes,
+            'report_format' => $this->report_format,
+            'connector' => $this->connector,
+            'timezone' => $this->timezone,
+            'report_delay_days' => $this->report_delay_days,
+            'matching' => $this->matching,
             ...Arr::only($this->resource->toArray(), [...Provider::PERCENT_FIELDS, ...Provider::FIXED_FIELDS]),
             'mids_count' => $this->when(
                 isset($this->bank_mids_count) || isset($this->gate_mids_count),

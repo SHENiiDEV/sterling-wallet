@@ -56,6 +56,7 @@ export function MidDialog({
         gate_provider_id: mid?.gate_provider_id
             ? String(mid.gate_provider_id)
             : '',
+        gate_mid: mid?.gate_mid ?? '',
         reports_start_date: mid?.reports_start_date ?? '',
         rolling_reserve_limit: mid
             ? String(Number(mid.rolling_reserve_limit))
@@ -200,6 +201,23 @@ export function MidDialog({
                                 'None — clearing only',
                             )}
                         </Field>
+                        {data.gate_provider_id && (
+                            <Field
+                                label="Gate MID"
+                                htmlFor="gate_mid"
+                                error={errors.gate_mid}
+                                hint="How the gateway names this MID, e.g. a Corefy commerce account coma_…"
+                            >
+                                <Input
+                                    id="gate_mid"
+                                    value={data.gate_mid}
+                                    onChange={(e) =>
+                                        setData('gate_mid', e.target.value)
+                                    }
+                                    className="font-mono"
+                                />
+                            </Field>
+                        )}
                         <Field label="Status" error={errors.status}>
                             <Select
                                 value={data.status}

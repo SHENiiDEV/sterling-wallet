@@ -7,17 +7,26 @@ use App\Enums\ReportStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
+ * @property int $merchant_id
+ * @property int $merchant_mid_id
  * @property Carbon $report_date
+ * @property Carbon $period_from
+ * @property Carbon $period_to
+ * @property string|null $error_log
+ * @property bool $is_email_sent
+ * @property array<string, mixed>|null $summary_data
+ * @property-read MerchantMid $merchantMid
+ * @property-read Merchant $merchant
  * @property ReportStatus $status
  * @property string $currency
  */
 #[Fillable([
     'merchant_id', 'merchant_mid_id', 'report_date', 'period_from', 'period_to', 'currency', 'status',
-    'is_cardaq_received', 'is_corefy_received', 'cardaq_file_path', 'corefy_file_path',
     'generated_xlsx_path', 'generated_pdf_path', 'generated_operations_path', 'error_log',
     'sales_count', 'turnover', 'refunds_amount', 'chargebacks_amount', 'total_merchant_fee', 'total_provider_cost',
     'reserve_amount', 'net_volume', 'conversion_fee', 'net_payout', 'net_profit',
@@ -38,8 +47,6 @@ class DailyReportTask extends Model
             'report_date' => DateOnly::class,
             'period_from' => DateOnly::class,
             'period_to' => DateOnly::class,
-            'is_cardaq_received' => 'boolean',
-            'is_corefy_received' => 'boolean',
             'is_email_sent' => 'boolean',
             'email_sent_at' => 'datetime',
             'generated_at' => 'datetime',
@@ -64,5 +71,25 @@ class DailyReportTask extends Model
     public function merchantMid(): BelongsTo
     {
         return $this->belongsTo(MerchantMid::class);
+    }
+
+    /**
+     * @return HasMany<DailyReportSource, $this>
+     */
+    public function sources(): HasMany
+    {
+        return $this->hasMany(DailyReportSource::class);
+    }
+
+    /**
+     * Provider ids this report still waits for.
+     *
+     * @return list<int>
+     */
+    public function missingProviderIds(): array
+    {
+        $received = $this->sources()->pluck('provider_id')->all();
+
+        return array_values(array_diff($this->merchantMid->requiredProviderIds(), $received));
     }
 }

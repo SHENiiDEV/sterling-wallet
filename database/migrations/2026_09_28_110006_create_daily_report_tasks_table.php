@@ -23,10 +23,6 @@ return new class extends Migration
             $table->char('currency', 3);
             $table->string('status', 16)->default('pending')->index();
 
-            $table->boolean('is_cardaq_received')->default(false);
-            $table->boolean('is_corefy_received')->default(false);
-            $table->string('cardaq_file_path')->nullable();
-            $table->string('corefy_file_path')->nullable();
             $table->string('generated_xlsx_path')->nullable();
             $table->string('generated_pdf_path')->nullable();
             $table->string('generated_operations_path')->nullable();

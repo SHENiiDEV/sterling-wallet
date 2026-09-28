@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Bots\ConnectorRegistry;
 use App\Enums\ProviderType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ProviderRequest;
 use App\Http\Resources\ProviderResource;
 use App\Models\Provider;
+use App\Reports\Parsers\ParserRegistry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -32,7 +34,7 @@ class ProviderController extends Controller
     {
         return Inertia::render('admin/providers/form', [
             'provider' => null,
-            'types' => ProviderType::options(),
+            ...$this->formOptions(),
         ]);
     }
 
@@ -49,7 +51,7 @@ class ProviderController extends Controller
     {
         return Inertia::render('admin/providers/form', [
             'provider' => ProviderResource::make($provider)->resolve(),
-            'types' => ProviderType::options(),
+            ...$this->formOptions(),
         ]);
     }
 
@@ -60,6 +62,20 @@ class ProviderController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Provider saved.']);
 
         return to_route('admin.providers.index');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formOptions(): array
+    {
+        return [
+            'types' => ProviderType::options(),
+            'reportFormats' => array_map(fn (string $f) => ['value' => $f, 'label' => ucfirst($f)], app(ParserRegistry::class)->formats()),
+            'connectors' => app(ConnectorRegistry::class)->options(),
+            'defaultMatching' => config('sterling.matching'),
+            'defaultTimezone' => config('sterling.timezone'),
+        ];
     }
 
     public function destroy(Provider $provider): RedirectResponse
