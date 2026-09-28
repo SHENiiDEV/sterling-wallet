@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('status', 16)->default('active')->index();
             $table->foreignId('bank_provider_id')->nullable()->constrained('providers')->nullOnDelete();
             $table->foreignId('gate_provider_id')->nullable()->constrained('providers')->nullOnDelete();
+            // How the gateway names this MID (e.g. Corefy commerce account `coma_…`).
+            $table->string('gate_mid', 64)->nullable()->index();
             $table->date('reports_start_date')->nullable();
             $table->decimal('rolling_reserve_limit', 14, 2)->default(0);
             $table->decimal('processing_limit', 14, 2)->nullable();

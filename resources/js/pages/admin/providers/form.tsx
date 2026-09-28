@@ -18,17 +18,30 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import admin from '@/routes/admin';
-import type { Option, Provider } from '@/types';
+import type { MatchingRules, Option, Provider } from '@/types';
 
 type Props = {
     provider: Provider | null;
     types: Option[];
+    reportFormats: Option[];
+    connectors: Option[];
+    defaultMatching: MatchingRules;
+    defaultTimezone: string;
 };
+
+const NONE = '__none';
 
 const str = (value: string | number | null | undefined, fallback = '') =>
     value === null || value === undefined ? fallback : String(Number(value));
 
-export default function ProviderForm({ provider, types }: Props) {
+export default function ProviderForm({
+    provider,
+    types,
+    reportFormats,
+    connectors,
+    defaultMatching,
+    defaultTimezone,
+}: Props) {
     const [deleting, setDeleting] = useState(false);
     const form = useForm({
         name: provider?.name ?? '',
@@ -55,6 +68,13 @@ export default function ProviderForm({ provider, types }: Props) {
         rolling_reserve_days: String(provider?.rolling_reserve_days ?? 180),
         rolling_reserve_cap: str(provider?.rolling_reserve_cap, '0'),
         notes: provider?.notes ?? '',
+        report_format: provider?.report_format ?? '',
+        connector: provider?.connector ?? '',
+        timezone: provider?.timezone ?? defaultTimezone,
+        report_delay_days: String(provider?.report_delay_days ?? 1),
+        matching: provider?.matching
+            ? JSON.stringify(provider.matching, null, 2)
+            : '',
     });
     const { data, setData, errors } = form;
     const isCrypto = data.type === 'crypto';
@@ -185,6 +205,139 @@ export default function ProviderForm({ provider, types }: Props) {
                             Active — can be assigned to new MIDs
                         </label>
                     </FormSection>
+
+                    {!isCrypto && (
+                        <FormSection
+                            title="Reports & bots"
+                            description="How the core reads this provider. Nothing in the core depends on the provider's name — only on these settings and its role on each MID."
+                        >
+                            <Field
+                                label="Report format"
+                                error={errors.report_format}
+                                hint="Parser used for uploaded files"
+                            >
+                                <Select
+                                    value={data.report_format || NONE}
+                                    onValueChange={(value) =>
+                                        setData(
+                                            'report_format',
+                                            value === NONE ? '' : value,
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NONE}>
+                                            Not set
+                                        </SelectItem>
+                                        {reportFormats.map((format) => (
+                                            <SelectItem
+                                                key={format.value}
+                                                value={format.value}
+                                            >
+                                                {format.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                            <Field
+                                label="Bot (connector)"
+                                error={errors.connector}
+                                hint="Which bot fetches its files"
+                            >
+                                <Select
+                                    value={data.connector || NONE}
+                                    onValueChange={(value) =>
+                                        setData(
+                                            'connector',
+                                            value === NONE ? '' : value,
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NONE}>
+                                            No bot — upload only
+                                        </SelectItem>
+                                        {connectors.map((connector) => (
+                                            <SelectItem
+                                                key={connector.value}
+                                                value={connector.value}
+                                            >
+                                                {connector.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                            <Field
+                                label="Time zone of operation times"
+                                htmlFor="timezone"
+                                error={errors.timezone}
+                            >
+                                <Input
+                                    id="timezone"
+                                    value={data.timezone}
+                                    onChange={(e) =>
+                                        setData('timezone', e.target.value)
+                                    }
+                                    placeholder="Europe/Riga"
+                                    className="font-mono"
+                                />
+                            </Field>
+                            <Field
+                                label="Report delay"
+                                htmlFor="report_delay_days"
+                                error={errors.report_delay_days}
+                                hint="Days after the period before the file is available"
+                            >
+                                <AffixInput
+                                    id="report_delay_days"
+                                    suffix="days"
+                                    inputMode="numeric"
+                                    value={data.report_delay_days}
+                                    onChange={(e) =>
+                                        setData(
+                                            'report_delay_days',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field
+                                label="Reconciliation rules (JSON)"
+                                htmlFor="matching"
+                                error={
+                                    errors.matching ??
+                                    Object.entries(errors).find(([key]) =>
+                                        key.startsWith('matching.'),
+                                    )?.[1]
+                                }
+                                hint="Empty = defaults. Any key you set overrides the default."
+                                className="sm:col-span-2"
+                            >
+                                <Textarea
+                                    id="matching"
+                                    rows={6}
+                                    className="font-mono text-xs"
+                                    value={data.matching}
+                                    placeholder={JSON.stringify(
+                                        defaultMatching,
+                                        null,
+                                        2,
+                                    )}
+                                    onChange={(e) =>
+                                        setData('matching', e.target.value)
+                                    }
+                                />
+                            </Field>
+                        </FormSection>
+                    )}
 
                     {isCrypto ? (
                         <FormSection

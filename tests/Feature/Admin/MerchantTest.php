@@ -4,8 +4,8 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\Currency;
 use App\Enums\MerchantStatus;
-use App\Enums\OperationSource;
 use App\Enums\OperationType;
+use App\Enums\ProviderType;
 use App\Enums\UserRole;
 use App\Models\AdminAuditLog;
 use App\Models\Merchant;
@@ -150,7 +150,8 @@ class MerchantTest extends TestCase
         $mid = MerchantMid::factory()->create(['currency' => Currency::Eur, 'status' => 'inactive']);
         $mid->operations()->create([
             'merchant_id' => $mid->merchant_id,
-            'source' => OperationSource::Cardaq,
+            'provider_id' => Provider::factory()->create()->id,
+            'role' => ProviderType::Bank,
             'operation_type' => OperationType::Sale,
             'amount' => 10,
             'currency' => 'EUR',

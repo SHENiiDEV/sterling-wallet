@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Casts\DateOnly;
-use App\Enums\OperationSource;
 use App\Enums\OperationType;
+use App\Enums\ProviderType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +12,19 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
- * @property OperationSource $source
+ * @property int|null $merchant_mid_id
+ * @property int $provider_id
+ * @property ProviderType $role
+ * @property string|null $mid
+ * @property string|null $payment_id
+ * @property string|null $sp_id
+ * @property int|null $matched_operation_id
+ * @property string|null $card_bin
+ * @property string|null $card_last4
+ * @property string|null $customer_email
+ * @property string|null $ips
+ * @property string|null $region
+ * @property array<string, mixed>|null $raw
  * @property OperationType $operation_type
  * @property string $amount
  * @property string $currency
@@ -20,19 +32,20 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $transaction_at
  */
 #[Fillable([
-    'merchant_id', 'merchant_mid_id', 'source', 'mid', 'merchant_name',
-    'payment_id', 'sp_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'customer_email',
+    'merchant_id', 'merchant_mid_id', 'provider_id', 'role', 'mid', 'merchant_name',
+    'payment_id', 'sp_id', 'matched_operation_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'card_bin', 'card_last4', 'customer_email',
     'ips', 'region', 'issuer_country', 'issuer_name',
     'trn_type', 'operation_type', 'processing_code', 'resolution',
     'report_date', 'transaction_at', 'processing_at', 'amount', 'currency',
-    'eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee',
+    'eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee', 'raw',
 ])]
 class MerchantOperation extends Model
 {
     protected function casts(): array
     {
         return [
-            'source' => OperationSource::class,
+            'role' => ProviderType::class,
+            'raw' => 'array',
             'operation_type' => OperationType::class,
             'report_date' => DateOnly::class,
             'transaction_at' => 'datetime',
@@ -49,7 +62,7 @@ class MerchantOperation extends Model
      */
     public static function classify(array $row): OperationType
     {
-        $trnType = isset($row['trn_type']) ? trim((string) $row['trn_type']) : '';
+        $trnType = isset($row['trn_type']) ? strtolower(trim((string) $row['trn_type'])) : '';
         $amount = (float) ($row['amount'] ?? 0);
 
         if ($trnType !== '' && in_array($trnType, config('sterling.trn_types.chargeback', []), true)) {
@@ -82,5 +95,23 @@ class MerchantOperation extends Model
     public function merchantMid(): BelongsTo
     {
         return $this->belongsTo(MerchantMid::class);
+    }
+
+    /**
+     * @return BelongsTo<Provider, $this>
+     */
+    public function provider(): BelongsTo
+    {
+        return $this->belongsTo(Provider::class);
+    }
+
+    /**
+     * The same payment as seen by the other provider of the MID's pair.
+     *
+     * @return BelongsTo<MerchantOperation, $this>
+     */
+    public function matchedOperation(): BelongsTo
+    {
+        return $this->belongsTo(MerchantOperation::class, 'matched_operation_id');
     }
 }

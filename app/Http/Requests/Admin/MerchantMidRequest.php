@@ -31,6 +31,7 @@ class MerchantMidRequest extends FormRequest
             'status' => ['required', Rule::enum(MidStatus::class)],
             'bank_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value)],
             'gate_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Gate->value)],
+            'gate_mid' => ['nullable', 'string', 'max:64'],
             'reports_start_date' => ['nullable', 'date'],
             'rolling_reserve_limit' => ['required', 'numeric', 'min:0', 'max:1000000000'],
             'processing_limit' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],

@@ -59,9 +59,8 @@ const navGroups: NavGroup[] = [
             },
             {
                 title: 'Operations',
-                href: '#',
+                href: admin.operations.index(),
                 icon: ArrowLeftRight,
-                soon: true,
             },
         ],
     },
@@ -101,7 +100,7 @@ const navGroups: NavGroup[] = [
                 href: admin.documentStatuses.index(),
                 icon: Tags,
             },
-            { title: 'Bots', href: '#', icon: Bot, soon: true },
+            { title: 'Bots', href: admin.bots.index(), icon: Bot },
             {
                 title: 'Bank holidays',
                 href: admin.bankHolidays.index(),

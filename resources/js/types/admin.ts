@@ -100,8 +100,20 @@ export type Provider = {
     rolling_reserve_days: number;
     rolling_reserve_cap: string;
     notes: string | null;
+    report_format: string | null;
+    connector: string | null;
+    timezone: string;
+    report_delay_days: number;
+    matching: MatchingRules | null;
     mids_count?: number;
     merchants_count?: number;
+};
+
+export type MatchingRules = {
+    keys?: string[][];
+    window_minutes?: number;
+    try_timezone_shift?: boolean;
+    tie_breakers?: string[];
 };
 
 export type ProviderRef = { id: number; name: string; is_active?: boolean };
@@ -127,6 +139,7 @@ export type Mid = {
     status_label: string;
     bank_provider_id: number | null;
     gate_provider_id: number | null;
+    gate_mid: string | null;
     bank_provider?: string | null;
     gate_provider?: string | null;
     reports_start_date: string | null;
@@ -186,4 +199,86 @@ export type MerchantRef = {
     id: number;
     name: string;
     company_id: number | null;
+};
+
+export type OperationType = 'sale' | 'refund' | 'decline' | 'chargeback';
+
+export type Operation = {
+    id: number;
+    provider?: { id: number; name: string };
+    role: 'bank' | 'gate';
+    mid: string | null;
+    merchant?: { public_id: string; name: string } | null;
+    payment_id: string | null;
+    sp_id: string | null;
+    matched_operation_id: number | null;
+    arn: string | null;
+    rrn: string | null;
+    approval_code: string | null;
+    card_bin: string | null;
+    card_last4: string | null;
+    customer_email: string | null;
+    ips: string | null;
+    region: 'eu' | 'non_eu' | null;
+    issuer_country: string | null;
+    issuer_name: string | null;
+    trn_type: string | null;
+    operation_type: OperationType;
+    operation_type_label: string;
+    resolution: string | null;
+    processing_code: string | null;
+    amount: string;
+    currency: string;
+    report_date: string | null;
+    transaction_at: string | null;
+    processing_at: string | null;
+};
+
+export type OperationTotal = {
+    currency: string;
+    operation_type: OperationType;
+    operations: number;
+    amount: string;
+};
+
+export type BotRunStatus =
+    | 'queued'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'skipped';
+
+export type BotRun = {
+    id: number;
+    connector: string;
+    account: string | null;
+    report_date: string;
+    target_key: string;
+    mids: string[];
+    status: BotRunStatus;
+    attempts: number;
+    rows_count: number | null;
+    files: string[];
+    error: string | null;
+    log: string | null;
+    has_screenshot: boolean;
+    duration_ms: number | null;
+    created_at: string | null;
+    finished_at: string | null;
+};
+
+export type IntegrationAccount = {
+    id: number;
+    name: string;
+    connector: string;
+    provider: ProviderRef;
+    login_url: string | null;
+    has_username: boolean;
+    has_password: boolean;
+    has_totp: boolean;
+    settings: Record<string, unknown> | null;
+    mid_ids: number[];
+    is_active: boolean;
+    last_run: BotRun | null;
+    failures_in_row: number;
 };

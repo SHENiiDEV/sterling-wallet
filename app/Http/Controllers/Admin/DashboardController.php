@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\MidStatus;
+use App\Enums\ReportStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\DocumentStatusResource;
+use App\Models\DailyReportTask;
 use App\Models\Document;
 use App\Models\DocumentActivity;
 use App\Models\DocumentStatus;
+use App\Models\MerchantMid;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Inertia\Inertia;
@@ -55,6 +59,43 @@ class DashboardController extends Controller
                     'to_status' => $activity->toStatus ? DocumentStatusResource::make($activity->toStatus)->resolve() : null,
                     'created_at' => $activity->created_at?->toIso8601String(),
                 ]),
+            'reportAlerts' => $this->reportAlerts(),
         ]);
+    }
+
+    /**
+     * MIDs that arrived unknown in a provider file, and reports that can't
+     * finish on their own.
+     *
+     * @return list<array{key: string, label: string, count: int, detail: string|null}>
+     */
+    private function reportAlerts(): array
+    {
+        $alerts = [];
+
+        $review = MerchantMid::query()->where('status', MidStatus::Review)->pluck('mid');
+        if ($review->isNotEmpty()) {
+            $alerts[] = [
+                'key' => 'review_mids',
+                'label' => 'MID(s) waiting for review — their reports are not calculated',
+                'count' => $review->count(),
+                'detail' => $review->take(5)->implode(', ').($review->count() > 5 ? ', …' : ''),
+            ];
+        }
+
+        foreach ([ReportStatus::Blocked, ReportStatus::Failed] as $status) {
+            $tasks = DailyReportTask::query()->where('status', $status);
+            $count = (clone $tasks)->count();
+            if ($count > 0) {
+                $alerts[] = [
+                    'key' => $status->value,
+                    'label' => strtolower($status->label()).' daily report(s)',
+                    'count' => $count,
+                    'detail' => (clone $tasks)->latest('report_date')->value('error_log'),
+                ];
+            }
+        }
+
+        return $alerts;
     }
 }
