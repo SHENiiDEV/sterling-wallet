@@ -274,7 +274,7 @@ class SettlementTest extends TestCase
     public function test_manual_upload_from_report_center()
     {
         $this->actingAs($this->admin)->post(route('admin.reports.upload'), [
-            'provider_id' => $this->mid->bankProvider_id ?? $this->mid->bank_provider_id,
+            'provider_id' => $this->mid->bank_provider_id,
             'report_date' => '2026-09-15',
             'file' => $this->cardaqCsv(),
         ])->assertRedirect()->assertInertiaFlash('toast.type', 'success');

@@ -27,6 +27,12 @@ final class PdfRenderer
         $pdf->setPaper('A4', $orientation);
         $pdf->render();
 
+        // "1 / 3" in the bottom-right corner; CSS can't count pages in dompdf.
+        $canvas = $pdf->getCanvas();
+        $font = $pdf->getFontMetrics()->getFont('DejaVu Sans');
+        $width = $pdf->getFontMetrics()->getTextWidth('99 / 99', $font, 6.5);
+        $canvas->page_text($canvas->get_width() - 40 - $width, $canvas->get_height() - 45, '{PAGE_NUM} / {PAGE_COUNT}', $font, 6.5, [0.54, 0.53, 0.63]);
+
         return (string) $pdf->output();
     }
 
