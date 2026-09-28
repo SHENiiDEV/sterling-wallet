@@ -16,6 +16,7 @@ use App\Reports\Generation\DailyReportGenerator;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Settlements\ReserveReleaseService;
 use App\Settlements\SettlementService;
+use App\Settlements\SettlementStatementPdf;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,6 +62,36 @@ class SettlementTest extends TestCase
     private function assertMoney(string $expected, mixed $actual): void
     {
         $this->assertTrue(BigDecimal::of((string) $actual)->isEqualTo($expected), "Expected {$expected}, got {$actual}.");
+    }
+
+    public function test_statement_shows_each_report_and_the_final_conversion()
+    {
+        $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        app(SettlementService::class)->addAdjustment($settlement, 'Previous overpayment', 'EUR', '-10');
+
+        $data = app(SettlementStatementPdf::class)->data($settlement->fresh());
+
+        [$eur] = $data['reportGroups'];
+        $this->assertSame('EUR', $eur['currency']);
+        $this->assertSame(['2026-09-15', 3, '350.00', '30.00', '15.90', '30.52', '273.58'], [
+            $eur['rows'][0]['date'], $eur['rows'][0]['sales'], (string) $eur['rows'][0]['turnover']->toScale(2),
+            (string) $eur['rows'][0]['refunds']->toScale(2), (string) $eur['rows'][0]['fees']->toScale(2),
+            (string) $eur['rows'][0]['reserve']->toScale(2), (string) $eur['rows'][0]['payout']->toScale(2),
+        ]);
+
+        [$conversion] = $data['conversion'];
+        // 273.58 − 10.00 = 263.58 EUR × 1.10 = 289.94 USDC.
+        $this->assertMoney('273.58', $conversion['reports']);
+        $this->assertMoney('-10', $conversion['adjustments']);
+        $this->assertMoney('263.58', $conversion['amount']);
+        $this->assertMoney('289.94', $conversion['payout']);
+
+        $html = view('settlements.statement', $data)->render();
+        $this->assertStringContainsString('Final calculation', $html);
+        $this->assertStringContainsString('289.94 USDC', $html);
+        $this->assertStringContainsString('DRAFT', $html);
+        $this->assertStringStartsWith('%PDF', app(SettlementStatementPdf::class)->render($settlement));
     }
 
     public function test_full_flow_draft_approve_settle_with_statement()
@@ -243,7 +274,7 @@ class SettlementTest extends TestCase
     public function test_manual_upload_from_report_center()
     {
         $this->actingAs($this->admin)->post(route('admin.reports.upload'), [
-            'provider_id' => $this->mid->bank_provider_id,
+            'provider_id' => $this->mid->bankProvider_id ?? $this->mid->bank_provider_id,
             'report_date' => '2026-09-15',
             'file' => $this->cardaqCsv(),
         ])->assertRedirect()->assertInertiaFlash('toast.type', 'success');

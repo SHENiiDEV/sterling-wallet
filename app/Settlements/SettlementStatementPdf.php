@@ -2,23 +2,120 @@
 
 namespace App\Settlements;
 
+use App\Enums\SettlementLineType;
 use App\Models\Settlement;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use App\Models\SettlementLine;
+use App\Support\PdfRenderer;
+use Brick\Math\BigDecimal;
+use Illuminate\Support\Collection;
 
+/**
+ * The settlement statement: every daily report it pays with its own
+ * calculation, reserve releases and adjustments, then the conversion of
+ * each currency into the payout currency and the final amount.
+ */
 class SettlementStatementPdf
 {
     public function render(Settlement $settlement): string
     {
-        $settlement->load(['merchant.company', 'lines', 'wallet', 'approver:id,name', 'settler:id,name']);
+        return PdfRenderer::render('settlements.statement', $this->data($settlement));
+    }
 
-        $options = new Options;
-        $options->setIsRemoteEnabled(false);
-        $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('settlements.statement', ['settlement' => $settlement])->render());
-        $pdf->setPaper('A4');
-        $pdf->render();
+    /**
+     * @return array<string, mixed>
+     */
+    public function data(Settlement $settlement): array
+    {
+        $settlement->load([
+            'merchant.company', 'wallet', 'approver:id,name', 'settler:id,name', 'creator:id,name',
+            'lines.dailyReport.merchantMid:id,mid', 'lines.reserveEntry.merchantMid:id,mid',
+        ]);
+        $lines = $settlement->lines->sortBy('id')->values();
 
-        return (string) $pdf->output();
+        $reports = $lines->where('type', SettlementLineType::Report)
+            ->sortBy(fn (SettlementLine $l) => [$l->currency, $l->dailyReport?->report_date?->toDateString(), $l->id])
+            ->groupBy('currency')
+            ->map(fn (Collection $group, string $currency) => $this->reportGroup($group, $currency));
+
+        $releases = $lines->where('type', SettlementLineType::ReserveRelease)->values();
+        $adjustments = $lines->where('type', SettlementLineType::Adjustment)->values();
+
+        // Per currency: what the lines add up to, the rate, and the payout.
+        $conversion = $lines->groupBy('currency')->map(fn (Collection $group, string $currency) => [
+            'currency' => $currency,
+            'reports' => $this->sum($group->where('type', SettlementLineType::Report), 'amount'),
+            'releases' => $this->sum($group->where('type', SettlementLineType::ReserveRelease), 'amount'),
+            'adjustments' => $this->sum($group->where('type', SettlementLineType::Adjustment), 'amount'),
+            'amount' => $this->sum($group, 'amount'),
+            'rate' => $settlement->rates[$currency] ?? null,
+            'payout' => $this->sum($group, 'amount_payout'),
+        ])->sortKeys()->values();
+
+        $dates = $lines->map(fn (SettlementLine $l) => $l->dailyReport?->report_date)->filter();
+        $turnover = $reports->map(fn (array $g) => PdfRenderer::money($g['totals']['turnover'], $g['currency']))->values()->all();
+        $fees = $reports->map(fn (array $g) => PdfRenderer::money($g['totals']['fees'], $g['currency']))->values()->all();
+
+        return [
+            'settlement' => $settlement,
+            'company' => $settlement->merchant->company->name ?? $settlement->merchant->name,
+            'periodFrom' => $dates->min(),
+            'periodTo' => $dates->max(),
+            'reportGroups' => $reports->values()->all(),
+            'releases' => $releases,
+            'adjustments' => $adjustments,
+            'conversion' => $conversion->all(),
+            'tiles' => [
+                ['Daily reports', (string) $lines->where('type', SettlementLineType::Report)->count(), $dates->isEmpty() ? '—' : $dates->min()->toDateString().' — '.$dates->max()->toDateString(), false],
+                ['Gross sales', $turnover === [] ? '—' : implode(' + ', $turnover), 'Before refunds and fees', false],
+                ['Fees', $fees === [] ? '—' : implode(' + ', $fees), 'Processing + conversion', false],
+                ['Total payout', PdfRenderer::money($settlement->total_payout, $settlement->payout_currency), $settlement->wallet ? trim($settlement->wallet->currency.' '.$settlement->wallet->network) : 'Wallet not set', true],
+            ],
+        ];
+    }
+
+    /**
+     * @param  Collection<int, SettlementLine>  $lines
+     * @return array{currency: string, rows: list<array<string, mixed>>, totals: array<string, BigDecimal|int>}
+     */
+    private function reportGroup(Collection $lines, string $currency): array
+    {
+        $rows = [];
+        $totals = array_fill_keys(['turnover', 'refunds', 'fees', 'reserve', 'payout'], BigDecimal::zero());
+        $totals['sales'] = 0;
+
+        foreach ($lines as $line) {
+            $report = $line->dailyReport;
+            $row = [
+                'date' => $report?->report_date?->toDateString() ?? '—',
+                'mid' => $report?->merchantMid?->mid ?? '—',
+                'sales' => (int) ($report?->sales_count ?? 0),
+                'turnover' => $this->dec($report?->turnover),
+                'refunds' => $this->dec($report?->refunds_amount)->plus($this->dec($report?->chargebacks_amount)),
+                'fees' => $this->dec($report?->total_merchant_fee)->plus($this->dec($report?->conversion_fee)),
+                'reserve' => $this->dec($report?->reserve_amount),
+                'payout' => $this->dec($line->amount),
+            ];
+            $rows[] = $row;
+
+            foreach (['turnover', 'refunds', 'fees', 'reserve', 'payout'] as $key) {
+                $totals[$key] = $totals[$key]->plus($row[$key]);
+            }
+            $totals['sales'] += $row['sales'];
+        }
+
+        return ['currency' => $currency, 'rows' => $rows, 'totals' => $totals];
+    }
+
+    /**
+     * @param  Collection<int, SettlementLine>  $lines
+     */
+    private function sum(Collection $lines, string $field): BigDecimal
+    {
+        return $lines->reduce(fn (BigDecimal $c, SettlementLine $l) => $c->plus($this->dec($l->{$field})), BigDecimal::zero());
+    }
+
+    private function dec(mixed $value): BigDecimal
+    {
+        return BigDecimal::of((string) ($value ?? 0));
     }
 }
