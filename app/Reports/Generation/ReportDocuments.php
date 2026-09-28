@@ -6,15 +6,13 @@ use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use Brick\Math\RoundingMode;
 use Brick\Money\Money;
-use Dompdf\Dompdf;
-use Dompdf\Options;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Writes the files a finished daily report ships with:
- * a summary XLSX, the same summary as PDF, and a CSV of its operations.
+ * a summary XLSX, the merchant statement as PDF, and a CSV of its operations.
  */
 class ReportDocuments
 {
@@ -25,6 +23,8 @@ class ReportDocuments
         'customer_email' => 'Email', 'resolution' => 'Resolution',
     ];
 
+    public function __construct(private DailyStatement $statement) {}
+
     public function write(DailyReportTask $task): void
     {
         $disk = Storage::disk(config('sterling.reports.disk'));
@@ -33,7 +33,7 @@ class ReportDocuments
         $summary = $this->summary($task);
 
         $disk->put("{$base}.xlsx", $this->xlsx($task, $summary));
-        $disk->put("{$base}.pdf", $this->pdf($task, $summary));
+        $disk->put("{$base}.pdf", $this->statement->render($task));
         $disk->put("{$base}_operations.csv", $this->csv($task));
 
         $task->update([
@@ -90,21 +90,6 @@ class ReportDocuments
         @unlink($path);
 
         return $content;
-    }
-
-    /**
-     * @param  list<array{0: string, 1: string}>  $summary
-     */
-    private function pdf(DailyReportTask $task, array $summary): string
-    {
-        $options = new Options;
-        $options->setIsRemoteEnabled(false);
-        $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('reports.daily', ['task' => $task, 'summary' => $summary])->render());
-        $pdf->setPaper('A4');
-        $pdf->render();
-
-        return (string) $pdf->output();
     }
 
     private function csv(DailyReportTask $task): string

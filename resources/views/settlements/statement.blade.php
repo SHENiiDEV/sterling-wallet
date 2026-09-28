@@ -1,81 +1,217 @@
-<!doctype html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Settlement Statement {{ $settlement->number }}</title>
-    <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size: 10.5px; color: #1f2937; }
-        h1 { font-size: 18px; margin: 0; }
-        .muted { color: #6b7280; }
-        .head { width: 100%; margin-bottom: 18px; }
-        .head td { vertical-align: top; }
-        table.lines { width: 100%; border-collapse: collapse; margin-top: 8px; }
-        table.lines th { text-align: left; font-size: 9.5px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 6px 4px; }
-        table.lines td { padding: 6px 4px; border-bottom: 1px solid #eef0f3; }
-        .num { text-align: right; white-space: nowrap; }
-        tr.total td { border-top: 2px solid #111827; font-weight: bold; font-size: 12px; }
-        .box { margin-top: 18px; padding: 10px; border: 1px solid #e5e7eb; }
-    </style>
-</head>
-<body>
-    <table class="head">
+@php($money = fn ($v, $c = null) => \App\Support\PdfRenderer::money($v, $c))
+@php($status = $settlement->status->value)
+@php($payoutCurrency = $settlement->payout_currency)
+@extends('pdf.layout')
+
+@section('title', 'Settlement Statement '.$settlement->number)
+@section('doc-title', 'Settlement Statement')
+@section('doc-sub')
+    {{ $settlement->number }} &nbsp;<span class="pill pill-{{ $status }}">{{ $status }}</span>
+@endsection
+@section('footer', 'Settlement '.$settlement->number.' · '.$company)
+@if (in_array($status, ['draft', 'cancelled'], true))
+    @section('watermark', strtoupper($status))
+@endif
+
+@section('content')
+    <table class="meta">
         <tr>
             <td>
-                <div style="margin-bottom: 10px">@include('partials.pdf-logo')</div>
-                <h1>Settlement Statement</h1>
-                <div class="muted">{{ $settlement->number }} · {{ ucfirst($settlement->status->value) }}</div>
+                <div class="label">Paid to</div>
+                <div class="value">{{ $company }}</div>
+                <table class="kv" style="margin-top: 4px">
+                    @if ($company !== $settlement->merchant->name)
+                        <tr><td class="k">Merchant</td><td>{{ $settlement->merchant->name }}</td></tr>
+                    @endif
+                    <tr><td class="k">Merchant ID</td><td>{{ $settlement->merchant->public_id }}</td></tr>
+                    @if ($settlement->wallet)
+                        <tr><td class="k">Wallet</td><td>{{ trim($settlement->wallet->currency.' '.$settlement->wallet->network) }}</td></tr>
+                        <tr><td class="k">Address</td><td style="font-size: 7.5px; word-break: break-all">{{ $settlement->wallet->address }}</td></tr>
+                    @endif
+                </table>
             </td>
-            <td style="text-align: right">
-                <strong>{{ config('app.name') }}</strong><br>
-                <span class="muted">Issued {{ now()->toDateString() }}</span>
+            <td>
+                <div class="label">Statement</div>
+                <div class="value">{{ $settlement->number }}</div>
+                <table class="kv" style="margin-top: 4px">
+                    <tr><td class="k">Issued</td><td>{{ ($settlement->settled_at ?? $settlement->approved_at ?? now())->timezone(config('sterling.timezone', 'Europe/Riga'))->format('Y-m-d') }}</td></tr>
+                    <tr><td class="k">Reports period</td><td>{{ $periodFrom ? $periodFrom->toDateString().' — '.$periodTo->toDateString() : '—' }}</td></tr>
+                    <tr><td class="k">Payout currency</td><td>{{ $payoutCurrency }}</td></tr>
+                    <tr><td class="k">Status</td><td>{{ ucfirst($status) }}</td></tr>
+                </table>
             </td>
         </tr>
     </table>
 
-    <p>
-        <strong>{{ $settlement->merchant->company->name ?? $settlement->merchant->name }}</strong><br>
-        Merchant: {{ $settlement->merchant->name }} ({{ $settlement->merchant->public_id }})
-    </p>
-
-    <table class="lines">
-        <thead>
-            <tr>
-                <th>Description</th>
-                <th class="num">Amount</th>
-                <th class="num">Rate</th>
-                <th class="num">{{ $settlement->payout_currency }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach ($settlement->lines->sortBy('id') as $line)
-                <tr>
-                    <td>{{ $line->description }}</td>
-                    <td class="num">{{ number_format((float) $line->amount, 2) }} {{ $line->currency }}</td>
-                    <td class="num">{{ rtrim(rtrim($line->rate, '0'), '.') }}</td>
-                    <td class="num">{{ number_format((float) $line->amount_payout, 2) }}</td>
-                </tr>
+    <table class="tiles">
+        <tr>
+            @foreach ($tiles as [$label, $value, $hint, $accent])
+                <td style="width: 25%">
+                    <div @class(['tile', 'accent' => $accent])>
+                        <div class="t-label">{{ $label }}</div>
+                        <div class="t-value" @if (strlen($value) > 18) style="font-size: 10px" @endif>{{ $value }}</div>
+                        <div class="t-hint">{{ $hint }}</div>
+                    </div>
+                </td>
             @endforeach
-            <tr class="total">
-                <td colspan="3">Total payout</td>
-                <td class="num">{{ number_format((float) $settlement->total_payout, 2) }} {{ $settlement->payout_currency }}</td>
-            </tr>
-        </tbody>
+        </tr>
     </table>
 
-    <div class="box">
-        @if ($settlement->wallet)
-            Paid to: {{ $settlement->wallet->currency }} {{ $settlement->wallet->network }} · {{ $settlement->wallet->address }}<br>
-        @endif
-        @if ($settlement->approved_at)
-            Approved: {{ $settlement->approved_at->toDateTimeString() }} by {{ $settlement->approver->name ?? '—' }}<br>
-        @endif
-        @if ($settlement->settled_at)
-            Paid: {{ $settlement->settled_at->toDateTimeString() }} by {{ $settlement->settler->name ?? '—' }}<br>
-            Transaction: {{ $settlement->tx_hash }}
-        @endif
+    @foreach ($reportGroups as $group)
+        <h2>Daily reports · {{ $group['currency'] }} <span class="hint">· {{ count($group['rows']) }} {{ count($group['rows']) === 1 ? 'report' : 'reports' }}</span></h2>
+        <table class="grid">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>MID</th>
+                    <th class="num">Sales</th>
+                    <th class="num">Gross sales</th>
+                    <th class="num">Refunds + CB</th>
+                    <th class="num">Fees</th>
+                    <th class="num">Reserve</th>
+                    <th class="num">Net payout</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($group['rows'] as $row)
+                    <tr>
+                        <td>{{ $row['date'] }}</td>
+                        <td>{{ $row['mid'] }}</td>
+                        <td class="num">{{ $row['sales'] }}</td>
+                        <td class="num">{{ $money($row['turnover']) }}</td>
+                        <td @class(['num', 'neg' => ! $row['refunds']->isZero()])>{{ $row['refunds']->isZero() ? '0.00' : $money($row['refunds']->negated()) }}</td>
+                        <td @class(['num', 'neg' => ! $row['fees']->isZero()])>{{ $row['fees']->isZero() ? '0.00' : $money($row['fees']->negated()) }}</td>
+                        <td @class(['num', 'neg' => ! $row['reserve']->isZero()])>{{ $row['reserve']->isZero() ? '0.00' : $money($row['reserve']->negated()) }}</td>
+                        <td class="num strong">{{ $money($row['payout']) }}</td>
+                    </tr>
+                @endforeach
+                <tr class="sub">
+                    <td colspan="2">Total {{ $group['currency'] }}</td>
+                    <td class="num">{{ $group['totals']['sales'] }}</td>
+                    <td class="num">{{ $money($group['totals']['turnover']) }}</td>
+                    <td class="num">{{ $money($group['totals']['refunds']->negated()) }}</td>
+                    <td class="num">{{ $money($group['totals']['fees']->negated()) }}</td>
+                    <td class="num">{{ $money($group['totals']['reserve']->negated()) }}</td>
+                    <td class="num">{{ $money($group['totals']['payout'], $group['currency']) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    @endforeach
+
+    @if ($releases->isNotEmpty())
+        <h2>Rolling reserve released <span class="hint">· held earlier, now paid out</span></h2>
+        <table class="grid">
+            <thead>
+                <tr>
+                    <th>Released</th>
+                    <th>MID</th>
+                    <th>Held for</th>
+                    <th class="num">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($releases as $line)
+                    <tr>
+                        <td>{{ $line->reserveEntry?->created_at?->toDateString() ?? '—' }}</td>
+                        <td>{{ $line->reserveEntry?->merchantMid?->mid ?? '—' }}</td>
+                        <td>{{ $line->reserveEntry?->note ?? $line->description }}</td>
+                        <td class="num pos">+{{ $money($line->amount, $line->currency) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @endif
+
+    @if ($adjustments->isNotEmpty())
+        <h2>Adjustments</h2>
+        <table class="grid">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th class="num">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($adjustments as $line)
+                    @php($negative = str_starts_with((string) $line->amount, '-'))
+                    <tr>
+                        <td>{{ $line->description }}</td>
+                        <td @class(['num', 'neg' => $negative, 'pos' => ! $negative])>{{ $negative ? '' : '+' }}{{ $money($line->amount, $line->currency) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @endif
+
+    <div class="avoid-break">
+        <h2>Final calculation <span class="hint">· converted to {{ $payoutCurrency }}</span></h2>
+        <table class="grid">
+            <thead>
+                <tr>
+                    <th>Currency</th>
+                    <th class="num">Reports</th>
+                    <th class="num">Reserve released</th>
+                    <th class="num">Adjustments</th>
+                    <th class="num">Balance</th>
+                    <th class="num">Rate</th>
+                    <th class="num">{{ $payoutCurrency }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($conversion as $row)
+                    <tr>
+                        <td class="strong">{{ $row['currency'] }}</td>
+                        <td class="num">{{ $money($row['reports']) }}</td>
+                        <td class="num">{{ $money($row['releases']) }}</td>
+                        <td class="num">{{ $money($row['adjustments']) }}</td>
+                        <td class="num strong">{{ $money($row['amount'], $row['currency']) }}</td>
+                        <td class="num">
+                            @if ($row['rate'] === null)
+                                <span class="neg">not set</span>
+                            @else
+                                1 {{ $row['currency'] }} = {{ rtrim(rtrim((string) $row['rate'], '0'), '.') }} {{ $payoutCurrency }}
+                            @endif
+                        </td>
+                        <td class="num strong">{{ $money($row['payout']) }}</td>
+                    </tr>
+                @endforeach
+                <tr class="total">
+                    <td colspan="6">Total payout</td>
+                    <td class="num">{{ $money($settlement->total_payout, $payoutCurrency) }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <table style="margin-top: 14px">
+            <tr>
+                <td style="width: 50%; padding-right: 10px">
+                    <div class="note" style="margin-top: 0">
+                        <strong>Approval</strong><br>
+                        @if ($settlement->approved_at)
+                            Approved {{ $settlement->approved_at->timezone(config('sterling.timezone', 'Europe/Riga'))->format('Y-m-d H:i') }} by {{ $settlement->approver->name ?? '—' }}
+                        @elseif ($status === 'cancelled')
+                            Cancelled{{ $settlement->cancel_reason ? ': '.$settlement->cancel_reason : '' }}
+                        @else
+                            Draft — not approved yet. Amounts may still change.
+                        @endif
+                    </div>
+                </td>
+                <td style="width: 50%">
+                    <div class="note" style="margin-top: 0">
+                        <strong>Payment</strong><br>
+                        @if ($settlement->settled_at)
+                            Paid {{ $settlement->settled_at->timezone(config('sterling.timezone', 'Europe/Riga'))->format('Y-m-d H:i') }} by {{ $settlement->settler->name ?? '—' }}<br>
+                            <span style="font-size: 7.5px; word-break: break-all">Tx: {{ $settlement->tx_hash }}</span>
+                        @else
+                            Not paid yet.
+                        @endif
+                    </div>
+                </td>
+            </tr>
+        </table>
+
         @if ($settlement->notes)
-            <br>{{ $settlement->notes }}
+            <div class="note">{{ $settlement->notes }}</div>
         @endif
     </div>
-</body>
-</html>
+@endsection
