@@ -65,7 +65,7 @@ return new class extends Migration
             $table->unique(['provider_id', 'payment_id', 'trn_type', 'amount'], 'merchant_operations_dedupe_unique');
             $table->index(['merchant_mid_id', 'report_date']);
             $table->index(['report_date', 'provider_id']);
-            $table->index(['merchant_mid_id', 'role', 'matched_operation_id']);
+            $table->index(['merchant_mid_id', 'role', 'matched_operation_id'], 'merchant_operations_mid_role_matched_index');
         });
     }
 
