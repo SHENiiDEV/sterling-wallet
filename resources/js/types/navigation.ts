@@ -15,6 +15,8 @@ export type NavItem = {
     exact?: boolean;
     /** Module is planned but not built yet: rendered muted with a "Soon" tag. */
     soon?: boolean;
+    /** Access module required to see the item (App\\Enums\\Module value). */
+    module?: string;
 };
 
 export type NavGroup = {

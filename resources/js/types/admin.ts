@@ -153,6 +153,7 @@ export type Merchant = {
     id: number;
     public_id: string;
     name: string;
+    website: string | null;
     status: MerchantStatus;
     status_label: string;
     is_test: boolean;
@@ -282,3 +283,58 @@ export type IntegrationAccount = {
     last_run: BotRun | null;
     failures_in_row: number;
 };
+
+export type ProfitSummary = {
+    turnover: number;
+    revenue: number;
+    cost: number;
+    net_profit: number;
+    margin: number | null;
+    reports: number;
+    sales: number;
+};
+
+export type ProfitPoint = {
+    date: string;
+    turnover: number;
+    net_profit: number;
+};
+
+export type ProfitByCurrency = {
+    currency: string;
+    turnover: number;
+    net_profit: number;
+    turnover_base: number;
+    net_profit_base: number;
+    reports: number;
+};
+
+export type ProfitByPair = {
+    pair: string;
+    turnover: number;
+    revenue: number;
+    cost: number;
+    net_profit: number;
+    margin: number | null;
+    mids: number;
+};
+
+export type ProfitByMerchant = {
+    public_id: string;
+    name: string;
+    turnover: number;
+    revenue: number;
+    net_profit: number;
+    margin: number | null;
+    reports: number;
+};
+
+export type ProfitOperations = {
+    reports: Partial<
+        Record<'pending' | 'partial' | 'blocked' | 'failed', number>
+    >;
+    settlements: { status: string; count: number; total: number }[];
+    reserves: { currency: string; balance: number }[];
+};
+
+export type Period = { from: string; to: string };

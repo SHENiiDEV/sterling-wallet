@@ -25,6 +25,7 @@ class MerchantRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'],
+            'website' => ['nullable', 'string', 'max:255'],
             'company_id' => ['nullable', 'exists:companies,id'],
             'status' => ['required', Rule::enum(MerchantStatus::class)],
             'is_test' => ['boolean'],

@@ -12,6 +12,9 @@ export type User = {
 
 export type Auth = {
     user: User;
+    /** Admin modules the user may open (App\\Enums\\Module values). */
+    modules: string[];
+    is_super_admin: boolean;
 };
 
 export type Passkey = {

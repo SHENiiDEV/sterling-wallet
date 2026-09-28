@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AcquirerStatus;
 use App\Enums\Currency;
+use App\Enums\IntegrationStatus;
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
@@ -14,6 +16,7 @@ use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
 use App\Models\Company;
 use App\Models\Merchant;
+use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
 use Illuminate\Database\Eloquent\Builder;
@@ -101,6 +104,23 @@ class MerchantController extends Controller
                 'notes' => $wallet->notes,
                 'is_active' => $wallet->is_active,
             ]),
+            'acquirers' => $merchant->acquirers()->with('provider:id,name')->get()
+                ->sortBy(fn (MerchantAcquirer $a) => $a->provider->name)->values()
+                ->map(fn (MerchantAcquirer $a) => [
+                    'id' => $a->id,
+                    'provider_id' => $a->provider_id,
+                    'provider' => $a->provider->name,
+                    'status' => $a->status->value,
+                    'status_label' => $a->status->label(),
+                    'limit' => $a->limit,
+                    'limit_currency' => $a->limit_currency,
+                    'integration_status' => $a->integration_status->value,
+                    'integration_label' => $a->integration_status->label(),
+                    'psp' => $a->psp,
+                    'notes' => $a->notes,
+                ]),
+            'acquirerStatuses' => AcquirerStatus::options(),
+            'integrationStatuses' => IntegrationStatus::options(),
             'documents' => $merchant->documents()->with(['status', 'owner'])->latest('updated_at')->limit(5)->get()
                 ->map(fn ($document) => DocumentResource::make($document)->resolve()),
             'bankProviders' => Provider::query()->ofType(ProviderType::Bank)->orderBy('name')->get(['id', 'name', 'is_active']),

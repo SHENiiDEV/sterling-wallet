@@ -43,8 +43,14 @@ export function useCurrentUrl(): UseCurrentUrlReturn {
         const urlToCompare = currentUrl ?? currentUrlPath;
         const urlString = toUrl(urlToCheck);
 
+        // "Parent" means a whole path segment: /admin/profit is not the
+        // parent of /admin/profit-share.
         const comparePath = (path: string): boolean =>
-            startsWith ? urlToCompare.startsWith(path) : path === urlToCompare;
+            path === urlToCompare ||
+            (startsWith &&
+                urlToCompare.startsWith(
+                    path.endsWith('/') ? path : `${path}/`,
+                ));
 
         if (!urlString.startsWith('http')) {
             return comparePath(urlString);
