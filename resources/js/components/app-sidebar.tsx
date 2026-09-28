@@ -1,7 +1,21 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import {
+    ArrowLeftRight,
+    Bot,
+    Building2,
+    CalendarCheck,
+    FileStack,
+    FolderKanban,
+    Handshake,
+    LayoutDashboard,
+    Landmark,
+    PieChart,
+    Store,
+    Tags,
+    Users,
+    Wallet,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -12,28 +26,78 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarRail,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import type { NavItem } from '@/types';
+import admin from '@/routes/admin';
+import type { NavGroup } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const navGroups: NavGroup[] = [
     {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
+        title: 'Overview',
+        items: [
+            {
+                title: 'Dashboard',
+                href: admin.dashboard(),
+                icon: LayoutDashboard,
+                exact: true,
+            },
+        ],
     },
     {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        title: 'Merchants',
+        items: [
+            { title: 'Merchants & MIDs', href: '#', icon: Store, soon: true },
+            { title: 'Companies', href: '#', icon: Building2, soon: true },
+            {
+                title: 'Operations',
+                href: '#',
+                icon: ArrowLeftRight,
+                soon: true,
+            },
+        ],
+    },
+    {
+        title: 'Finance',
+        items: [
+            {
+                title: 'Report Control',
+                href: '#',
+                icon: CalendarCheck,
+                soon: true,
+            },
+            { title: 'Settlements', href: '#', icon: Wallet, soon: true },
+            {
+                title: 'Providers & Profit',
+                href: '#',
+                icon: PieChart,
+                soon: true,
+            },
+            { title: 'Profit share', href: '#', icon: Handshake, soon: true },
+        ],
+    },
+    {
+        title: 'Workspace',
+        items: [
+            {
+                title: 'Document Center',
+                href: admin.documents.index(),
+                icon: FolderKanban,
+            },
+            {
+                title: 'Document statuses',
+                href: admin.documentStatuses.index(),
+                icon: Tags,
+            },
+            { title: 'Bots', href: '#', icon: Bot, soon: true },
+            {
+                title: 'Banks & holidays',
+                href: '#',
+                icon: Landmark,
+                soon: true,
+            },
+            { title: 'Offers', href: '#', icon: FileStack, soon: true },
+            { title: 'Team & access', href: '#', icon: Users, soon: true },
+        ],
     },
 ];
 
@@ -44,7 +108,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch>
+                            <Link href={admin.dashboard()} prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>
@@ -53,13 +117,13 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain groups={navGroups} />
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
+            <SidebarRail />
         </Sidebar>
     );
 }
