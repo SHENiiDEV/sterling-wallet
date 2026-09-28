@@ -1,6 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { Check } from 'lucide-react';
-import AppLogoIcon from '@/components/app-logo-icon';
+import AppWordmark from '@/components/app-wordmark';
 import { home } from '@/routes';
 import type { AuthLayoutProps } from '@/types';
 
@@ -22,16 +22,8 @@ export default function AuthSimpleLayout({
                     aria-hidden
                     className="absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_80%_10%,oklch(0.52_0.19_268/0.55),transparent_70%),radial-gradient(50%_50%_at_0%_100%,oklch(0.6_0.14_160/0.25),transparent_70%)]"
                 />
-                <Link href={home()} className="flex items-center gap-2.5">
-                    <span className="flex size-9 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
-                        <AppLogoIcon className="size-5" />
-                    </span>
-                    <span className="font-semibold">
-                        Sterling{' '}
-                        <span className="font-display text-lg font-normal text-white/70 italic">
-                            Wallet
-                        </span>
-                    </span>
+                <Link href={home()} className="flex items-center">
+                    <AppWordmark markVariant="light" />
                 </Link>
 
                 <div className="max-w-md">
@@ -62,12 +54,9 @@ export default function AuthSimpleLayout({
                 <div className="w-full max-w-sm">
                     <div className="flex flex-col gap-8">
                         <div className="flex flex-col gap-4">
-                            <Link
-                                href={home()}
-                                className="flex size-10 items-center justify-center rounded-xl bg-linear-to-br from-brand to-primary text-white shadow-sm lg:hidden"
-                            >
-                                <AppLogoIcon className="size-6" />
-                                <span className="sr-only">Sterling Wallet</span>
+                            <Link href={home()} className="lg:hidden">
+                                <AppWordmark size="sm" />
+                                <span className="sr-only">Sterling Pay</span>
                             </Link>
                             <div className="space-y-1.5">
                                 <h1 className="text-2xl font-semibold tracking-tight">

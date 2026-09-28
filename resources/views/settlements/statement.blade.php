@@ -21,6 +21,7 @@
     <table class="head">
         <tr>
             <td>
+                <div style="margin-bottom: 10px">@include('partials.pdf-logo')</div>
                 <h1>Settlement Statement</h1>
                 <div class="muted">{{ $settlement->number }} · {{ ucfirst($settlement->status->value) }}</div>
             </td>

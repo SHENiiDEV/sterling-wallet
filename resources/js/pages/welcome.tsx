@@ -16,7 +16,7 @@ import {
     Store,
     Wallet,
 } from 'lucide-react';
-import AppLogoIcon from '@/components/app-logo-icon';
+import AppWordmark from '@/components/app-wordmark';
 import { cn } from '@/lib/utils';
 import { login } from '@/routes';
 import admin from '@/routes/admin';
@@ -116,7 +116,7 @@ export default function Welcome() {
                                     not weeks.
                                 </h1>
                                 <p className="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground">
-                                    Sterling Wallet collects acquirer reports,
+                                    Sterling Pay collects acquirer reports,
                                     reconciles every transaction, holds rolling
                                     reserve and pays out in USDC — with each fee
                                     traceable back to the card that paid it.
@@ -382,7 +382,7 @@ export default function Welcome() {
                                     — every single day.
                                 </h2>
                                 <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-                                    Sterling Wallet is invite-only. Team members
+                                    Sterling Pay is invite-only. Team members
                                     and merchants sign in with the access issued
                                     by your administrator.
                                 </p>
@@ -402,7 +402,7 @@ export default function Welcome() {
                     <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:px-6">
                         <Brand />
                         <p>
-                            © {new Date().getFullYear()} Sterling Wallet. All
+                            © {new Date().getFullYear()} Sterling Pay. All
                             rights reserved.
                         </p>
                     </div>
@@ -413,24 +413,14 @@ export default function Welcome() {
 }
 
 function Brand() {
-    return (
-        <span className="flex items-center gap-2 font-semibold text-foreground">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-linear-to-br from-brand to-primary text-white shadow-sm">
-                <AppLogoIcon className="size-5" />
-            </span>
-            Sterling
-            <span className="font-display text-lg font-normal text-muted-foreground italic">
-                Wallet
-            </span>
-        </span>
-    );
+    return <AppWordmark size="sm" className="text-foreground" />;
 }
 
 function SiteHeader({ signedIn }: { signedIn: boolean }) {
     return (
         <header className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-lg">
             <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-                <Link href="/" aria-label="Sterling Wallet home">
+                <Link href="/" aria-label="Sterling Pay home">
                     <Brand />
                 </Link>
                 <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">

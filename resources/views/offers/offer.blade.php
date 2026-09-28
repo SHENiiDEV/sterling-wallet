@@ -15,6 +15,7 @@
     </style>
 </head>
 <body>
+    <div style="margin-bottom: 16px">@include('partials.pdf-logo', ['height' => 32])</div>
     <h1>Commercial offer</h1>
     <p class="muted">{{ $offer->number }} · {{ config('app.name') }} · {{ $offer->created_at?->toDateString() }}@if ($offer->valid_until) · valid until {{ $offer->valid_until->toDateString() }}@endif</p>
 
