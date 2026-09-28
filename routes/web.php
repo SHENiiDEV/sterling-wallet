@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\DocumentFileController;
 use App\Http\Controllers\Admin\DocumentStatusChangeController;
 use App\Http\Controllers\Admin\DocumentStatusController;
 use App\Http\Controllers\Admin\FxRateController;
+use App\Http\Controllers\Admin\MerchantAcquirerController;
 use App\Http\Controllers\Admin\MerchantController;
 use App\Http\Controllers\Admin\MerchantMidController;
 use App\Http\Controllers\Admin\MerchantWalletController;
@@ -41,6 +42,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
             Route::put('merchants/{merchant}/wallets/{wallet}', [MerchantWalletController::class, 'update'])->name('merchants.wallets.update');
             Route::delete('merchants/{merchant}/wallets/{wallet}', [MerchantWalletController::class, 'destroy'])->name('merchants.wallets.destroy');
             Route::post('merchants/{merchant}/wallets/{wallet}/seed', [MerchantWalletController::class, 'seed'])->name('merchants.wallets.seed');
+
+            Route::post('merchants/{merchant}/acquirers', [MerchantAcquirerController::class, 'store'])->name('merchants.acquirers.store');
+            Route::put('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'update'])->name('merchants.acquirers.update');
+            Route::delete('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'destroy'])->name('merchants.acquirers.destroy');
         });
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
     });

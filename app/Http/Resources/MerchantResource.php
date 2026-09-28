@@ -21,6 +21,7 @@ class MerchantResource extends JsonResource
             'id' => $this->id,
             'public_id' => $this->public_id,
             'name' => $this->name,
+            'website' => $this->website,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'is_test' => $this->is_test,

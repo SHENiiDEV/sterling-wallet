@@ -44,6 +44,7 @@ export default function MerchantForm({
 }: Props) {
     const form = useForm({
         name: merchant?.name ?? '',
+        website: merchant?.website ?? '',
         company_id: merchant?.company_id ? String(merchant.company_id) : '',
         status: merchant?.status ?? 'onboarding',
         is_test: merchant?.is_test ?? false,
@@ -216,6 +217,20 @@ export default function MerchantForm({
                                     onChange={(e) =>
                                         setData('invoice_email', e.target.value)
                                     }
+                                />
+                            </Field>
+                            <Field
+                                label="Website"
+                                htmlFor="website"
+                                error={errors.website}
+                            >
+                                <Input
+                                    id="website"
+                                    value={data.website}
+                                    onChange={(e) =>
+                                        setData('website', e.target.value)
+                                    }
+                                    placeholder="shop.co.uk"
                                 />
                             </Field>
                             <Field label="MCC" htmlFor="mcc" error={errors.mcc}>

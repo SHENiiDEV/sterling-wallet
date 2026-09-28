@@ -16,13 +16,14 @@ use Illuminate\Support\Str;
  * @property string $public_id
  * @property int|null $company_id
  * @property string $name
+ * @property string|null $website
  * @property MerchantStatus $status
  * @property bool $is_test
  * @property int|null $crypto_provider_id
  * @property-read Company|null $company
  */
 #[Fillable([
-    'company_id', 'name', 'status', 'is_test', 'crypto_provider_id',
+    'company_id', 'name', 'website', 'status', 'is_test', 'crypto_provider_id',
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
     'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_fiat_to_crypto_percent',
@@ -88,6 +89,14 @@ class Merchant extends Model
     public function mids(): HasMany
     {
         return $this->hasMany(MerchantMid::class);
+    }
+
+    /**
+     * @return HasMany<MerchantAcquirer, $this>
+     */
+    public function acquirers(): HasMany
+    {
+        return $this->hasMany(MerchantAcquirer::class);
     }
 
     /**

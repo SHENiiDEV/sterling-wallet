@@ -153,6 +153,7 @@ export type Merchant = {
     id: number;
     public_id: string;
     name: string;
+    website: string | null;
     status: MerchantStatus;
     status_label: string;
     is_test: boolean;

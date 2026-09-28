@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
+import { AcquirersSection } from '@/components/admin/merchants/acquirers-section';
+import type { Acquirer } from '@/components/admin/merchants/acquirers-section';
 import { MidDialog } from '@/components/admin/merchants/mid-dialog';
 import {
     SeedRevealDialog,
@@ -64,6 +66,9 @@ type Props = {
     midStatuses: Option[];
     walletTypes: Option[];
     canManageSeeds: boolean;
+    acquirers: Acquirer[];
+    acquirerStatuses: Option[];
+    integrationStatuses: Option[];
 };
 
 export default function MerchantShow(props: Props) {
@@ -148,6 +153,16 @@ export default function MerchantShow(props: Props) {
                                         {merchant.company.name}
                                     </span>
                                 )}
+                                {merchant.website && (
+                                    <a
+                                        href={`https://${merchant.website.replace(/^https?:\/\//, '')}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="hover:text-foreground hover:underline"
+                                    >
+                                        {merchant.website}
+                                    </a>
+                                )}
                                 {merchant.mcc && (
                                     <span>MCC {merchant.mcc}</span>
                                 )}
@@ -189,6 +204,14 @@ export default function MerchantShow(props: Props) {
                         {warning}
                     </div>
                 ))}
+
+                <AcquirersSection
+                    merchantId={merchant.public_id}
+                    acquirers={props.acquirers}
+                    banks={props.bankProviders}
+                    statuses={props.acquirerStatuses}
+                    integrationStatuses={props.integrationStatuses}
+                />
 
                 {/* MIDs */}
                 <section className="rounded-xl border bg-card shadow-xs">
