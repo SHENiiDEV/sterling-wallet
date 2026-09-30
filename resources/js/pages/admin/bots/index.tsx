@@ -9,7 +9,7 @@ import {
     RotateCcw,
     Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccountDialog } from '@/components/admin/bots/account-dialog';
 import type {
     BotMid,
@@ -132,7 +132,42 @@ function RunNowDialog({
     );
 }
 
-function RunDialog({ run, onClose }: { run: BotRun; onClose: () => void }) {
+const ACTIVE = ['queued', 'running'];
+
+/** Seconds since `from`, ticking once a second. */
+function useElapsed(from: string | null, active: boolean): number | null {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!active) return;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [active]);
+
+    return from
+        ? Math.max(0, Math.round((now - Date.parse(from)) / 1000))
+        : null;
+}
+
+function RunDialog({
+    run,
+    refreshedAt,
+    onClose,
+}: {
+    run: BotRun;
+    refreshedAt: number;
+    onClose: () => void;
+}) {
+    const isRunning = run.status === 'running';
+    const elapsed = useElapsed(run.started_at, isRunning);
+    const logRef = useRef<HTMLPreElement>(null);
+
+    // Follow the log while the bot is writing it.
+    useEffect(() => {
+        if (isRunning && logRef.current) {
+            logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
+    }, [run.log, isRunning]);
+
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
@@ -146,8 +181,19 @@ function RunDialog({ run, onClose }: { run: BotRun; onClose: () => void }) {
                         {run.attempts}
                         {run.duration_ms !== null &&
                             ` · ${Math.round(run.duration_ms / 1000)} s`}
+                        {isRunning &&
+                            elapsed !== null &&
+                            ` · running for ${elapsed} s`}
                     </DialogDescription>
                 </DialogHeader>
+
+                {run.status === 'queued' && (
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                        Waiting for the queue worker to pick this run up. If it
+                        stays queued, the worker is not running on the server
+                        (supervisor → <code>queue:work</code>).
+                    </div>
+                )}
 
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                     <div>
@@ -172,6 +218,42 @@ function RunDialog({ run, onClose }: { run: BotRun; onClose: () => void }) {
                     </div>
                 )}
 
+                {isRunning && (
+                    <div className="grid gap-1.5">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="relative flex size-2">
+                                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                            </span>
+                            Live browser view · updates every few seconds
+                        </div>
+                        {run.has_live_frame ? (
+                            <img
+                                src={`${admin.bots.runs.screenshot.url(run.id)}?live=1&t=${refreshedAt}`}
+                                alt="What the bot's browser shows right now"
+                                className="w-full rounded-lg border"
+                            />
+                        ) : (
+                            <div className="rounded-lg border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
+                                Starting the browser…
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {!isRunning && !run.has_screenshot && run.has_live_frame && (
+                    <details className="text-sm">
+                        <summary className="cursor-pointer text-muted-foreground">
+                            Last browser frame
+                        </summary>
+                        <img
+                            src={`${admin.bots.runs.screenshot.url(run.id)}?live=1&t=${refreshedAt}`}
+                            alt="Last thing the bot's browser showed"
+                            className="mt-2 w-full rounded-lg border"
+                        />
+                    </details>
+                )}
+
                 {run.has_screenshot && (
                     <a
                         href={admin.bots.runs.screenshot.url(run.id)}
@@ -187,10 +269,19 @@ function RunDialog({ run, onClose }: { run: BotRun; onClose: () => void }) {
                     </a>
                 )}
 
-                {run.log && (
-                    <pre className="max-h-72 overflow-auto rounded-lg bg-muted p-3 text-xs">
+                {run.log ? (
+                    <pre
+                        ref={logRef}
+                        className="max-h-72 overflow-auto rounded-lg bg-muted p-3 text-xs"
+                    >
                         {run.log}
                     </pre>
+                ) : (
+                    isRunning && (
+                        <p className="text-xs text-muted-foreground">
+                            No log output yet.
+                        </p>
+                    )
                 )}
 
                 <DialogFooter>
@@ -199,7 +290,7 @@ function RunDialog({ run, onClose }: { run: BotRun; onClose: () => void }) {
                             Close
                         </Button>
                     </DialogClose>
-                    {!['queued', 'running'].includes(run.status) && (
+                    {!ACTIVE.includes(run.status) && (
                         <Button
                             onClick={() =>
                                 router.post(
@@ -236,7 +327,29 @@ export default function BotsIndex({
     );
     const [running, setRunning] = useState<IntegrationAccount | null>(null);
     const [deleting, setDeleting] = useState<IntegrationAccount | null>(null);
-    const [viewing, setViewing] = useState<BotRun | null>(null);
+    const [viewingId, setViewingId] = useState<number | null>(null);
+    const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
+    const setViewing = (run: BotRun | null) => setViewingId(run?.id ?? null);
+    const allRuns = [
+        ...runs.data,
+        ...accounts.flatMap((a) => (a.last_run ? [a.last_run] : [])),
+    ];
+    const viewing = allRuns.find((r) => r.id === viewingId) ?? null;
+    const active = allRuns.some((r) => ACTIVE.includes(r.status));
+
+    // While anything is queued or running, refresh the runs every 3 s.
+    useEffect(() => {
+        if (!active) return;
+        const timer = setInterval(
+            () =>
+                router.reload({
+                    only: ['runs', 'accounts'],
+                    onSuccess: () => setRefreshedAt(Date.now()),
+                }),
+            3000,
+        );
+        return () => clearInterval(timer);
+    }, [active]);
     const connectorLabel = (code: string) =>
         connectors.find((c) => c.value === code)?.label ?? code;
 
@@ -529,7 +642,11 @@ export default function BotsIndex({
                 />
             )}
             {viewing && (
-                <RunDialog run={viewing} onClose={() => setViewing(null)} />
+                <RunDialog
+                    run={viewing}
+                    refreshedAt={refreshedAt}
+                    onClose={() => setViewing(null)}
+                />
             )}
             <ConfirmDialog
                 open={deleting !== null}

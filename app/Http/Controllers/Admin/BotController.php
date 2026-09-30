@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Bots\BotDispatcher;
 use App\Bots\ConnectorRegistry;
+use App\Bots\PlaywrightRunner;
 use App\Bots\Target;
 use App\Enums\BotRunStatus;
 use App\Enums\ProviderType;
@@ -17,6 +18,7 @@ use App\Reports\ReportDateResolver;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -132,15 +134,28 @@ class BotController extends Controller
         return back();
     }
 
-    public function screenshot(BotRun $run): BinaryFileResponse
+    public function screenshot(Request $request, BotRun $run): BinaryFileResponse
     {
-        $path = $run->screenshot_path;
-        $root = realpath(storage_path('app'));
+        $path = $request->boolean('live') ? $this->runFile($run, PlaywrightRunner::LIVE_FRAME) : $run->screenshot_path;
+        $root = realpath(Storage::disk('local')->path(''));
         $real = $path ? realpath($path) : false;
 
         abort_unless($real && $root && str_starts_with($real, $root) && is_file($real), 404);
 
-        return response()->file($real);
+        $response = response()->file($real, ['Cache-Control' => 'no-store']);
+        $response->setPrivate();
+
+        return $response;
+    }
+
+    /**
+     * A file in the run's working directory, if it exists.
+     */
+    private function runFile(BotRun $run, string $name): ?string
+    {
+        $path = Storage::disk('local')->path("bots/{$run->id}/{$name}");
+
+        return is_file($path) ? $path : null;
     }
 
     /**
@@ -164,8 +179,13 @@ class BotController extends Controller
             'rows_count' => $run->rows_count,
             'files' => array_map('basename', $run->files ?? []),
             'error' => $run->error,
-            'log' => $run->log,
+            // While it runs, the log is read from the file the script is writing.
+            'log' => $run->status === BotRunStatus::Running
+                ? (($file = $this->runFile($run, PlaywrightRunner::LOG_FILE)) ? mb_substr((string) file_get_contents($file), -20000) : null)
+                : $run->log,
             'has_screenshot' => $run->screenshot_path !== null,
+            'has_live_frame' => $this->runFile($run, PlaywrightRunner::LIVE_FRAME) !== null,
+            'started_at' => $run->started_at?->toIso8601String(),
             'duration_ms' => $run->duration_ms,
             'created_at' => $run->created_at?->toIso8601String(),
             'finished_at' => $run->finished_at?->toIso8601String(),

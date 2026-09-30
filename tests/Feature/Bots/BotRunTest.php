@@ -12,12 +12,14 @@ use App\Models\DailyReportTask;
 use App\Models\IntegrationAccount;
 use App\Models\MerchantMid;
 use App\Models\Provider;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 use Mockery;
 use RuntimeException;
 use Tests\Concerns\BuildsReportFixtures;
@@ -206,5 +208,48 @@ class BotRunTest extends TestCase
         $this->assertSame(BotRunStatus::Skipped, $result->status);
         $this->assertSame('no mail for 2026-09-15', $result->error);
         $this->assertStringContainsString('log line', $result->log);
+    }
+
+    public function test_the_runner_writes_the_log_while_the_script_runs()
+    {
+        $dir = storage_path('framework/testing/bots');
+        @mkdir($dir, 0777, true);
+        file_put_contents("{$dir}/slow-bot.mjs", <<<'JS'
+            console.error('step one');
+            console.error('step two');
+            console.log(JSON.stringify({ status: 'skipped' }));
+            JS);
+        config(['sterling.bots.scripts_path' => $dir]);
+        $work = storage_path('framework/testing/bots/run-1');
+        @mkdir($work, 0777, true);
+
+        app(PlaywrightRunner::class)->run('slow-bot', ['download_dir' => $work]);
+
+        $this->assertStringContainsString("step one\nstep two", (string) file_get_contents("{$work}/run.log"));
+    }
+
+    public function test_a_running_bot_shows_its_live_log_and_browser_frame()
+    {
+        $account = $this->account();
+        $run = BotRun::query()->create([
+            'connector' => 'corefy-export', 'integration_account_id' => $account->id, 'report_date' => '2026-09-16',
+            'target_key' => 'coma_1', 'target' => [], 'status' => BotRunStatus::Running, 'started_at' => now(),
+        ]);
+        Storage::disk('local')->put("bots/{$run->id}/run.log", "Opening login page…\nTwo-step verification requested.\n");
+        Storage::disk('local')->put("bots/{$run->id}/live.png", 'png-bytes');
+
+        $admin = User::factory()->superAdmin()->create();
+        $this->actingAs($admin)->get(route('admin.bots.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('runs.data.0.log', "Opening login page…\nTwo-step verification requested.\n")
+                ->where('runs.data.0.has_live_frame', true));
+
+        $this->actingAs($admin)->get(route('admin.bots.runs.screenshot', ['run' => $run, 'live' => 1]))
+            ->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+
+        // Finished: the log saved on the run wins over the file.
+        $run->update(['status' => BotRunStatus::Succeeded, 'log' => 'final log']);
+        $this->actingAs($admin)->get(route('admin.bots.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('runs.data.0.log', 'final log'));
     }
 }

@@ -14,6 +14,12 @@ use Illuminate\Support\Facades\Process;
  */
 class PlaywrightRunner
 {
+    /** Live log, next to the downloads of the run. */
+    public const LOG_FILE = 'run.log';
+
+    /** Browser frame the script refreshes every few seconds. */
+    public const LIVE_FRAME = 'live.png';
+
     /**
      * @param  array<string, mixed>  $input
      */
@@ -21,10 +27,22 @@ class PlaywrightRunner
     {
         $path = rtrim((string) config('sterling.bots.scripts_path'), '/').'/'.$script.'.mjs';
 
+        // The script's stderr goes to run.log as it arrives, so the admin can
+        // follow a running bot (see BotController::runSummary).
+        $logFile = isset($input['download_dir']) ? rtrim((string) $input['download_dir'], '/').'/'.self::LOG_FILE : null;
+        if ($logFile !== null) {
+            @file_put_contents($logFile, '');
+        }
+
         $process = Process::path(dirname($path))
             ->timeout((int) config('sterling.bots.timeout_seconds'))
             ->input((string) json_encode($input))
-            ->run([(string) config('sterling.bots.node_binary'), $path]);
+            ->start([(string) config('sterling.bots.node_binary'), $path], function (string $type, string $output) use ($logFile) {
+                if ($type === 'err' && $logFile !== null) {
+                    @file_put_contents($logFile, $output, FILE_APPEND);
+                }
+            })
+            ->wait();
 
         $log = trim($process->errorOutput());
         $lines = array_values(array_filter(array_map('trim', explode("\n", $process->output()))));

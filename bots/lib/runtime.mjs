@@ -110,16 +110,46 @@ export async function launch(input, { stealth = false, timezoneId } = {}) {
 }
 
 /**
+ * Saves what the browser shows to {screenshot_dir}/live.png every few
+ * seconds, so the admin can watch a running bot. Returns a stop function.
+ */
+function startLiveFrames(page, dir, everyMs = 4000) {
+    if (!dir) return () => {};
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(dir, 'live.png');
+    const temp = path.join(dir, 'live.tmp.png');
+    let busy = false;
+
+    const timer = setInterval(async () => {
+        if (busy || page.isClosed()) return;
+        busy = true;
+        try {
+            await page.screenshot({ path: temp, timeout: 3000 });
+            fs.renameSync(temp, target); // never serve a half-written file
+        } catch {
+            // navigation in progress; next tick
+        } finally {
+            busy = false;
+        }
+    }, everyMs);
+
+    return () => clearInterval(timer);
+}
+
+/**
  * Runs `main(input, page)` and prints the result line. Any throw becomes a
  * `failed` result with a full-page screenshot.
  */
 export async function runConnector(main, launchOptions = {}) {
     const input = await readInput();
     let session = null;
+    let stopFrames = () => {};
     let result;
 
     try {
         session = await launch(input, launchOptions);
+        stopFrames = startLiveFrames(session.page, input.screenshot_dir);
+        log(`Browser started${input.proxy ? ' (via proxy)' : ''}.`);
         result = await main(input, session.page);
     } catch (error) {
         log('ERROR:', error?.stack || error?.message || String(error));
@@ -146,6 +176,7 @@ export async function runConnector(main, launchOptions = {}) {
             screenshot,
         };
     } finally {
+        stopFrames();
         await session?.context?.close().catch(() => {});
         await session?.browser?.close().catch(() => {});
     }
