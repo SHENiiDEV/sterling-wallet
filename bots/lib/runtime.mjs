@@ -82,7 +82,18 @@ export async function launch(input, { stealth = false, timezoneId } = {}) {
         log(`Proxy enabled: ${input.proxy}`);
     }
 
-    const browser = await chromium.launch(options);
+    let browser;
+    try {
+        browser = await chromium.launch(options);
+    } catch (error) {
+        if (String(error?.message).includes("Executable doesn't exist")) {
+            throw new Error(
+                `Chromium is not installed where the bot looks for it (${process.env.PLAYWRIGHT_BROWSERS_PATH || 'default Playwright cache'}). ` +
+                    'On the server run: cd bots && npm run install-browser && sudo chown -R www-data:www-data .browsers',
+            );
+        }
+        throw error;
+    }
     const context = await browser.newContext({
         acceptDownloads: true,
         viewport: { width: 1366, height: 768 },

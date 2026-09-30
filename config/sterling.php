@@ -80,6 +80,10 @@ return [
     'bots' => [
         'node_binary' => env('BOTS_NODE_BINARY', 'node'),
         'scripts_path' => base_path('bots'),
+        // Where Playwright keeps Chromium: inside the project, so it does not
+        // depend on which user (root, www-data) installed it. Fill it with
+        // `cd bots && npm run install-browser`.
+        'browsers_path' => env('BOTS_BROWSERS_PATH', base_path('bots/.browsers')),
         'timeout_seconds' => (int) env('BOTS_TIMEOUT_SECONDS', 900),
         'headless' => (bool) env('BOTS_HEADLESS', true),
         'proxy' => env('BOTS_HTTP_PROXY'),

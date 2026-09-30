@@ -35,6 +35,7 @@ class PlaywrightRunner
         }
 
         $process = Process::path(dirname($path))
+            ->env(array_filter(['PLAYWRIGHT_BROWSERS_PATH' => config('sterling.bots.browsers_path')]))
             ->timeout((int) config('sterling.bots.timeout_seconds'))
             ->input((string) json_encode($input))
             ->start([(string) config('sterling.bots.node_binary'), $path], function (string $type, string $output) use ($logFile) {
