@@ -14,16 +14,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
+use App\Merchants\MerchantPurger;
 use App\Models\Company;
 use App\Models\Merchant;
 use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -92,6 +93,8 @@ class MerchantController extends Controller
 
         return Inertia::render('admin/merchants/show', [
             'merchant' => MerchantResource::make($merchant)->resolve(),
+            // Loaded only when the delete dialog opens.
+            'deletion' => Inertia::optional(fn () => app(MerchantPurger::class)->summary($merchant)),
             'wallets' => $merchant->wallets()->orderBy('type')->get()->map(fn (MerchantCryptoWallet $wallet) => [
                 'id' => $wallet->id,
                 'type' => $wallet->type->value,
@@ -149,17 +152,26 @@ class MerchantController extends Controller
         return to_route('admin.merchants.show', $merchant);
     }
 
-    public function destroy(Merchant $merchant): RedirectResponse
+    /**
+     * Deletes a closed merchant with all its data. The name must be typed
+     * to confirm; the dialog shows what goes with it first.
+     */
+    public function destroy(Request $request, Merchant $merchant, MerchantPurger $purger): RedirectResponse
     {
-        if ($merchant->operations()->exists() || $merchant->dailyReports()->exists()) {
-            throw ValidationException::withMessages([
-                'merchant' => 'This merchant has operations or reports. Close it instead of deleting.',
-            ]);
-        }
+        $request->validate([
+            'confirm' => ['required', 'string', function (string $attribute, mixed $value, Closure $fail) use ($merchant) {
+                if (trim((string) $value) !== trim($merchant->name)) {
+                    $fail('Type the merchant name exactly to confirm.');
+                }
+            }],
+        ]);
 
-        $merchant->delete();
+        $deleted = $purger->purge($merchant, $request->user());
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Merchant deleted.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'Merchant %s deleted with %d operations and %d reports.',
+            $merchant->name, $deleted['operations'], $deleted['daily_reports'],
+        )]);
 
         return to_route('admin.merchants.index');
     }
