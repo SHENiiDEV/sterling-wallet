@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
+import { DeleteMerchantDialog } from '@/components/admin/merchants/delete-merchant-dialog';
+import type { MerchantDeletion } from '@/components/admin/merchants/delete-merchant-dialog';
 import { AcquirersSection } from '@/components/admin/merchants/acquirers-section';
 import type { Acquirer } from '@/components/admin/merchants/acquirers-section';
 import { MidDialog } from '@/components/admin/merchants/mid-dialog';
@@ -69,6 +71,7 @@ type Props = {
     acquirers: Acquirer[];
     acquirerStatuses: Option[];
     integrationStatuses: Option[];
+    deletion?: MerchantDeletion;
 };
 
 export default function MerchantShow(props: Props) {
@@ -533,16 +536,11 @@ export default function MerchantShow(props: Props) {
                     )
                 }
             />
-            <ConfirmDialog
+            <DeleteMerchantDialog
+                merchant={merchant}
+                deletion={props.deletion}
                 open={deleting}
                 onOpenChange={setDeleting}
-                title={`Delete ${merchant.name}?`}
-                description="Only possible before any operations or reports exist. Otherwise set the status to Closed."
-                onConfirm={() =>
-                    router.delete(
-                        admin.merchants.destroy.url(merchant.public_id),
-                    )
-                }
             />
         </>
     );
