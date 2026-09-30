@@ -9,6 +9,7 @@ use App\Bots\Target;
 use App\Enums\BotRunStatus;
 use App\Models\BotRun;
 use App\Reports\Ingestion\ReportIngestionService;
+use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -24,7 +25,13 @@ class RunConnectorJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    /**
+     * Waiting for the account's browser (WithoutOverlapping releases the
+     * job) is not a failure: only real errors count, three at most.
+     */
+    public int $tries = 0;
+
+    public int $maxExceptions = 3;
 
     /** @var list<int> */
     public array $backoff = [120, 600];
@@ -32,6 +39,14 @@ class RunConnectorJob implements ShouldQueue
     public int $timeout = 1200;
 
     public function __construct(public int $runId) {}
+
+    /**
+     * Give up on a run that could not start or finish within six hours.
+     */
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addHours(6);
+    }
 
     /**
      * One browser per account at a time: portals dislike parallel logins.
@@ -43,7 +58,7 @@ class RunConnectorJob implements ShouldQueue
         $run = BotRun::query()->find($this->runId);
 
         return [(new WithoutOverlapping('bot-account:'.($run->integration_account_id ?? $this->runId)))
-            ->releaseAfter(60)->expireAfter($this->timeout + 60)];
+            ->releaseAfter(30)->expireAfter($this->timeout + 60)];
     }
 
     public function handle(ConnectorRegistry $connectors, ReportIngestionService $ingestion): void

@@ -263,8 +263,10 @@ export type BotRun = {
     error: string | null;
     log: string | null;
     has_screenshot: boolean;
+    has_live_frame: boolean;
     duration_ms: number | null;
     created_at: string | null;
+    started_at: string | null;
     finished_at: string | null;
 };
 

@@ -186,7 +186,7 @@ class OperationsAndBotsTest extends TestCase
 
         $this->actingAs($this->admin)->get(route('admin.bots.runs.screenshot', $run))->assertNotFound();
 
-        $path = storage_path('app/private/bots/test-shot.png');
+        $path = Storage::disk('local')->path('bots/test-shot.png');
         @mkdir(dirname($path), 0777, true);
         file_put_contents($path, 'png');
         $run->update(['screenshot_path' => $path]);
