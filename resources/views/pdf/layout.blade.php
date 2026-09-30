@@ -37,8 +37,12 @@
         .kv td.k { color: #6b6880; width: 38%; }
 
         /* KPI tiles */
-        .tiles { margin: 14px 0 16px; border-collapse: separate; border-spacing: 6px 0; margin-left: -6px; margin-right: -6px; width: auto; }
-        .tile { border: 1px solid #e6e3f0; border-radius: 6px; padding: 8px 10px; background: #faf9fe; }
+        .tiles { width: 100%; table-layout: fixed; margin: 14px 0 16px; }
+        .tiles td { padding: 0 4px; }
+        .tiles td:first-child { padding-left: 0; }
+        .tiles td:last-child { padding-right: 0; }
+        .tile { border: 1px solid #e6e3f0; border-radius: 6px; padding: 9px 6px; height: 50px; background: #faf9fe; text-align: center; }
+        .tiles.tall .tile { height: 62px; }
         .tile .t-label { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.6px; color: #6b6880; }
         .tile .t-value { font-size: 13px; font-weight: bold; margin-top: 3px; color: #1b1433; }
         .tile .t-hint { font-size: 7.5px; color: #8a86a0; margin-top: 1px; }
@@ -67,6 +71,17 @@
         table.calc tr.total td { background: #2a1e56; color: #fff; font-weight: bold; font-size: 11px; padding: 8px 6px; }
         table.calc tr.total td.detail { color: #c9c3ec; }
 
+        .letter { color: #6e62c4; }
+        .strip { margin: -6px 0 4px; border: 1px solid #e6e3f0; border-radius: 6px; }
+        .strip td { padding: 6px 8px; text-align: center; font-size: 8.5px; font-weight: bold; border-left: 1px solid #efedf6; }
+        .strip td:first-child { border-left: 0; }
+        .strip td span { display: block; font-weight: normal; font-size: 7px; text-transform: uppercase; letter-spacing: 0.5px; color: #8a86a0; margin-bottom: 1px; }
+        .txbox { margin-top: 12px; border: 1px solid #d1fae5; background: #f0fdf7; }
+        .txbox td { padding: 9px 12px; }
+        .txbox .t-label { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.6px; color: #047857; }
+        .txbox .hash { font-family: 'DejaVu Sans Mono', monospace; font-size: 8.5px; margin: 3px 0; word-break: break-all; color: #1b1433; }
+        .txbox a { font-size: 7.5px; color: #6e62c4; }
+        .txbox .amount { font-size: 13px; font-weight: bold; color: #065f46; margin-top: 2px; }
         .note { margin-top: 12px; padding: 8px 10px; background: #faf9fe; border-left: 3px solid #6e62c4; font-size: 8px; color: #4b4764; }
         .watermark { position: fixed; top: 38%; left: 8%; font-size: 90px; font-weight: bold; color: #efedf6; transform: rotate(-30deg); z-index: -1; letter-spacing: 8px; }
         .page-break { page-break-before: always; }

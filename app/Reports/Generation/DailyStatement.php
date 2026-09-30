@@ -22,9 +22,12 @@ class DailyStatement
     /** Operations listed in the PDF; the CSV always has all of them. */
     public const MAX_OPERATIONS = 400;
 
-    private const SCHEMES = ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'other' => 'Other'];
+    private const SCHEMES = ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'other' => 'Other card'];
 
-    private const REGIONS = ['eu' => 'EU / EEA', 'non_eu' => 'Non-EU', 'unknown' => 'Region n/a'];
+    private const REGIONS = ['eu' => 'EU', 'non_eu' => 'Non-EU', 'unknown' => '(region n/a)'];
+
+    /** Always shown, in this order, even with no sales. */
+    private const MAIN_GROUPS = ['mastercard_eu', 'mastercard_non_eu', 'visa_eu', 'visa_non_eu'];
 
     public function render(DailyReportTask $task): string
     {
@@ -56,35 +59,31 @@ class DailyStatement
         $payout = $this->dec($task->net_payout);
         $afterFees = $turnover->minus($refunds)->minus($chargebacks)->minus($fee);
 
-        $fixed = [];
-        foreach (['success' => ['sales', 'Approved sale'], 'refund' => ['refunds', 'Refund'], 'chargeback' => ['chargebacks', 'Chargeback'], 'decline' => ['declines', 'Declined attempt']] as $name => [$key, $label]) {
-            $unit = $tariff->fixed($name);
-            if ($unit->isPositive() && $count($key) > 0) {
-                $fixed[] = sprintf('%d × %s %s', $count($key), PdfRenderer::money($unit, $currency), strtolower($label));
-            }
-        }
+        $stored = $summary['merchant_fee'] ?? [];
+        $transactionFees = $this->transactionFees($stored['fixed_lines'] ?? null, $tariff, $count);
 
         $hold = ReserveLedgerEntry::query()
             ->where('daily_report_task_id', $task->id)
             ->where('type', ReserveEntryType::Hold)
             ->latest('id')
             ->first();
-        $reservePercent = $merchant->rolling_reserve_percent ?? 0;
+        $reservePercent = $stored['reserve_percent'] ?? $merchant->rolling_reserve_percent ?? 0;
         $expectedReserve = BigDecimal::max(BigDecimal::zero(), $afterFees)->multipliedBy($reservePercent)->dividedBy(100, 2, RoundingMode::HalfUp);
         $reserveDetail = PdfRenderer::percent($reservePercent).' of net after fees'
             .($hold?->release_on ? ' · released '.$hold->release_on->toDateString() : '')
             .($reserve->isLessThan($expectedReserve) ? ' · capped by the MID reserve limit' : '');
+        $conversionPercent = $stored['conversion_percent'] ?? $tariff->percent('fiat_to_crypto');
 
         $steps = [
             ['kind' => 'plus', 'label' => 'Gross sales', 'detail' => $count('sales').' approved '.($count('sales') === 1 ? 'sale' : 'sales'), 'amount' => $turnover],
+            ['kind' => 'minus', 'label' => 'Processing fee', 'detail' => 'Card scheme rates · table A', 'amount' => $percentFee->negated()],
+            ['kind' => 'minus', 'label' => 'Transaction fees', 'detail' => 'Success · decline · refund · chargeback · table B', 'amount' => $fixedFee->negated()],
             ['kind' => 'minus', 'label' => 'Refunds', 'detail' => $count('refunds').' refunded', 'amount' => $refunds->negated()],
             ['kind' => 'minus', 'label' => 'Chargebacks', 'detail' => $count('chargebacks').' disputed', 'amount' => $chargebacks->negated()],
-            ['kind' => 'minus', 'label' => 'Processing fee', 'detail' => 'Percentage by card scheme and region — see breakdown', 'amount' => $percentFee->negated()],
-            ['kind' => 'minus', 'label' => 'Transaction fees', 'detail' => $fixed === [] ? 'None' : implode(' · ', $fixed), 'amount' => $fixedFee->negated()],
             ['kind' => 'subtotal', 'label' => 'Net after fees', 'detail' => null, 'amount' => $afterFees],
             ['kind' => 'minus', 'label' => 'Rolling reserve', 'detail' => $reserveDetail, 'amount' => $reserve->negated()],
             ['kind' => 'subtotal', 'label' => 'Net volume', 'detail' => null, 'amount' => $netVolume],
-            ['kind' => 'minus', 'label' => 'Conversion fee', 'detail' => PdfRenderer::percent($tariff->percent('fiat_to_crypto')).' fiat → crypto', 'amount' => $conversion->negated()],
+            ['kind' => 'minus', 'label' => 'Conversion fee', 'detail' => PdfRenderer::percent($conversionPercent).' fiat → crypto', 'amount' => $conversion->negated()],
             ['kind' => 'total', 'label' => 'Net payout', 'detail' => 'Added to your next settlement', 'amount' => $payout],
         ];
 
@@ -103,6 +102,8 @@ class DailyStatement
             'steps' => $steps,
             'schemes' => $this->schemes($summary['by_scheme'] ?? [], $tariff, $currency),
             'percentFee' => $percentFee,
+            'transactionFees' => $transactionFees,
+            'fixedFee' => $fixedFee,
             'counts' => [
                 'sales' => $count('sales'),
                 'refunds' => $count('refunds'),
@@ -130,23 +131,60 @@ class DailyStatement
      */
     private function schemes(array $groups, Tariff $tariff, string $currency): array
     {
+        // The four main groups first (older reports only stored groups with sales).
+        $extra = array_diff(array_keys($groups), self::MAIN_GROUPS);
+        sort($extra);
+
         $rows = [];
-        foreach ($groups as $key => $group) {
+        foreach ([...self::MAIN_GROUPS, ...$extra] as $key) {
+            $group = $groups[$key] ?? ['count' => 0, 'amount' => '0'];
             [$scheme, $region] = array_pad(explode('_', $key, 2), 2, 'unknown');
-            $probe = (new MerchantOperation)->forceFill([
-                'ips' => $scheme === 'other' ? null : $scheme,
-                'region' => $region === 'unknown' ? null : $region,
-            ]);
-            $rate = $tariff->percentFor($probe);
             $amount = $this->dec($group['amount']);
 
+            if (isset($group['rate'], $group['fee'])) {
+                $rate = BigDecimal::of($group['rate']);
+                $fee = $this->dec($group['fee']);
+            } else {
+                $probe = (new MerchantOperation)->forceFill([
+                    'ips' => $scheme === 'other' ? null : $scheme,
+                    'region' => $region === 'unknown' ? null : $region,
+                ]);
+                $rate = $tariff->percentFor($probe);
+                $fee = $amount->multipliedBy($rate)->dividedBy(100, 2, RoundingMode::HalfUp);
+            }
+
             $rows[] = [
-                'label' => (self::SCHEMES[$scheme] ?? ucfirst($scheme)).' · '.(self::REGIONS[$region] ?? $region),
+                'label' => (self::SCHEMES[$scheme] ?? ucfirst($scheme)).' '.(self::REGIONS[$region] ?? $region),
                 'count' => (int) $group['count'],
                 'amount' => $amount,
                 'rate' => $rate,
-                'fee' => $amount->multipliedBy($rate)->dividedBy(100, 2, RoundingMode::HalfUp),
+                'fee' => $fee,
             ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Per-transaction fees: Success / Decline / Refund / Chargeback.
+     *
+     * @param  array<string, array{count: int, unit: string, total: string}>|null  $stored
+     * @param  callable(string): int  $count
+     * @return list<array{label: string, count: int, unit: BigDecimal, total: BigDecimal}>
+     */
+    private function transactionFees(?array $stored, Tariff $tariff, callable $count): array
+    {
+        $rows = [];
+        foreach (['success' => ['Success', 'sales'], 'decline' => ['Decline', 'declines'], 'refund' => ['Refund', 'refunds'], 'chargeback' => ['Chargeback', 'chargebacks']] as $name => [$label, $key]) {
+            if (isset($stored[$name])) {
+                $line = $stored[$name];
+                $rows[] = ['label' => $label, 'count' => (int) $line['count'], 'unit' => BigDecimal::of($line['unit']), 'total' => $this->dec($line['total'])];
+
+                continue;
+            }
+
+            $unit = $tariff->fixed($name);
+            $rows[] = ['label' => $label, 'count' => $count($key), 'unit' => $unit, 'total' => $this->dec($unit->multipliedBy($count($key)))];
         }
 
         return $rows;

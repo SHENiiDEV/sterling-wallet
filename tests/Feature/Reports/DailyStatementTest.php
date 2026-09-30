@@ -40,10 +40,10 @@ class DailyStatementTest extends TestCase
         $steps = collect($data['steps'])->mapWithKeys(fn ($s) => [$s['label'] => (string) $s['amount']])->all();
         $this->assertSame([
             'Gross sales' => '350.00',
-            'Refunds' => '-30.00',
-            'Chargebacks' => '0.00',
             'Processing fee' => '-13.00',
             'Transaction fees' => '-1.80',
+            'Refunds' => '-30.00',
+            'Chargebacks' => '0.00',
             'Net after fees' => '305.20',
             'Rolling reserve' => '-30.52',
             'Net volume' => '274.68',
@@ -52,16 +52,26 @@ class DailyStatementTest extends TestCase
         ], $steps);
 
         $detail = collect($data['steps'])->pluck('detail', 'label');
-        $this->assertSame('3 × 0.20 EUR approved sale · 1 × 1.00 EUR refund · 2 × 0.10 EUR declined attempt', $detail['Transaction fees']);
         $this->assertSame('10% of net after fees · released 2027-03-14', $detail['Rolling reserve']);
         $this->assertSame('0.4% fiat → crypto', $detail['Conversion fee']);
 
+        // Table A: always the four scheme × region rows, in this order.
         $schemes = collect($data['schemes'])->map(fn ($r) => [$r['label'], $r['count'], (string) $r['amount'], (string) $r['rate']->toScale(2), (string) $r['fee']])->all();
         $this->assertSame([
-            ['Mastercard · Non-EU', 1, '200.00', '4.00', '8.00'],
-            ['Visa · EU / EEA', 1, '100.00', '3.00', '3.00'],
-            ['Visa · Non-EU', 1, '50.00', '4.00', '2.00'],
+            ['Mastercard EU', 0, '0.00', '3.00', '0.00'],
+            ['Mastercard Non-EU', 1, '200.00', '4.00', '8.00'],
+            ['Visa EU', 1, '100.00', '3.00', '3.00'],
+            ['Visa Non-EU', 1, '50.00', '4.00', '2.00'],
         ], $schemes);
+
+        // Table B: success and decline counted on the gateway.
+        $fees = collect($data['transactionFees'])->map(fn ($r) => [$r['label'], $r['count'], (string) $r['unit']->toScale(2), (string) $r['total']])->all();
+        $this->assertSame([
+            ['Success', 3, '0.20', '0.60'],
+            ['Decline', 2, '0.10', '0.20'],
+            ['Refund', 1, '1.00', '1.00'],
+            ['Chargeback', 0, '0.00', '0.00'],
+        ], $fees);
 
         $this->assertSame(4, $data['operationsTotal']); // 3 sales + 1 refund, no declines
         $this->assertSame(60.0, $data['approvalRate']);
