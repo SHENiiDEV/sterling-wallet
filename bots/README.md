@@ -28,10 +28,17 @@ Credentials, 2FA secrets and per-account settings live in **Admin → Bots**
 ## Install on the server
 
 ```bash
-cd bots && npm ci --omit=dev
-# Chromium is already installed; point the scripts at it if Playwright can't find it:
-export CHROMIUM_PATH=/usr/bin/chromium
+cd bots
+npm ci --omit=dev
+sudo npx playwright install-deps chromium   # system libraries, once
+npm run install-browser                     # Chromium into bots/.browsers
+sudo chown -R www-data:www-data .browsers
 ```
+
+Chromium lives in `bots/.browsers` (`BOTS_BROWSERS_PATH`), not in the home
+directory of whoever installed it, so the queue worker finds it whether it runs
+as root or www-data. Run `npm run install-browser` again after upgrading
+Playwright.
 
 Laravel settings (`.env`): `BOTS_NODE_BINARY`, `BOTS_HEADLESS`, `BOTS_HTTP_PROXY`,
 `BOTS_TIMEOUT_SECONDS`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` (alert after 3 failures in a row).

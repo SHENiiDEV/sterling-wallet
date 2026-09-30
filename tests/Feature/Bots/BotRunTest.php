@@ -217,15 +217,19 @@ class BotRunTest extends TestCase
         file_put_contents("{$dir}/slow-bot.mjs", <<<'JS'
             console.error('step one');
             console.error('step two');
+            console.error(`browsers: ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
             console.log(JSON.stringify({ status: 'skipped' }));
             JS);
-        config(['sterling.bots.scripts_path' => $dir]);
+        config(['sterling.bots.scripts_path' => $dir, 'sterling.bots.browsers_path' => '/opt/sp-browsers']);
         $work = storage_path('framework/testing/bots/run-1');
         @mkdir($work, 0777, true);
 
         app(PlaywrightRunner::class)->run('slow-bot', ['download_dir' => $work]);
 
-        $this->assertStringContainsString("step one\nstep two", (string) file_get_contents("{$work}/run.log"));
+        $log = (string) file_get_contents("{$work}/run.log");
+        $this->assertStringContainsString("step one\nstep two", $log);
+        // Chromium is looked up in one fixed place, whoever runs the worker.
+        $this->assertStringContainsString('browsers: /opt/sp-browsers', $log);
     }
 
     public function test_a_running_bot_shows_its_live_log_and_browser_frame()

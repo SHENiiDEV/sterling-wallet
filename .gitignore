@@ -43,3 +43,4 @@ yarn-error.log
 /opencode.json
 /opencode.jsonc
 /bots/node_modules
+/bots/.browsers
