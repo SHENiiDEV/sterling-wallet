@@ -1,5 +1,13 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, Check, Download, Send, Trash2, X } from 'lucide-react';
+import {
+    ArrowLeft,
+    Check,
+    Download,
+    Plus,
+    Send,
+    Trash2,
+    X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { AffixInput, Field, FormSection } from '@/components/admin/form';
@@ -8,7 +16,15 @@ import { PageErrors } from '@/components/admin/page-errors';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import InputError from '@/components/input-error';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import admin from '@/routes/admin';
@@ -37,11 +53,29 @@ type Offer = OfferItem & {
     rolling_reserve_percent: string;
     rolling_reserve_days: number;
     settlement_terms: string | null;
+    fee_currency: string;
+    extra_fees: ExtraFee[] | null;
+    intro: string | null;
     terms: string | null;
     notes: string | null;
 };
 
+type ExtraFee = { label: string; value: string };
+
 type Props = { offer: Offer | null; currencies: Option[] };
+
+/** Common extra charges, one click to add. */
+const presets: ExtraFee[] = [
+    { label: '3DS fee', value: '€0.05' },
+    { label: 'Retrieval request', value: '€5.00' },
+    { label: 'Pre-arbitration fee', value: '€17.00' },
+    { label: 'Monthly minimum fee', value: '€500.00' },
+    {
+        label: 'Mastercard high-risk registration fee / MID (where applicable)',
+        value: '€500.00',
+    },
+    { label: 'SEPA wire fee', value: '€12.50' },
+];
 
 const num = (v: string | number | null | undefined, fallback = '') =>
     v === null || v === undefined ? fallback : String(Number(v));
@@ -79,7 +113,10 @@ export default function OfferForm({ offer, currencies }: Props) {
         rolling_reserve_percent: num(offer?.rolling_reserve_percent, '10'),
         rolling_reserve_days: String(offer?.rolling_reserve_days ?? 180),
         settlement_terms: offer?.settlement_terms ?? 'Daily, T+2',
+        fee_currency: offer?.fee_currency ?? 'EUR',
+        extra_fees: offer?.extra_fees ?? ([] as ExtraFee[]),
         valid_until: offer?.valid_until ?? '',
+        intro: offer?.intro ?? '',
         terms: offer?.terms ?? '',
         notes: offer?.notes ?? '',
     });
@@ -128,6 +165,18 @@ export default function OfferForm({ offer, currencies }: Props) {
             />
         </Field>
     );
+    const setExtra = (index: number, patch: Partial<ExtraFee>) =>
+        setData(
+            'extra_fees',
+            data.extra_fees.map((fee, i) =>
+                i === index ? { ...fee, ...patch } : fee,
+            ),
+        );
+    const extraError = (index: number, key: keyof ExtraFee) =>
+        (errors as Record<string, string | undefined>)[
+            `extra_fees.${index}.${key}`
+        ];
+
     const setStatus = (status: string) =>
         offer &&
         router.post(
@@ -323,8 +372,31 @@ export default function OfferForm({ offer, currencies }: Props) {
 
                     <FormSection
                         title="Per operation"
-                        description="Flat fees in the processing currency."
+                        description="Flat fees, quoted in the fee currency on the proposal."
                     >
+                        <Field label="Fee currency" error={errors.fee_currency}>
+                            <Select
+                                value={data.fee_currency}
+                                onValueChange={(v) =>
+                                    setData('fee_currency', v)
+                                }
+                                disabled={locked}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {currencies.map((c) => (
+                                        <SelectItem
+                                            key={c.value}
+                                            value={c.value}
+                                        >
+                                            {c.value}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
                         {affix(
                             'fee_success_fixed',
                             'Successful sale',
@@ -359,7 +431,130 @@ export default function OfferForm({ offer, currencies }: Props) {
                         {text('valid_until', 'Valid until', { type: 'date' })}
                     </FormSection>
 
+                    <FormSection
+                        title="Other charges"
+                        description="Extra lines printed on the proposal as they are typed, e.g. “Retrieval request — €5.00”."
+                    >
+                        <div className="grid gap-3 sm:col-span-2">
+                            {data.extra_fees.map((fee, i) => (
+                                <div
+                                    key={i}
+                                    className="grid grid-cols-[1fr_9rem_auto] items-start gap-2"
+                                >
+                                    <div className="grid gap-1">
+                                        <Input
+                                            aria-label="Charge"
+                                            placeholder="Charge"
+                                            value={fee.label}
+                                            onChange={(e) =>
+                                                setExtra(i, {
+                                                    label: e.target.value,
+                                                })
+                                            }
+                                            disabled={locked}
+                                        />
+                                        <InputError
+                                            message={extraError(i, 'label')}
+                                        />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Input
+                                            aria-label="Fee"
+                                            placeholder="€0.00"
+                                            value={fee.value}
+                                            onChange={(e) =>
+                                                setExtra(i, {
+                                                    value: e.target.value,
+                                                })
+                                            }
+                                            disabled={locked}
+                                        />
+                                        <InputError
+                                            message={extraError(i, 'value')}
+                                        />
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Remove charge"
+                                        disabled={locked}
+                                        onClick={() =>
+                                            setData(
+                                                'extra_fees',
+                                                data.extra_fees.filter(
+                                                    (_, j) => j !== i,
+                                                ),
+                                            )
+                                        }
+                                    >
+                                        <Trash2 />
+                                    </Button>
+                                </div>
+                            ))}
+                            {!locked && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setData('extra_fees', [
+                                                ...data.extra_fees,
+                                                { label: '', value: '' },
+                                            ])
+                                        }
+                                    >
+                                        <Plus />
+                                        Add charge
+                                    </Button>
+                                    {presets
+                                        .filter(
+                                            (p) =>
+                                                !data.extra_fees.some(
+                                                    (f) => f.label === p.label,
+                                                ),
+                                        )
+                                        .map((p) => (
+                                            <Button
+                                                key={p.label}
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-muted-foreground"
+                                                onClick={() =>
+                                                    setData('extra_fees', [
+                                                        ...data.extra_fees,
+                                                        p,
+                                                    ])
+                                                }
+                                            >
+                                                + {p.label.split(' / ')[0]}
+                                            </Button>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+                    </FormSection>
+
                     <FormSection title="Text">
+                        <Field
+                            label="Personal message (page 2 of the proposal)"
+                            htmlFor="intro"
+                            error={errors.intro}
+                            className="sm:col-span-2"
+                        >
+                            <Textarea
+                                id="intro"
+                                rows={4}
+                                placeholder="Dear …, thank you for your interest in Sterling Pay."
+                                value={data.intro}
+                                onChange={(e) =>
+                                    setData('intro', e.target.value)
+                                }
+                                disabled={locked}
+                            />
+                        </Field>
                         <Field
                             label="Terms (printed on the PDF)"
                             htmlFor="terms"

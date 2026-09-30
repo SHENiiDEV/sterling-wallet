@@ -169,4 +169,32 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Commercial proposal (offer PDF)
+    |--------------------------------------------------------------------------
+    |
+    | Company texts printed on every proposal. Change them here; the rates
+    | and extra charges come from each offer.
+    |
+    */
+
+    'proposal' => [
+        'headline' => 'Card acquiring with crypto settlement',
+        'about' => 'Sterling Pay connects your business to licensed acquiring banks across Europe and settles your card revenue in USDC. One integration, daily reporting and fast, transparent payouts — with a dedicated team that knows high-growth e-commerce.',
+        'services' => [
+            ['Card acquiring', 'Visa and Mastercard processing through tier-one European acquiring banks.'],
+            ['Multi-currency', 'Accept payments in EUR, GBP and USD on dedicated MIDs.'],
+            ['Crypto settlement', 'Payouts in USDC to your own wallet, T+2 after each business day.'],
+            ['Daily reporting', 'A detailed statement for every day: sales, fees, reserve and payout.'],
+            ['Risk & reserve', 'Transparent rolling reserve, released automatically when due.'],
+            ['Dedicated support', 'A named account manager from onboarding to scale.'],
+        ],
+        'highlights' => ['Licensed acquiring partners', 'Daily USDC settlement', 'Transparent pricing'],
+        'contact' => [
+            'email' => env('PROPOSAL_CONTACT_EMAIL', 'sales@sterling-pay.com'),
+            'website' => env('PROPOSAL_WEBSITE', 'sterling-pay.com'),
+        ],
+    ],
+
 ];

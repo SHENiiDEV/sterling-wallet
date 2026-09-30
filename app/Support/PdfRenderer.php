@@ -16,7 +16,7 @@ final class PdfRenderer
     /**
      * @param  array<string, mixed>  $data
      */
-    public static function render(string $view, array $data, string $orientation = 'portrait'): string
+    public static function render(string $view, array $data, string $orientation = 'portrait', bool $pageNumbers = true): string
     {
         $options = new Options;
         $options->setIsRemoteEnabled(false);
@@ -26,6 +26,10 @@ final class PdfRenderer
         $pdf->loadHtml(view($view, $data)->render());
         $pdf->setPaper('A4', $orientation);
         $pdf->render();
+
+        if (! $pageNumbers) {
+            return (string) $pdf->output();
+        }
 
         // "1 / 3" in the bottom-right corner; CSS can't count pages in dompdf.
         $canvas = $pdf->getCanvas();

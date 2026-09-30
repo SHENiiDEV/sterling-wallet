@@ -10,9 +10,8 @@ use App\Http\Requests\Admin\CommercialOfferRequest;
 use App\Models\CommercialOffer;
 use App\Models\Company;
 use App\Models\Merchant;
+use App\Offers\OfferProposal;
 use App\Services\AuditLogger;
-use Dompdf\Dompdf;
-use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,7 +84,7 @@ class CommercialOfferController extends Controller
         return Inertia::render('admin/offers/form', [
             'offer' => [...$this->present($offer), ...$offer->only([
                 'contact_name', 'contact_email', 'country', 'website', 'mcc', 'currencies', 'expected_monthly_volume',
-                ...CommercialOffer::TARIFF_FIELDS, 'setup_fee', 'settlement_terms', 'terms', 'notes',
+                ...CommercialOffer::TARIFF_FIELDS, 'setup_fee', 'settlement_terms', 'fee_currency', 'extra_fees', 'intro', 'terms', 'notes',
             ]), 'valid_until' => $offer->valid_until?->toDateString()],
             'currencies' => Currency::options(),
         ]);
@@ -165,16 +164,9 @@ class CommercialOfferController extends Controller
         return to_route('admin.merchants.show', $merchant);
     }
 
-    public function pdf(CommercialOffer $offer): HttpResponse
+    public function pdf(CommercialOffer $offer, OfferProposal $proposal): HttpResponse
     {
-        $options = new Options;
-        $options->setIsRemoteEnabled(false);
-        $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('offers.offer', ['offer' => $offer])->render());
-        $pdf->setPaper('A4');
-        $pdf->render();
-
-        return response((string) $pdf->output(), 200, [
+        return response($proposal->render($offer), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$offer->number.'.pdf"',
         ]);
