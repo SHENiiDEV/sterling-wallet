@@ -69,6 +69,20 @@ async function login(page, input) {
     log('Logged in:', page.url());
 }
 
+/** Closes Hostinger announcement modals ("Try conversation view" → Later). */
+async function dismissPopups(page) {
+    const later = page
+        .locator(
+            'button[data-qa="conversation-mode-announcement-cancel"], button:has-text("Later"), button:has-text("Dismiss"), button:has-text("Not now")',
+        )
+        .first();
+    if (await later.isVisible().catch(() => false)) {
+        log('Closing webmail popup…');
+        await later.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(1000);
+    }
+}
+
 function covers(dates, input) {
     // The e-mail covers our report if its range contains the report date,
     // or it ends on the report date (weekend / holiday bundles).
@@ -87,6 +101,7 @@ await runConnector(
             );
 
         await login(page, input);
+        await dismissPopups(page);
 
         log(
             `Searching "${input.search_query}" for ${input.report_date} (${input.from} — ${input.to})`,
@@ -97,9 +112,13 @@ await runConnector(
             )
             .first();
         await search.waitFor({ state: 'visible', timeout: 20000 });
-        await humanType(search, input.search_query);
+        await search.click({ force: true });
+        await search.fill(input.search_query);
+        await search.dispatchEvent('input').catch(() => {});
+        await randomDelay(300, 600);
         await page.keyboard.press('Enter');
-        await randomDelay(2000, 3500);
+        await randomDelay(2500, 4000);
+        await dismissPopups(page);
 
         const rows = page.locator(
             'div[data-qa="message-row"], a[data-qa="message-row-link"]',
@@ -143,6 +162,7 @@ await runConnector(
             await humanClick(selected);
         }
         await randomDelay(2000, 3500);
+        await dismissPopups(page);
 
         await page
             .locator(
@@ -174,6 +194,31 @@ await runConnector(
             files.push(file);
             log('Saved', file);
             await randomDelay(1000, 2000);
+        }
+
+        if (buttonCount === 0) {
+            // Older layout: one "Download all" link.
+            const all = page
+                .locator('span.hyperlink-text:has-text("Download all")')
+                .first();
+            if (await all.isVisible().catch(() => false)) {
+                const [download] = await Promise.all([
+                    page.waitForEvent('download', { timeout: 30000 }),
+                    all.click({ force: true }),
+                ]);
+                const name = download.suggestedFilename();
+                if (/\.(xlsx|xls|csv)$/i.test(name)) {
+                    const file = path.join(
+                        input.download_dir,
+                        `cardaq_${dates.endDate}_${name.replace(/[^\w.-]/g, '_')}`,
+                    );
+                    await download.saveAs(file);
+                    files.push(file);
+                    log('Saved', file);
+                } else {
+                    log(`"Download all" gave ${name}, not a report file.`);
+                }
+            }
         }
 
         if (files.length === 0)

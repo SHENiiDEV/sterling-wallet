@@ -16,9 +16,36 @@ import {
     randomDelay,
     runConnector,
 } from './lib/runtime.mjs';
-import { totp } from './lib/totp.mjs';
+import { freshTotp, nextTotpWindow, totp } from './lib/totp.mjs';
 
 const MAX_STATUS_CHECKS = 60;
+
+/** Types the code the way the Vue form expects it, then presses Verify. */
+async function submitCode(page, otpInput, code) {
+    await page.waitForTimeout(2500); // the field animates in
+    await otpInput.waitFor({ state: 'visible', timeout: 15000 });
+    await otpInput.click({ force: true });
+    await otpInput.fill('');
+    await randomDelay(200, 400);
+    await page.keyboard.type(code, { delay: 90 });
+    await otpInput.dispatchEvent('input').catch(() => {});
+    await otpInput.dispatchEvent('change').catch(() => {});
+    if ((await otpInput.inputValue().catch(() => '')) !== code) {
+        await otpInput.fill(code);
+        await otpInput.dispatchEvent('input').catch(() => {});
+    }
+    await randomDelay(800, 1500);
+
+    const verify = page
+        .locator('button:has-text("Verify"), button.enter-button')
+        .first();
+    if (await verify.isVisible().catch(() => false)) {
+        await humanClick(verify);
+    } else {
+        await page.keyboard.press('Enter');
+    }
+    await randomDelay(1500, 2500);
+}
 
 async function login(page, input) {
     log('Opening login page…');
@@ -43,19 +70,48 @@ async function login(page, input) {
         await page.keyboard.press('Enter');
     }
 
-    // Optional 2FA step.
+    // Two-step verification: /two-step-verification with an "Authentication code" field.
+    await page
+        .waitForURL(
+            (url) =>
+                url.href.includes('two-step-verification') ||
+                !url.href.includes('/login'),
+            { timeout: 20000 },
+        )
+        .catch(() => {});
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+
     const otpInput = page
         .locator(
-            'input[autocomplete="one-time-code"], input[name*="code" i], input[name*="otp" i]',
+            'input[placeholder*="Authentication code" i], input[autocomplete="one-time-code"], input[name*="code" i], input[name*="otp" i]',
         )
         .first();
-    if (
-        input.totp_secret &&
-        (await otpInput.isVisible({ timeout: 5000 }).catch(() => false))
-    ) {
-        log('Entering 2FA code…');
-        await humanType(otpInput, totp(input.totp_secret));
-        await page.keyboard.press('Enter');
+    const needsCode =
+        page.url().includes('two-step-verification') ||
+        (await otpInput
+            .waitFor({ state: 'visible', timeout: 3000 })
+            .then(() => true)
+            .catch(() => false));
+
+    if (needsCode) {
+        if (!input.totp_secret)
+            throw new Error(
+                'Corefy asks for a 2FA code, but the integration account has no 2FA secret.',
+            );
+        log('Two-step verification requested.');
+        await submitCode(page, otpInput, await freshTotp(input.totp_secret));
+
+        const error = page.locator('.fail-login, .el-form-item__error').first();
+        if (
+            await error
+                .waitFor({ state: 'visible', timeout: 2500 })
+                .then(() => true)
+                .catch(() => false)
+        ) {
+            log('Code rejected; retrying with the next one…');
+            await nextTotpWindow();
+            await submitCode(page, otpInput, totp(input.totp_secret));
+        }
     }
 
     await page.waitForURL((url) => !url.href.includes('/login'), {

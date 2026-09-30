@@ -19,7 +19,11 @@ Credentials, 2FA secrets and per-account settings live in **Admin → Bots**
 (`integration_accounts`, encrypted). Settings keys:
 
 - Cardaq: `search_query` (default `EXORAPAY FINANCE LTD`), `mail_base_url`, `proxy`.
+  Hostinger announcement popups ("Try conversation view") are closed automatically.
 - Corefy: `dashboard_url`, `proxy`. The commerce account comes from each MID's **Gate MID** field.
+  Two-step verification: put the base32 secret (the key behind the QR code) in the
+  account's **2FA secret**. The bot types a code with at least 6 s left in its window and,
+  if Paycore rejects it, retries once with the next code.
 
 ## Install on the server
 
