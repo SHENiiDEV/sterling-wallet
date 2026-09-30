@@ -92,6 +92,12 @@ class SettlementTest extends TestCase
         $this->assertStringContainsString('289.94 USDC', $html);
         $this->assertStringContainsString('DRAFT', $html);
         $this->assertStringStartsWith('%PDF', app(SettlementStatementPdf::class)->render($settlement));
+
+        // Once paid, the transaction hash and an explorer link are on the statement.
+        $settlement->update(['status' => SettlementStatus::Settled, 'settled_at' => now(), 'tx_hash' => 'abc123hash']);
+        $html = view('settlements.statement', app(SettlementStatementPdf::class)->data($settlement->fresh()))->render();
+        $this->assertStringContainsString('abc123hash', $html);
+        $this->assertStringContainsString('https://tronscan.org/#/transaction/abc123hash', $html);
     }
 
     public function test_full_flow_draft_approve_settle_with_statement()

@@ -19,6 +19,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $contact_email
  * @property string|null $country
  * @property list<string>|null $currencies
+ * @property string $fee_currency
+ * @property string|null $intro
+ * @property list<array{label: string, value: string}>|null $extra_fees
  * @property CarbonImmutable|null $valid_until
  * @property int|null $merchant_id
  * @property Carbon|null $sent_at
@@ -32,8 +35,8 @@ use Illuminate\Support\Carbon;
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
     'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_fiat_to_crypto_percent',
-    'setup_fee', 'rolling_reserve_percent', 'rolling_reserve_days', 'settlement_terms',
-    'valid_until', 'terms', 'notes', 'merchant_id', 'created_by', 'sent_at', 'decided_at',
+    'setup_fee', 'rolling_reserve_percent', 'rolling_reserve_days', 'settlement_terms', 'fee_currency', 'extra_fees',
+    'valid_until', 'intro', 'terms', 'notes', 'merchant_id', 'created_by', 'sent_at', 'decided_at',
 ])]
 class CommercialOffer extends Model
 {
@@ -50,6 +53,7 @@ class CommercialOffer extends Model
         return [
             'status' => OfferStatus::class,
             'currencies' => 'array',
+            'extra_fees' => 'array',
             'expected_monthly_volume' => 'decimal:2',
             'setup_fee' => 'decimal:2',
             'rolling_reserve_days' => 'integer',

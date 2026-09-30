@@ -44,7 +44,7 @@
     <table class="tiles">
         <tr>
             @foreach ($tiles as [$label, $value, $hint, $accent])
-                <td style="width: 25%">
+                <td>
                     <div @class(['tile', 'accent' => $accent])>
                         <div class="t-label">{{ $label }}</div>
                         <div class="t-value">{{ $value }}</div>
@@ -52,6 +52,17 @@
                     </div>
                 </td>
             @endforeach
+        </tr>
+    </table>
+
+    <table class="strip">
+        <tr>
+            <td><span>Approved</span> {{ $counts['sales'] }}</td>
+            <td><span>Declined</span> {{ $counts['declines'] }}</td>
+            <td><span>Approval rate</span> {{ $approvalRate === null ? '—' : $approvalRate.'%' }}</td>
+            <td><span>Average ticket</span> {{ $averageTicket === null ? '—' : $money($averageTicket, $currency) }}</td>
+            <td><span>Refunds</span> {{ $counts['refunds'] }}</td>
+            <td><span>Chargebacks</span> {{ $counts['chargebacks'] }}</td>
         </tr>
     </table>
 
@@ -76,14 +87,14 @@
         @endforeach
     </table>
 
-    <table style="margin-top: 14px">
+    <table class="avoid-break" style="margin-top: 4px">
         <tr>
-            <td style="width: 62%; padding-right: 10px">
-                <h2 style="margin-top: 0">Processing fee by card scheme</h2>
+            <td style="width: 57%; padding-right: 12px">
+                <h2><span class="letter">A</span> Processing fee by card scheme</h2>
                 <table class="grid">
                     <thead>
                         <tr>
-                            <th>Scheme · region</th>
+                            <th>Card scheme</th>
                             <th class="num">Sales</th>
                             <th class="num">Volume</th>
                             <th class="num">Rate</th>
@@ -91,39 +102,51 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse ($schemes as $row)
-                            <tr>
+                        @foreach ($schemes as $row)
+                            <tr @class(['muted' => $row['count'] === 0])>
                                 <td>{{ $row['label'] }}</td>
                                 <td class="num">{{ $row['count'] }}</td>
                                 <td class="num">{{ $money($row['amount']) }}</td>
                                 <td class="num">{{ $percent($row['rate']) }}</td>
                                 <td class="num">{{ $money($row['fee']) }}</td>
                             </tr>
-                        @empty
-                            <tr><td colspan="5" class="muted" style="text-align: center">No sales in this period.</td></tr>
-                        @endforelse
-                        @if ($schemes !== [])
-                            <tr class="sub">
-                                <td>Total</td>
-                                <td class="num">{{ array_sum(array_column($schemes, 'count')) }}</td>
-                                <td class="num">{{ $money($task->turnover) }}</td>
-                                <td></td>
-                                <td class="num">{{ $money($percentFee) }}</td>
-                            </tr>
-                        @endif
+                        @endforeach
+                        <tr class="sub">
+                            <td>Total</td>
+                            <td class="num">{{ array_sum(array_column($schemes, 'count')) }}</td>
+                            <td class="num">{{ $money($task->turnover) }}</td>
+                            <td></td>
+                            <td class="num">{{ $money($percentFee) }}</td>
+                        </tr>
                     </tbody>
                 </table>
             </td>
-            <td style="width: 38%">
-                <h2 style="margin-top: 0">Activity</h2>
+            <td style="width: 43%">
+                <h2><span class="letter">B</span> Transaction fees</h2>
                 <table class="grid">
+                    <thead>
+                        <tr>
+                            <th>Operation</th>
+                            <th class="num">Count</th>
+                            <th class="num">Each</th>
+                            <th class="num">Total</th>
+                        </tr>
+                    </thead>
                     <tbody>
-                        <tr><td>Approved sales</td><td class="num">{{ $counts['sales'] }}</td></tr>
-                        <tr><td>Declined attempts</td><td class="num">{{ $counts['declines'] }}</td></tr>
-                        <tr><td>Approval rate</td><td class="num">{{ $approvalRate === null ? '—' : $approvalRate.'%' }}</td></tr>
-                        <tr><td>Average ticket</td><td class="num">{{ $averageTicket === null ? '—' : $money($averageTicket, $currency) }}</td></tr>
-                        <tr><td>Refunds</td><td class="num">{{ $counts['refunds'] }}</td></tr>
-                        <tr><td>Chargebacks</td><td class="num">{{ $counts['chargebacks'] }}</td></tr>
+                        @foreach ($transactionFees as $row)
+                            <tr @class(['muted' => $row['count'] === 0])>
+                                <td>{{ $row['label'] }}</td>
+                                <td class="num">{{ $row['count'] }}</td>
+                                <td class="num">{{ $money($row['unit']) }}</td>
+                                <td class="num">{{ $money($row['total']) }}</td>
+                            </tr>
+                        @endforeach
+                        <tr class="sub">
+                            <td>Total</td>
+                            <td class="num">{{ array_sum(array_column($transactionFees, 'count')) }}</td>
+                            <td></td>
+                            <td class="num">{{ $money($fixedFee) }}</td>
+                        </tr>
                     </tbody>
                 </table>
             </td>
@@ -133,7 +156,7 @@
     <div class="note">
         The net payout is added to your balance and paid out with the next settlement statement.
         Rolling reserve is held on the MID and released automatically after the holding period.
-        Amounts are rounded to cents per total; small differences in the per-scheme fees are due to rounding.
+        Success and decline fees are counted on the payment gateway. Amounts are rounded to cents per total.
     </div>
 
     @if ($operationsTotal > 0)

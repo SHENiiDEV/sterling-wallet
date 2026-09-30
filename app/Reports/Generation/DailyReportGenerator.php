@@ -110,8 +110,12 @@ class DailyReportGenerator
         $sales = $bankOps->where('operation_type', OperationType::Sale);
         $refunds = $bankOps->where('operation_type', OperationType::Refund);
         $chargebacks = $bankOps->where('operation_type', OperationType::Chargeback);
-        // Declines never reach clearing: count them on the gateway when there is one.
-        $declines = ($mid->gate_provider_id ? $gateOps : $bankOps)->where('operation_type', OperationType::Decline);
+        // Per-transaction fees follow the gateway when there is one: every
+        // approved or declined attempt passes through it. Declines never
+        // reach clearing at all. Refunds and chargebacks are acquirer events.
+        $txSource = $mid->gate_provider_id ? $gateOps : $bankOps;
+        $approved = $txSource->where('operation_type', OperationType::Sale);
+        $declines = $txSource->where('operation_type', OperationType::Decline);
 
         $turnover = $this->sum($sales);
         $refundsAmount = $this->sum($refunds);
@@ -120,10 +124,14 @@ class DailyReportGenerator
         // What the merchant pays us.
         $fee = Tariff::merchant($merchant);
         $merchantPercentFee = $this->percentOf($sales, $fee);
-        $merchantFixedFee = $fee->fixed('success')->multipliedBy($sales->count())
-            ->plus($fee->fixed('refund')->multipliedBy($refunds->count()))
-            ->plus($fee->fixed('chargeback')->multipliedBy($chargebacks->count()))
-            ->plus($fee->fixed('decline')->multipliedBy($declines->count()));
+        $fixedLines = [];
+        $merchantFixedFee = BigDecimal::zero();
+        foreach (['success' => $approved, 'decline' => $declines, 'refund' => $refunds, 'chargeback' => $chargebacks] as $name => $ops) {
+            $unit = $fee->fixed($name);
+            $total = $unit->multipliedBy($ops->count());
+            $merchantFixedFee = $merchantFixedFee->plus($total);
+            $fixedLines[$name] = ['count' => $ops->count(), 'unit' => (string) $unit, 'total' => (string) $this->round($total)];
+        }
         $merchantFee = $this->round($merchantPercentFee->plus($merchantFixedFee));
 
         // What the providers charge us, each on its own operations.
@@ -153,7 +161,7 @@ class DailyReportGenerator
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($task, $merchant, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
@@ -189,13 +197,16 @@ class DailyReportGenerator
                     'merchant_fee' => [
                         'percent' => (string) $this->round($merchantPercentFee),
                         'fixed' => (string) $this->round($merchantFixedFee),
+                        'fixed_lines' => $fixedLines,
+                        'conversion_percent' => (string) $fee->percent('fiat_to_crypto'),
+                        'reserve_percent' => (string) ($merchant->rolling_reserve_percent ?? 0),
                     ],
                     'provider_cost' => [
                         'bank' => (string) $bankCost,
                         'gate' => (string) $gateCost,
                         'crypto' => (string) $cryptoCost,
                     ],
-                    'by_scheme' => $this->breakdown($sales),
+                    'by_scheme' => $this->breakdown($sales, $fee),
                 ],
                 'generated_at' => now(),
             ]);
@@ -306,14 +317,34 @@ class DailyReportGenerator
     }
 
     /**
+     * Sales and the merchant percent fee per scheme × region, e.g.
+     * `mastercard_eu`. The four Visa / Mastercard × EU / non-EU groups are
+     * always present; anything else (unknown scheme or region) is added.
+     *
      * @param  Collection<int, MerchantOperation>  $sales
-     * @return array<string, array{count: int, amount: string}>
+     * @return array<string, array{count: int, amount: string, rate: string, fee: string}>
      */
-    private function breakdown(Collection $sales): array
+    private function breakdown(Collection $sales, Tariff $fee): array
     {
-        return $sales->groupBy(fn (MerchantOperation $op) => ($op->ips ?? 'other').'_'.($op->region ?? 'unknown'))
-            ->map(fn (Collection $group) => ['count' => $group->count(), 'amount' => (string) $this->sum($group)])
-            ->sortKeys()
-            ->all();
+        $groups = $sales->groupBy(fn (MerchantOperation $op) => ($op->ips ?? 'other').'_'.($op->region ?? 'unknown'));
+
+        $result = [];
+        foreach (array_unique(['mastercard_eu', 'mastercard_non_eu', 'visa_eu', 'visa_non_eu', ...$groups->keys()->all()]) as $key) {
+            $group = $groups->get($key, collect());
+            [$scheme, $region] = explode('_', $key, 2);
+            $probe = (new MerchantOperation)->forceFill([
+                'ips' => $scheme === 'other' ? null : $scheme,
+                'region' => $region === 'unknown' ? null : $region,
+            ]);
+
+            $result[$key] = [
+                'count' => $group->count(),
+                'amount' => (string) $this->sum($group),
+                'rate' => (string) $fee->percentFor($probe),
+                'fee' => (string) $this->round($this->percentOf($group, $fee)),
+            ];
+        }
+
+        return $result;
     }
 }

@@ -11,6 +11,7 @@ use App\Models\MerchantMid;
 use App\Models\MonthlyStatement;
 use App\Models\ProfitPartner;
 use App\Models\User;
+use App\Offers\OfferProposal;
 use App\Profit\ProfitQuery;
 use App\Profit\ProfitShareCalculator;
 use App\Reports\Ingestion\ReportIngestionService;
@@ -207,6 +208,38 @@ class ProfitTest extends TestCase
 
         $this->actingAs($this->admin)->put(route('admin.offers.update', $offer), $payload)->assertSessionHasErrors('offer');
         $this->actingAs($this->admin)->delete(route('admin.offers.destroy', $offer))->assertSessionHasErrors('offer');
+    }
+
+    public function test_offer_proposal_prints_rates_and_extra_charges()
+    {
+        $this->actingAs($this->admin)->post(route('admin.offers.store'), [
+            'company_name' => 'Hartwick Ventures Ltd', 'contact_name' => 'James', 'currencies' => ['EUR'],
+            'fee_visa_eu_percent' => 3.5, 'fee_visa_non_eu_percent' => 4.5, 'fee_mastercard_eu_percent' => 3.5, 'fee_mastercard_non_eu_percent' => null,
+            'fee_acq_eu_percent' => 3.5, 'fee_acq_non_eu_percent' => 4.5,
+            'fee_success_fixed' => 0.3, 'fee_decline_fixed' => 0.3, 'fee_refund_fixed' => 0.3, 'fee_chargeback_fixed' => 35,
+            'fee_fiat_to_crypto_percent' => 0.5, 'fee_currency' => 'EUR', 'setup_fee' => 1000, 'rolling_reserve_percent' => 5, 'rolling_reserve_days' => 180,
+            'intro' => 'Dear James, thank you.',
+            'extra_fees' => [['label' => 'Retrieval request', 'value' => '€5.00'], ['label' => '3DS fee', 'value' => '€0.05']],
+        ])->assertSessionHasNoErrors();
+        $offer = CommercialOffer::query()->sole();
+        $this->assertSame([['label' => 'Retrieval request', 'value' => '€5.00'], ['label' => '3DS fee', 'value' => '€0.05']], $offer->extra_fees);
+
+        $data = app(OfferProposal::class)->data($offer);
+        $this->assertSame(['MASTERCARD', 'Merchant Discount Rate — EEA issued cards', '3.5% + €0.30'], $data['acquiring'][0]);
+        $this->assertSame('N/A', $data['acquiring'][1][2]); // Mastercard non-EEA not offered
+        $this->assertSame([null, 'Rolling reserve', '5% (180 days)'], end($data['acquiring']));
+        $this->assertSame([
+            ['Declined transaction', '€0.30'], ['Refund', '€0.30'], ['Chargeback fee', '€35.00'], ['Setup fee', '€1,000.00'],
+            ['Retrieval request', '€5.00'], ['3DS fee', '€0.05'],
+        ], $data['charges']);
+
+        $html = view('offers.offer', $data)->render();
+        $this->assertStringContainsString('Hartwick Ventures Ltd', $html);
+        $this->assertStringContainsString('Dear James, thank you.', $html);
+
+        $this->actingAs($this->admin)->get(route('admin.offers.pdf', $offer))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->actingAs($this->admin)->get(route('admin.offers.edit', $offer))
+            ->assertInertia(fn (Assert $page) => $page->where('offer.fee_currency', 'EUR')->has('offer.extra_fees', 2));
     }
 
     private function assertMoney(string $expected, mixed $actual): void

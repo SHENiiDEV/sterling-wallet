@@ -46,6 +46,11 @@ class CommercialOfferRequest extends FormRequest
             'rolling_reserve_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'rolling_reserve_days' => ['required', 'integer', 'min:0', 'max:3650'],
             'settlement_terms' => ['nullable', 'string', 'max:255'],
+            'fee_currency' => ['required', Rule::enum(Currency::class)],
+            'extra_fees' => ['array', 'max:20'],
+            'extra_fees.*.label' => ['required', 'string', 'max:150'],
+            'extra_fees.*.value' => ['required', 'string', 'max:60'],
+            'intro' => ['nullable', 'string', 'max:3000'],
             'valid_until' => ['nullable', 'date'],
             'terms' => ['nullable', 'string', 'max:10000'],
             'notes' => ['nullable', 'string', 'max:5000'],
@@ -54,6 +59,9 @@ class CommercialOfferRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if (! $this->filled('fee_currency')) {
+            $this->merge(['fee_currency' => 'EUR']);
+        }
         if ($this->filled('country')) {
             $this->merge(['country' => strtoupper((string) $this->input('country'))]);
         }

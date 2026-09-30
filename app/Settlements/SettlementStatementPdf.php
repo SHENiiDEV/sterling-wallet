@@ -64,13 +64,36 @@ class SettlementStatementPdf
             'releases' => $releases,
             'adjustments' => $adjustments,
             'conversion' => $conversion->all(),
+            'explorerUrl' => self::explorerUrl($settlement->wallet?->network, $settlement->tx_hash),
             'tiles' => [
                 ['Daily reports', (string) $lines->where('type', SettlementLineType::Report)->count(), $dates->isEmpty() ? '—' : $dates->min()->toDateString().' — '.$dates->max()->toDateString(), false],
-                ['Gross sales', $turnover === [] ? '—' : implode(' + ', $turnover), 'Before refunds and fees', false],
-                ['Fees', $fees === [] ? '—' : implode(' + ', $fees), 'Processing + conversion', false],
+                ['Gross sales', $turnover === [] ? '—' : $turnover, 'Before refunds and fees', false],
+                ['Fees', $fees === [] ? '—' : $fees, 'Processing + conversion', false],
                 ['Total payout', PdfRenderer::money($settlement->total_payout, $settlement->payout_currency), $settlement->wallet ? trim($settlement->wallet->currency.' '.$settlement->wallet->network) : 'Wallet not set', true],
             ],
         ];
+    }
+
+    /**
+     * Block explorer link for the payout transaction, when the network is known.
+     */
+    public static function explorerUrl(?string $network, ?string $txHash): ?string
+    {
+        if (! $txHash) {
+            return null;
+        }
+
+        $network = strtolower((string) $network);
+        $base = match (true) {
+            str_contains($network, 'trc') || str_contains($network, 'tron') => 'https://tronscan.org/#/transaction/',
+            str_contains($network, 'erc') || str_contains($network, 'eth') => 'https://etherscan.io/tx/',
+            str_contains($network, 'bep') || str_contains($network, 'bsc') => 'https://bscscan.com/tx/',
+            str_contains($network, 'polygon') || str_contains($network, 'matic') => 'https://polygonscan.com/tx/',
+            str_contains($network, 'sol') => 'https://solscan.io/tx/',
+            default => null,
+        };
+
+        return $base ? $base.rawurlencode($txHash) : null;
     }
 
     /**

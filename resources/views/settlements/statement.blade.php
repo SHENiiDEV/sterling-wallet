@@ -43,13 +43,15 @@
         </tr>
     </table>
 
-    <table class="tiles">
+    <table class="tiles tall">
         <tr>
             @foreach ($tiles as [$label, $value, $hint, $accent])
                 <td style="width: 25%">
                     <div @class(['tile', 'accent' => $accent])>
                         <div class="t-label">{{ $label }}</div>
-                        <div class="t-value" @if (strlen($value) > 18) style="font-size: 10px" @endif>{{ $value }}</div>
+                        @foreach ((array) $value as $line)
+                            <div class="t-value" @if (count((array) $value) > 1) style="font-size: 10px; margin-top: 1px" @endif>{{ $line }}</div>
+                        @endforeach
                         <div class="t-hint">{{ $hint }}</div>
                     </div>
                 </td>
@@ -200,8 +202,7 @@
                     <div class="note" style="margin-top: 0">
                         <strong>Payment</strong><br>
                         @if ($settlement->settled_at)
-                            Paid {{ $settlement->settled_at->timezone(config('sterling.timezone', 'Europe/Riga'))->format('Y-m-d H:i') }} by {{ $settlement->settler->name ?? '—' }}<br>
-                            <span style="font-size: 7.5px; word-break: break-all">Tx: {{ $settlement->tx_hash }}</span>
+                            Paid {{ $settlement->settled_at->timezone(config('sterling.timezone', 'Europe/Riga'))->format('Y-m-d H:i') }} by {{ $settlement->settler->name ?? '—' }}
                         @else
                             Not paid yet.
                         @endif
@@ -209,6 +210,24 @@
                 </td>
             </tr>
         </table>
+
+        @if ($settlement->tx_hash)
+            <table class="txbox">
+                <tr>
+                    <td>
+                        <div class="t-label">Transaction hash{{ $settlement->wallet ? ' · '.trim($settlement->wallet->currency.' '.$settlement->wallet->network) : '' }}</div>
+                        <div class="hash">{{ $settlement->tx_hash }}</div>
+                        @if ($explorerUrl)
+                            <a href="{{ $explorerUrl }}">View on block explorer</a>
+                        @endif
+                    </td>
+                    <td class="num" style="width: 30%; vertical-align: middle">
+                        <div class="t-label">Amount sent</div>
+                        <div class="amount">{{ $money($settlement->total_payout, $payoutCurrency) }}</div>
+                    </td>
+                </tr>
+            </table>
+        @endif
 
         @if ($settlement->notes)
             <div class="note">{{ $settlement->notes }}</div>
