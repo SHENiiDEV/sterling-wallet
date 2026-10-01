@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Offers\OfferProposal;
 use App\Profit\ProfitQuery;
 use App\Profit\ProfitShareCalculator;
+use App\Profit\ProfitShareStatementPdf;
 use App\Reports\Ingestion\ReportIngestionService;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -142,6 +143,39 @@ class ProfitTest extends TestCase
         $this->assertMoney('3.46', $lines['Anna|Euro Shop']->share);   // 50% × 6.91
         $this->assertMoney('1.26', $lines['Anna|Dollar Shop']->share); // 20% × 6.28
         $this->assertMoney('8.47', $statement->company_remainder);
+    }
+
+    public function test_profit_share_pdfs_full_statement_and_one_per_partner()
+    {
+        $anna = ProfitPartner::query()->create(['name' => 'Anna']);
+        $anna->rules()->create(['base' => 'net_profit', 'percent' => 20, 'valid_from' => '2026-01-01']);
+        $anna->rules()->create(['merchant_id' => $this->eurMerchant->id, 'base' => 'net_profit', 'percent' => 50, 'valid_from' => '2026-01-01']);
+        $carl = ProfitPartner::query()->create(['name' => 'Carl']);
+        $carl->rules()->create(['merchant_id' => $this->eurMerchant->id, 'base' => 'net_profit', 'percent' => 10, 'valid_from' => '2026-01-01']);
+        $statement = app(ProfitShareCalculator::class)->calculate('2026-09');
+
+        $data = app(ProfitShareStatementPdf::class)->data($statement);
+        $this->assertSame('September 2026', $data['monthLabel']);
+        $this->assertSame(['Anna', 'Carl'], array_column($data['partners'], 'name'));
+        $this->assertSame('4.72', (string) $data['partners'][0]['share']); // 3.46 + 1.26
+        $this->assertSame('35.8%', $data['partners'][0]['of_profit']);   // 4.72 / 13.19
+        $euro = collect($data['merchants'])->firstWhere('name', 'Euro Shop');
+        $this->assertSame(['6.91', '4.15', '2.76'], [(string) $euro['net_profit'], (string) $euro['shares'], (string) $euro['remainder']]); // 3.46 + 0.69
+
+        $html = view('profit.statement', $data)->render();
+        $this->assertStringContainsString('Profit Share Statement', $html);
+        $this->assertStringContainsString('DRAFT', $html);
+
+        // Carl's statement shows Carl only — not Anna, not the company totals.
+        $partner = view('profit.partner-statement', app(ProfitShareStatementPdf::class)->partnerData($statement, $carl->id))->render();
+        $this->assertStringContainsString('Carl', $partner);
+        $this->assertStringNotContainsString('Anna', $partner);
+        $this->assertStringNotContainsString('Dollar Shop', $partner);
+        $this->assertStringNotContainsString('13.19', $partner);
+
+        $this->actingAs($this->admin)->get(route('admin.profit-share.pdf', ['month' => '2026-09', 'partner' => $carl->id]))
+            ->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="partner-statement-carl-2026-09.pdf"');
+        $this->actingAs($this->admin)->get(route('admin.profit-share.pdf', ['month' => '2026-09', 'partner' => 999]))->assertNotFound();
     }
 
     public function test_closed_month_is_frozen_and_negative_remainder_is_shown()

@@ -11,13 +11,13 @@ use App\Models\MonthlyStatementLine;
 use App\Models\ProfitPartner;
 use App\Models\ProfitShareRule;
 use App\Profit\ProfitShareCalculator;
+use App\Profit\ProfitShareStatementPdf;
 use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
-use Dompdf\Dompdf;
-use Dompdf\Options;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -163,20 +163,22 @@ class ProfitShareController extends Controller
         return back();
     }
 
-    public function pdf(string $month): HttpResponse
+    /**
+     * The monthly statement, or with ?partner={id} the statement for one
+     * partner (only their own lines).
+     */
+    public function pdf(Request $request, string $month, ProfitShareStatementPdf $pdf): HttpResponse
     {
         $statement = MonthlyStatement::query()->with('lines')->where('month', $month)->firstOrFail();
+        $partnerId = $request->integer('partner') ?: null;
 
-        $options = new Options;
-        $options->setIsRemoteEnabled(false);
-        $pdf = new Dompdf($options);
-        $pdf->loadHtml(view('profit.statement', ['statement' => $statement])->render());
-        $pdf->setPaper('A4');
-        $pdf->render();
+        $name = $partnerId === null
+            ? "profit-share-{$month}.pdf"
+            : 'partner-statement-'.Str::slug((string) $statement->lines->firstWhere('profit_partner_id', $partnerId)?->partner_name)."-{$month}.pdf";
 
-        return response((string) $pdf->output(), 200, [
+        return response($pdf->render($statement, $partnerId), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="profit-share-'.$month.'.pdf"',
+            'Content-Disposition' => 'attachment; filename="'.$name.'"',
         ]);
     }
 
