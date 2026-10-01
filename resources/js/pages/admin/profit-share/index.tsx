@@ -445,6 +445,14 @@ export default function ProfitShareIndex({
     const [closing, setClosing] = useState(false);
     const closed = statement.status === 'closed';
     const negative = Number(statement.company_remainder) < 0;
+    // One statement per partner, to send them their own numbers only.
+    const partnerPdfs = [
+        ...new Map(
+            statement.lines
+                .filter((l) => l.partner_id !== null)
+                .map((l) => [l.partner_id as number, l.partner]),
+        ),
+    ];
     const money = (v: string | number) => formatMoney(v, baseCurrency);
     const go = (m: string) =>
         router.get(
@@ -562,10 +570,35 @@ export default function ProfitShareIndex({
                 )}
 
                 <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
-                    <header className="border-b px-5 py-3.5">
+                    <header className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
                         <h2 className="text-sm font-semibold">
                             Shares · {monthLabel}
                         </h2>
+                        {partnerPdfs.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground">
+                                    Partner PDF:
+                                </span>
+                                {partnerPdfs.map(([id, name]) => (
+                                    <Button
+                                        key={id}
+                                        size="sm"
+                                        variant="outline"
+                                        asChild
+                                    >
+                                        <a
+                                            href={admin.profitShare.pdf.url(
+                                                month,
+                                                { query: { partner: id } },
+                                            )}
+                                        >
+                                            <Download />
+                                            {name}
+                                        </a>
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
                     </header>
                     {statement.lines.length === 0 ? (
                         <p className="px-5 py-8 text-center text-sm text-muted-foreground">
