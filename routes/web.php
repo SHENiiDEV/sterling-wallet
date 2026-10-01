@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\FxRateController;
 use App\Http\Controllers\Admin\MerchantAcquirerController;
 use App\Http\Controllers\Admin\MerchantController;
 use App\Http\Controllers\Admin\MerchantMidController;
+use App\Http\Controllers\Admin\MerchantPortalUserController;
 use App\Http\Controllers\Admin\MerchantWalletController;
 use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\ProfitController;
@@ -22,11 +23,22 @@ use App\Http\Controllers\Admin\ProviderController;
 use App\Http\Controllers\Admin\ReportCenterController;
 use App\Http\Controllers\Admin\SettlementController;
 use App\Http\Controllers\Admin\TeamController;
+use App\Http\Controllers\Portal\PortalController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
-Route::redirect('dashboard', '/admin');
+// After login: staff to the admin panel, merchant users to their portal.
+Route::get('dashboard', fn () => auth()->user()?->isStaff() ? redirect()->route('admin.dashboard') : redirect()->route('portal.dashboard'))
+    ->middleware('auth')->name('dashboard');
+
+Route::middleware(['auth', 'merchant'])->prefix('merchant')->name('portal.')->group(function () {
+    Route::get('/', [PortalController::class, 'dashboard'])->name('dashboard');
+    Route::get('reports', [PortalController::class, 'reports'])->name('reports');
+    Route::get('reports/{report}/download/{file}', [PortalController::class, 'downloadReport'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
+    Route::get('settlements', [PortalController::class, 'settlements'])->name('settlements');
+    Route::get('settlements/{settlement}/pdf', [PortalController::class, 'settlementPdf'])->name('settlements.pdf');
+});
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', DashboardController::class)->name('dashboard');
@@ -46,6 +58,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
             Route::post('merchants/{merchant}/acquirers', [MerchantAcquirerController::class, 'store'])->name('merchants.acquirers.store');
             Route::put('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'update'])->name('merchants.acquirers.update');
             Route::delete('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'destroy'])->name('merchants.acquirers.destroy');
+
+            Route::post('merchants/{merchant}/portal-users', [MerchantPortalUserController::class, 'store'])->name('merchants.portal-users.store');
+            Route::put('merchants/{merchant}/portal-users/{user}', [MerchantPortalUserController::class, 'update'])->name('merchants.portal-users.update')->withoutScopedBindings();
+            Route::delete('merchants/{merchant}/portal-users/{user}', [MerchantPortalUserController::class, 'destroy'])->name('merchants.portal-users.destroy')->withoutScopedBindings();
         });
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
     });

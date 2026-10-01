@@ -15,6 +15,10 @@ class EnsureUserIsAdmin
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Merchant users have their own portal.
+        if ($request->user()?->isMerchantUser()) {
+            return redirect()->route('portal.dashboard');
+        }
         abort_unless($request->user()?->isStaff(), 403);
 
         return $next($request);
