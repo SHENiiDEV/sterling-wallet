@@ -72,6 +72,14 @@ class User extends Authenticatable implements PasskeyUser
         return $this->is_active && $this->role->isStaff();
     }
 
+    /**
+     * A merchant portal user: active and linked to a company.
+     */
+    public function isMerchantUser(): bool
+    {
+        return $this->is_active && $this->role === UserRole::Merchant && $this->company_id !== null;
+    }
+
     public function isSuperAdmin(): bool
     {
         return $this->is_active && $this->role === UserRole::SuperAdmin;

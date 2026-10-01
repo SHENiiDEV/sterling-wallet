@@ -39,8 +39,9 @@ class DashboardTest extends TestCase
         $this->get(route('admin.dashboard'))->assertForbidden();
     }
 
-    public function test_legacy_dashboard_url_redirects_to_admin()
+    public function test_dashboard_url_sends_guests_to_login_and_staff_to_admin()
     {
-        $this->get('/dashboard')->assertRedirect('/admin');
+        $this->get('/dashboard')->assertRedirect(route('login'));
+        $this->actingAs(User::factory()->create())->get('/dashboard')->assertRedirect(route('admin.dashboard'));
     }
 }

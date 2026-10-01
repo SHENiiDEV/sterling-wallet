@@ -2,6 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowLeft,
+    Banknote,
     Building2,
     Check,
     Copy,
@@ -13,6 +14,8 @@ import {
     Receipt,
     ShieldCheck,
     Trash2,
+    TrendingUp,
+    Wallet as WalletIcon,
     WalletCards,
     Waypoints,
 } from 'lucide-react';
@@ -23,6 +26,20 @@ import type { MerchantDeletion } from '@/components/admin/merchants/delete-merch
 import { AcquirersSection } from '@/components/admin/merchants/acquirers-section';
 import type { Acquirer } from '@/components/admin/merchants/acquirers-section';
 import { MidDialog } from '@/components/admin/merchants/mid-dialog';
+import {
+    ReportsTab,
+    SettlementsTab,
+} from '@/components/admin/merchants/merchant-tabs';
+import type {
+    MerchantOverview,
+    MerchantReport,
+    MerchantSettlement,
+} from '@/components/admin/merchants/merchant-tabs';
+import { PortalAccessSection } from '@/components/admin/merchants/portal-access-section';
+import type { PortalUser } from '@/components/admin/merchants/portal-access-section';
+import { BarChart } from '@/components/admin/bar-chart';
+import { StatCard } from '@/components/admin/stat-card';
+import { Amounts } from '@/components/portal/portal';
 import {
     SeedRevealDialog,
     WalletDialog,
@@ -58,6 +75,19 @@ import type {
     Wallet,
 } from '@/types';
 
+const TABS = [
+    ['overview', 'Overview'],
+    ['mids', 'MIDs'],
+    ['reports', 'Daily reports'],
+    ['settlements', 'Settlements'],
+    ['wallets', 'Wallets'],
+    ['banks', 'Banks'],
+    ['documents', 'Documents'],
+    ['access', 'Portal access'],
+] as const;
+
+type TabKey = (typeof TABS)[number][0];
+
 type Props = {
     merchant: Merchant;
     wallets: Wallet[];
@@ -72,6 +102,11 @@ type Props = {
     acquirerStatuses: Option[];
     integrationStatuses: Option[];
     deletion?: MerchantDeletion;
+    overview: MerchantOverview;
+    reports: MerchantReport[];
+    settlements: MerchantSettlement[];
+    portalUsers: PortalUser[] | null;
+    portalUrl: string;
 };
 
 export default function MerchantShow(props: Props) {
@@ -86,6 +121,36 @@ export default function MerchantShow(props: Props) {
     const [revealing, setRevealing] = useState<Wallet | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [copied, copy] = useClipboard();
+    const { overview } = props;
+    const [tab, setTab] = useState<TabKey>(() => {
+        const fromUrl =
+            typeof window !== 'undefined'
+                ? new URLSearchParams(window.location.search).get('tab')
+                : null;
+
+        return TABS.some(([key]) => key === fromUrl)
+            ? (fromUrl as TabKey)
+            : 'overview';
+    });
+    // Keep the tab in the URL, so a reload or a shared link opens it again.
+    const selectTab = (key: TabKey) => {
+        setTab(key);
+        const url = new URL(window.location.href);
+        if (key === 'overview') {
+            url.searchParams.delete('tab');
+        } else {
+            url.searchParams.set('tab', key);
+        }
+        window.history.replaceState(window.history.state, '', url);
+    };
+    const counts: Partial<Record<TabKey, number>> = {
+        mids: mids.length,
+        reports: props.reports.length,
+        settlements: props.settlements.length,
+        wallets: wallets.length,
+        banks: props.acquirers.length,
+        access: props.portalUsers?.length,
+    };
 
     const midsWithoutAcquirer = mids.filter(
         (mid) => mid.status === 'active' && !mid.bank_provider_id,
@@ -208,270 +273,417 @@ export default function MerchantShow(props: Props) {
                     </div>
                 ))}
 
-                <AcquirersSection
-                    merchantId={merchant.public_id}
-                    acquirers={props.acquirers}
-                    banks={props.bankProviders}
-                    statuses={props.acquirerStatuses}
-                    integrationStatuses={props.integrationStatuses}
-                />
-
-                {/* MIDs */}
-                <section className="rounded-xl border bg-card shadow-xs">
-                    <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
-                        <div>
-                            <h2 className="flex items-center gap-2 text-sm font-semibold">
-                                <Waypoints className="size-4 text-muted-foreground" />
-                                MIDs
-                            </h2>
-                            <p className="text-xs text-muted-foreground">
-                                One currency each — reports, reserve and payouts
-                                are tracked per MID.
-                            </p>
-                        </div>
-                        <Button size="sm" onClick={() => setEditingMid('new')}>
-                            <Plus />
-                            Add MID
-                        </Button>
-                    </header>
-                    {mids.length === 0 ? (
+                <nav className="-mb-2 flex gap-1 overflow-x-auto border-b">
+                    {TABS.map(([key, label]) => (
                         <button
+                            key={key}
                             type="button"
-                            onClick={() => setEditingMid('new')}
-                            className="m-5 flex w-[calc(100%-2.5rem)] flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-sm text-muted-foreground hover:bg-muted/40"
+                            onClick={() => selectTab(key)}
+                            className={cn(
+                                '-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors',
+                                tab === key
+                                    ? 'border-brand text-foreground'
+                                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                            )}
                         >
-                            <Waypoints className="size-5" />
-                            No MIDs yet — add one for each currency the merchant
-                            processes
+                            {label}
+                            {counts[key] !== undefined && (
+                                <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
+                                    {counts[key]}
+                                </span>
+                            )}
                         </button>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="hover:bg-transparent">
-                                    <TableHead className="pl-5">MID</TableHead>
-                                    <TableHead className="hidden md:table-cell">
-                                        Acquirer / gateway
-                                    </TableHead>
-                                    <TableHead className="hidden lg:table-cell">
-                                        Reserve
-                                    </TableHead>
-                                    <TableHead className="hidden sm:table-cell">
-                                        Reports from
-                                    </TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="w-24 pr-5" />
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {mids.map((mid) => (
-                                    <MidRow
-                                        key={mid.id}
-                                        mid={mid}
-                                        onEdit={() => setEditingMid(mid)}
-                                        onDelete={() => setDeletingMid(mid)}
-                                    />
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </section>
+                    ))}
+                </nav>
 
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <TariffCard merchant={merchant} />
+                {tab === 'overview' && (
+                    <>
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <StatCard
+                                label={`Sales · ${overview.month}`}
+                                value={<Amounts amounts={overview.turnover} />}
+                                hint={`${overview.sales} approved transactions`}
+                                icon={TrendingUp}
+                                tone="brand"
+                            />
+                            <StatCard
+                                label="Net payout this month"
+                                value={<Amounts amounts={overview.payout} />}
+                                icon={Banknote}
+                                tone="success"
+                            />
+                            <StatCard
+                                label="Not paid out yet"
+                                value={<Amounts amounts={overview.unpaid} />}
+                                hint={
+                                    overview.unpaid.length > 0 ? (
+                                        <button
+                                            type="button"
+                                            className="text-brand hover:underline"
+                                            onClick={() =>
+                                                selectTab('settlements')
+                                            }
+                                        >
+                                            Create a settlement →
+                                        </button>
+                                    ) : (
+                                        'Everything is in a settlement'
+                                    )
+                                }
+                                icon={WalletIcon}
+                                tone="warning"
+                            />
+                            <StatCard
+                                label="Reserve held"
+                                value={<Amounts amounts={overview.reserve} />}
+                                hint={
+                                    overview.last_payout
+                                        ? `Last payout ${formatMoney(overview.last_payout.amount)} ${overview.last_payout.currency} · ${formatDate(overview.last_payout.date)}`
+                                        : 'No payout yet'
+                                }
+                                icon={ShieldCheck}
+                            />
+                        </div>
 
-                    <section className="rounded-xl border bg-card shadow-xs">
-                        <header className="flex items-center gap-2 border-b px-5 py-3.5">
-                            <ShieldCheck className="size-4 text-muted-foreground" />
-                            <h2 className="text-sm font-semibold">
-                                Reserve & payout
-                            </h2>
-                        </header>
-                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 p-5 text-sm">
-                            <Stat
-                                label="Rolling reserve"
-                                value={formatPercent(
-                                    merchant.rolling_reserve_percent,
-                                )}
-                            />
-                            <Stat
-                                label="Held for"
-                                value={`${merchant.rolling_reserve_days} days`}
-                            />
-                            <Stat
-                                label="Conversion fee"
-                                value={formatPercent(
-                                    merchant.fee_fiat_to_crypto_percent,
-                                )}
-                            />
-                            <Stat
-                                label="Crypto provider"
-                                value={merchant.crypto_provider ?? 'Not set'}
-                            />
-                            <Stat
-                                label="Statements to"
-                                value={merchant.invoice_email ?? '—'}
-                                className="col-span-2"
-                            />
-                        </dl>
-                        {mids.length > 0 && (
-                            <div className="grid gap-3 border-t p-5">
-                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    Held now
-                                </p>
-                                {mids.map((mid) => (
-                                    <ReserveBar key={mid.id} mid={mid} />
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                </div>
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            <TariffCard merchant={merchant} />
 
-                <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Wallets */}
-                    <section className="rounded-xl border bg-card shadow-xs">
-                        <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
-                            <h2 className="flex items-center gap-2 text-sm font-semibold">
-                                <WalletCards className="size-4 text-muted-foreground" />
-                                Crypto wallets
-                            </h2>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setEditingWallet('new')}
-                            >
-                                <Plus />
-                                Add
-                            </Button>
-                        </header>
-                        {wallets.length === 0 ? (
-                            <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-                                No wallets linked yet.
-                            </p>
-                        ) : (
-                            <ul className="divide-y">
-                                {wallets.map((wallet) => (
-                                    <li
-                                        key={wallet.id}
-                                        className={cn(
-                                            'flex items-center gap-3 px-5 py-3',
-                                            !wallet.is_active && 'opacity-50',
+                            <section className="rounded-xl border bg-card shadow-xs">
+                                <header className="flex items-center gap-2 border-b px-5 py-3.5">
+                                    <ShieldCheck className="size-4 text-muted-foreground" />
+                                    <h2 className="text-sm font-semibold">
+                                        Reserve & payout
+                                    </h2>
+                                </header>
+                                <dl className="grid grid-cols-2 gap-x-6 gap-y-4 p-5 text-sm">
+                                    <Stat
+                                        label="Rolling reserve"
+                                        value={formatPercent(
+                                            merchant.rolling_reserve_percent,
                                         )}
-                                    >
-                                        <div className="min-w-0 flex-1">
-                                            <p className="flex items-center gap-2 text-sm font-medium">
-                                                {wallet.label ??
-                                                    wallet.type_label}
-                                                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                                    {wallet.currency}·
-                                                    {wallet.network}
-                                                </span>
-                                            </p>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    copy(wallet.address)
+                                    />
+                                    <Stat
+                                        label="Held for"
+                                        value={`${merchant.rolling_reserve_days} days`}
+                                    />
+                                    <Stat
+                                        label="Conversion fee"
+                                        value={formatPercent(
+                                            merchant.fee_fiat_to_crypto_percent,
+                                        )}
+                                    />
+                                    <Stat
+                                        label="Crypto provider"
+                                        value={
+                                            merchant.crypto_provider ??
+                                            'Not set'
+                                        }
+                                    />
+                                    <Stat
+                                        label="Statements to"
+                                        value={merchant.invoice_email ?? '—'}
+                                        className="col-span-2"
+                                    />
+                                </dl>
+                                {mids.length > 0 && (
+                                    <div className="grid gap-3 border-t p-5">
+                                        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                            Held now
+                                        </p>
+                                        {mids.map((mid) => (
+                                            <ReserveBar
+                                                key={mid.id}
+                                                mid={mid}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+                        </div>
+
+                        <section className="rounded-xl border bg-card shadow-xs">
+                            <header className="border-b px-5 py-3.5">
+                                <h2 className="text-sm font-semibold">
+                                    Daily sales · last 30 days
+                                </h2>
+                            </header>
+                            <div className="p-5">
+                                <BarChart
+                                    points={overview.daily}
+                                    label={`Sales in ${overview.base_currency}`}
+                                    format={(v) =>
+                                        formatMoney(
+                                            v,
+                                            overview.base_currency,
+                                            0,
+                                        )
+                                    }
+                                />
+                            </div>
+                        </section>
+                        {merchant.notes && (
+                            <section className="rounded-xl border bg-card p-5 text-sm whitespace-pre-line shadow-xs">
+                                {merchant.notes}
+                            </section>
+                        )}
+                    </>
+                )}
+
+                {tab === 'mids' && (
+                    <>
+                        {/* MIDs */}
+                        <section className="rounded-xl border bg-card shadow-xs">
+                            <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
+                                <div>
+                                    <h2 className="flex items-center gap-2 text-sm font-semibold">
+                                        <Waypoints className="size-4 text-muted-foreground" />
+                                        MIDs
+                                    </h2>
+                                    <p className="text-xs text-muted-foreground">
+                                        One currency each — reports, reserve and
+                                        payouts are tracked per MID.
+                                    </p>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    onClick={() => setEditingMid('new')}
+                                >
+                                    <Plus />
+                                    Add MID
+                                </Button>
+                            </header>
+                            {mids.length === 0 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingMid('new')}
+                                    className="m-5 flex w-[calc(100%-2.5rem)] flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-sm text-muted-foreground hover:bg-muted/40"
+                                >
+                                    <Waypoints className="size-5" />
+                                    No MIDs yet — add one for each currency the
+                                    merchant processes
+                                </button>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead className="pl-5">
+                                                MID
+                                            </TableHead>
+                                            <TableHead className="hidden md:table-cell">
+                                                Acquirer / gateway
+                                            </TableHead>
+                                            <TableHead className="hidden lg:table-cell">
+                                                Reserve
+                                            </TableHead>
+                                            <TableHead className="hidden sm:table-cell">
+                                                Reports from
+                                            </TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead className="w-24 pr-5" />
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {mids.map((mid) => (
+                                            <MidRow
+                                                key={mid.id}
+                                                mid={mid}
+                                                onEdit={() =>
+                                                    setEditingMid(mid)
                                                 }
-                                                className="flex max-w-full items-center gap-1.5 truncate font-mono text-xs text-muted-foreground hover:text-foreground"
-                                            >
-                                                <span className="truncate">
-                                                    {wallet.address}
-                                                </span>
-                                                {copied === wallet.address ? (
-                                                    <Check className="size-3 shrink-0 text-success" />
-                                                ) : (
-                                                    <Copy className="size-3 shrink-0" />
+                                                onDelete={() =>
+                                                    setDeletingMid(mid)
+                                                }
+                                            />
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </section>
+                    </>
+                )}
+
+                {tab === 'reports' && <ReportsTab reports={props.reports} />}
+
+                {tab === 'settlements' && (
+                    <SettlementsTab
+                        merchantId={merchant.public_id}
+                        settlements={props.settlements}
+                        unpaid={overview.unpaid}
+                    />
+                )}
+
+                {tab === 'wallets' && (
+                    <>
+                        {/* Wallets */}
+                        <section className="rounded-xl border bg-card shadow-xs">
+                            <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
+                                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                                    <WalletCards className="size-4 text-muted-foreground" />
+                                    Crypto wallets
+                                </h2>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setEditingWallet('new')}
+                                >
+                                    <Plus />
+                                    Add
+                                </Button>
+                            </header>
+                            {wallets.length === 0 ? (
+                                <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+                                    No wallets linked yet.
+                                </p>
+                            ) : (
+                                <ul className="divide-y">
+                                    {wallets.map((wallet) => (
+                                        <li
+                                            key={wallet.id}
+                                            className={cn(
+                                                'flex items-center gap-3 px-5 py-3',
+                                                !wallet.is_active &&
+                                                    'opacity-50',
+                                            )}
+                                        >
+                                            <div className="min-w-0 flex-1">
+                                                <p className="flex items-center gap-2 text-sm font-medium">
+                                                    {wallet.label ??
+                                                        wallet.type_label}
+                                                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                                        {wallet.currency}·
+                                                        {wallet.network}
+                                                    </span>
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        copy(wallet.address)
+                                                    }
+                                                    className="flex max-w-full items-center gap-1.5 truncate font-mono text-xs text-muted-foreground hover:text-foreground"
+                                                >
+                                                    <span className="truncate">
+                                                        {wallet.address}
+                                                    </span>
+                                                    {copied ===
+                                                    wallet.address ? (
+                                                        <Check className="size-3 shrink-0 text-success" />
+                                                    ) : (
+                                                        <Copy className="size-3 shrink-0" />
+                                                    )}
+                                                </button>
+                                            </div>
+                                            {wallet.has_seed &&
+                                                canManageSeeds && (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        aria-label="Reveal seed phrase"
+                                                        onClick={() =>
+                                                            setRevealing(wallet)
+                                                        }
+                                                    >
+                                                        <KeyRound />
+                                                    </Button>
                                                 )}
-                                            </button>
-                                        </div>
-                                        {wallet.has_seed && canManageSeeds && (
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                aria-label="Reveal seed phrase"
+                                                aria-label="Edit wallet"
                                                 onClick={() =>
-                                                    setRevealing(wallet)
+                                                    setEditingWallet(wallet)
                                                 }
                                             >
-                                                <KeyRound />
+                                                <Pencil />
                                             </Button>
-                                        )}
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            aria-label="Edit wallet"
-                                            onClick={() =>
-                                                setEditingWallet(wallet)
-                                            }
-                                        >
-                                            <Pencil />
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            aria-label="Remove wallet"
-                                            onClick={() =>
-                                                setDeletingWallet(wallet)
-                                            }
-                                        >
-                                            <Trash2 />
-                                        </Button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                aria-label="Remove wallet"
+                                                onClick={() =>
+                                                    setDeletingWallet(wallet)
+                                                }
+                                            >
+                                                <Trash2 />
+                                            </Button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    </>
+                )}
 
-                    {/* Documents */}
-                    <section className="rounded-xl border bg-card shadow-xs">
-                        <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
-                            <h2 className="flex items-center gap-2 text-sm font-semibold">
-                                <FileText className="size-4 text-muted-foreground" />
-                                Documents
-                            </h2>
-                            <Button size="sm" variant="outline" asChild>
-                                <Link
-                                    href={admin.documents.index({
-                                        query: { merchant: merchant.id },
-                                    })}
-                                >
-                                    View all
-                                </Link>
-                            </Button>
-                        </header>
-                        {documents.length === 0 ? (
-                            <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-                                No documents linked. Link them from the Document
-                                Center.
-                            </p>
-                        ) : (
-                            <ul className="divide-y">
-                                {documents.map((document) => (
-                                    <li key={document.id}>
-                                        <Link
-                                            href={admin.documents.show(
-                                                document.id,
-                                            )}
-                                            className="flex items-center gap-3 px-5 py-3 hover:bg-muted/40"
-                                        >
-                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                                                {document.title}
-                                            </span>
-                                            <StatusBadge
-                                                name={document.status.name}
-                                                color={document.status.color}
-                                            />
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </section>
-                </div>
+                {tab === 'banks' && (
+                    <>
+                        <AcquirersSection
+                            merchantId={merchant.public_id}
+                            acquirers={props.acquirers}
+                            banks={props.bankProviders}
+                            statuses={props.acquirerStatuses}
+                            integrationStatuses={props.integrationStatuses}
+                        />
+                    </>
+                )}
 
-                {merchant.notes && (
-                    <section className="rounded-xl border bg-card p-5 text-sm whitespace-pre-line shadow-xs">
-                        {merchant.notes}
-                    </section>
+                {tab === 'documents' && (
+                    <>
+                        {/* Documents */}
+                        <section className="rounded-xl border bg-card shadow-xs">
+                            <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
+                                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                                    <FileText className="size-4 text-muted-foreground" />
+                                    Documents
+                                </h2>
+                                <Button size="sm" variant="outline" asChild>
+                                    <Link
+                                        href={admin.documents.index({
+                                            query: { merchant: merchant.id },
+                                        })}
+                                    >
+                                        View all
+                                    </Link>
+                                </Button>
+                            </header>
+                            {documents.length === 0 ? (
+                                <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+                                    No documents linked. Link them from the
+                                    Document Center.
+                                </p>
+                            ) : (
+                                <ul className="divide-y">
+                                    {documents.map((document) => (
+                                        <li key={document.id}>
+                                            <Link
+                                                href={admin.documents.show(
+                                                    document.id,
+                                                )}
+                                                className="flex items-center gap-3 px-5 py-3 hover:bg-muted/40"
+                                            >
+                                                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                                    {document.title}
+                                                </span>
+                                                <StatusBadge
+                                                    name={document.status.name}
+                                                    color={
+                                                        document.status.color
+                                                    }
+                                                />
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    </>
+                )}
+
+                {tab === 'access' && (
+                    <PortalAccessSection
+                        merchantId={merchant.public_id}
+                        company={merchant.company?.name ?? null}
+                        users={props.portalUsers}
+                        portalUrl={props.portalUrl}
+                    />
                 )}
             </PageBody>
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureMerchantUser;
 use App\Http\Middleware\EnsureModuleAccess;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleAppearance;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
+            'merchant' => EnsureMerchantUser::class,
             'bot.token' => VerifyBotReportToken::class,
             'module' => EnsureModuleAccess::class,
         ]);

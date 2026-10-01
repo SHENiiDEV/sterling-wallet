@@ -14,12 +14,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
+use App\Merchants\MerchantOverview;
 use App\Merchants\MerchantPurger;
 use App\Models\Company;
+use App\Models\DailyReportTask;
 use App\Models\Merchant;
 use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
+use App\Models\Settlement;
+use App\Models\User;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -132,6 +136,58 @@ class MerchantController extends Controller
             'midStatuses' => MidStatus::options(),
             'walletTypes' => WalletType::options(),
             'canManageSeeds' => $request->user()->role === UserRole::SuperAdmin,
+            'overview' => app(MerchantOverview::class)->for(collect([$merchant])),
+            'reports' => DailyReportTask::query()
+                ->with('merchantMid:id,mid')
+                ->where('merchant_id', $merchant->id)
+                ->orderByDesc('report_date')->orderBy('merchant_mid_id')
+                ->limit(60)
+                ->get()
+                ->map(fn (DailyReportTask $r) => [
+                    'id' => $r->id,
+                    'report_date' => $r->report_date->toDateString(),
+                    'mid' => $r->merchantMid->mid,
+                    'currency' => $r->currency,
+                    'status' => $r->status->value,
+                    'status_label' => $r->status->label(),
+                    'sales_count' => $r->sales_count,
+                    'turnover' => $r->turnover,
+                    'net_payout' => $r->net_payout,
+                    'net_profit' => $r->net_profit,
+                    'has_pdf' => $r->generated_pdf_path !== null,
+                ]),
+            'settlements' => Settlement::query()
+                ->where('merchant_id', $merchant->id)
+                ->withCount('lines')
+                ->latest('id')
+                ->limit(30)
+                ->get()
+                ->map(fn (Settlement $s) => [
+                    'id' => $s->id,
+                    'number' => $s->number,
+                    'status' => $s->status->value,
+                    'status_label' => $s->status->label(),
+                    'lines' => $s->lines_count,
+                    'total_payout' => $s->total_payout,
+                    'payout_currency' => $s->payout_currency,
+                    'created_at' => $s->created_at?->toDateString(),
+                    'settled_at' => $s->settled_at?->toDateString(),
+                    'tx_hash' => $s->tx_hash,
+                ]),
+            'portalUsers' => $merchant->company_id === null ? null : User::query()
+                ->where('role', UserRole::Merchant)
+                ->where('company_id', $merchant->company_id)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (User $u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                    'is_active' => $u->is_active,
+                    'last_login_at' => $u->last_login_at?->toIso8601String(),
+                    'created_at' => $u->created_at?->toDateString(),
+                ]),
+            'portalUrl' => url('/merchant'),
         ]);
     }
 
