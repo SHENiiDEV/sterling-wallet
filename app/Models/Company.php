@@ -77,4 +77,27 @@ class Company extends Model
 
         return $ids;
     }
+
+    /**
+     * This company and its parents up to the top, nearest first.
+     *
+     * @return list<Company>
+     */
+    public function ancestorsWithSelf(): array
+    {
+        $chain = [$this];
+        $seen = [$this->id];
+        $current = $this;
+
+        while ($current->parent_id !== null && ! in_array($current->parent_id, $seen, true)) {
+            $current = Company::query()->find($current->parent_id);
+            if ($current === null) {
+                break;
+            }
+            $chain[] = $current;
+            $seen[] = $current->id;
+        }
+
+        return $chain;
+    }
 }

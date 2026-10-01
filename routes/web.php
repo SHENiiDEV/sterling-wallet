@@ -14,9 +14,9 @@ use App\Http\Controllers\Admin\FxRateController;
 use App\Http\Controllers\Admin\MerchantAcquirerController;
 use App\Http\Controllers\Admin\MerchantController;
 use App\Http\Controllers\Admin\MerchantMidController;
-use App\Http\Controllers\Admin\MerchantPortalUserController;
 use App\Http\Controllers\Admin\MerchantWalletController;
 use App\Http\Controllers\Admin\OperationController;
+use App\Http\Controllers\Admin\PortalUserController;
 use App\Http\Controllers\Admin\ProfitController;
 use App\Http\Controllers\Admin\ProfitShareController;
 use App\Http\Controllers\Admin\ProviderController;
@@ -59,11 +59,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
             Route::put('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'update'])->name('merchants.acquirers.update');
             Route::delete('merchants/{merchant}/acquirers/{acquirer}', [MerchantAcquirerController::class, 'destroy'])->name('merchants.acquirers.destroy');
 
-            Route::post('merchants/{merchant}/portal-users', [MerchantPortalUserController::class, 'store'])->name('merchants.portal-users.store');
-            Route::put('merchants/{merchant}/portal-users/{user}', [MerchantPortalUserController::class, 'update'])->name('merchants.portal-users.update')->withoutScopedBindings();
-            Route::delete('merchants/{merchant}/portal-users/{user}', [MerchantPortalUserController::class, 'destroy'])->name('merchants.portal-users.destroy')->withoutScopedBindings();
         });
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::post('companies/{company}/portal-users', [PortalUserController::class, 'store'])->name('companies.portal-users.store');
+        Route::put('companies/{company}/portal-users/{user}', [PortalUserController::class, 'update'])->name('companies.portal-users.update');
+        Route::delete('companies/{company}/portal-users/{user}', [PortalUserController::class, 'destroy'])->name('companies.portal-users.destroy');
     });
 
     Route::middleware('module:operations')->group(function () {

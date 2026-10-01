@@ -6,6 +6,7 @@ use App\Enums\ReportStatus;
 use App\Enums\SettlementStatus;
 use App\Http\Controllers\Controller;
 use App\Merchants\MerchantOverview;
+use App\Merchants\PortalAnalytics;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
@@ -20,18 +21,29 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * The merchant portal: a company's users see the daily reports and
- * settlements of its merchants — their own numbers only.
+ * The merchant portal. A login belongs to a company and sees it and every
+ * company below it (a client group such as APS → its companies → their
+ * merchants): sales and payout charts, our prices, daily reports and
+ * settlements. Never our costs or profit.
  */
 class PortalController extends Controller
 {
-    public function dashboard(Request $request, MerchantOverview $overview): Response
+    /** @var array<int, list<int>> per user id, for this request */
+    private array $companyIds = [];
+
+    public function dashboard(Request $request, MerchantOverview $overview, PortalAnalytics $analytics): Response
     {
         [$merchants, $selected] = $this->scope($request);
+        $shared = $this->shared($request, $merchants, $selected);
 
         return Inertia::render('portal/dashboard', [
-            ...$this->shared($request, $merchants, $selected),
+            ...$shared,
             'overview' => $overview->for($selected),
+            'analytics' => $analytics->for($selected),
+            // Inside one company: each merchant with its MIDs and the prices we charge.
+            'pricing' => $shared['portal']['company'] !== null || count($shared['portal']['companies']) <= 1
+                ? $selected->map(fn (Merchant $m) => $this->pricing($m))->values()
+                : [],
             'recentReports' => $this->reportsQuery($selected)->limit(8)->get()->map(fn (DailyReportTask $r) => $this->report($r)),
             'recentSettlements' => $this->settlementsQuery($selected)->limit(5)->get()->map(fn (Settlement $s) => $this->settlement($s)),
         ]);
@@ -93,18 +105,51 @@ class PortalController extends Controller
     }
 
     /**
-     * The company's merchants, and the ones selected by ?merchant=public_id.
+     * The companies the user may see (their company and every company
+     * below it), the merchants in them, and the selection made with
+     * ?company={id} and ?merchant={public_id}.
      *
      * @return array{0: Collection<int, Merchant>, 1: Collection<int, Merchant>}
      */
     private function scope(Request $request): array
     {
-        $merchants = Merchant::query()->where('company_id', $request->user()->company_id)->orderBy('name')->get();
-        $selected = $request->filled('merchant')
-            ? $merchants->where('public_id', $request->query('merchant'))->values()
-            : $merchants;
+        $merchants = Merchant::query()
+            ->with('company:id,name,parent_id')
+            ->whereIn('company_id', $this->companyIds($request))
+            ->orderBy('name')
+            ->get();
 
-        return [$merchants, $selected->isEmpty() ? $merchants : $selected];
+        $selected = $merchants;
+        if ($company = $this->selectedCompany($request)) {
+            $ids = $company->descendantIdsWithSelf();
+            $selected = $selected->whereIn('company_id', $ids)->values();
+        }
+        if ($request->filled('merchant')) {
+            $one = $selected->where('public_id', $request->query('merchant'))->values();
+            $selected = $one->isEmpty() ? $selected : $one;
+        }
+
+        return [$merchants, $selected];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function companyIds(Request $request): array
+    {
+        $user = $request->user();
+
+        return $this->companyIds[$user->id] ??= Company::query()->find($user->company_id)?->descendantIdsWithSelf() ?? [];
+    }
+
+    private function selectedCompany(Request $request): ?Company
+    {
+        $id = (int) $request->query('company');
+        if ($id === 0 || $id === $request->user()->company_id || ! in_array($id, $this->companyIds($request), true)) {
+            return null;
+        }
+
+        return Company::query()->find($id);
     }
 
     /**
@@ -114,16 +159,58 @@ class PortalController extends Controller
      */
     private function shared(Request $request, Collection $merchants, Collection $selected): array
     {
+        $company = $this->selectedCompany($request);
+        // Companies that have merchants, for the switcher.
+        $companies = $merchants->pluck('company')->unique('id')->sortBy('name')->values();
+        $inCompany = $company ? $merchants->whereIn('company_id', $company->descendantIdsWithSelf()) : $merchants;
+
         return [
-            'company' => Company::query()->whereKey($request->user()->company_id)->value('name'),
-            'merchants' => $merchants->map(fn (Merchant $m) => ['public_id' => $m->public_id, 'name' => $m->name])->values(),
-            'merchant' => $selected->count() === 1 && $merchants->count() > 1 ? $selected->first()->public_id : null,
+            'portal' => [
+                'root' => Company::query()->whereKey($request->user()->company_id)->value('name'),
+                'companies' => $companies->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name])->all(),
+                'company' => $company ? ['id' => $company->id, 'name' => $company->name] : null,
+                'merchants' => $inCompany->map(fn (Merchant $m) => ['public_id' => $m->public_id, 'name' => $m->name])->values()->all(),
+                'merchant' => $selected->count() === 1 && $inCompany->count() > 1 ? $selected->first()->public_id : null,
+            ],
+        ];
+    }
+
+    /**
+     * What we charge the merchant, as the merchant sees it.
+     *
+     * @return array<string, mixed>
+     */
+    private function pricing(Merchant $m): array
+    {
+        $m->loadMissing('mids');
+        $rate = fn (?string $scheme, string $region) => $m->getAttribute("fee_{$scheme}_{$region}_percent") ?? $m->getAttribute("fee_acq_{$region}_percent");
+
+        return [
+            'public_id' => $m->public_id,
+            'name' => $m->name,
+            'company' => $m->company?->name,
+            'status' => $m->status->label(),
+            'website' => $m->website,
+            'rates' => [
+                ['Visa', $rate('visa', 'eu'), $rate('visa', 'non_eu')],
+                ['Mastercard', $rate('mastercard', 'eu'), $rate('mastercard', 'non_eu')],
+            ],
+            'fixed' => [
+                ['Approved transaction', $m->fee_success_fixed],
+                ['Declined transaction', $m->fee_decline_fixed],
+                ['Refund', $m->fee_refund_fixed],
+                ['Chargeback', $m->fee_chargeback_fixed],
+            ],
+            'conversion_percent' => $m->fee_fiat_to_crypto_percent,
+            'reserve_percent' => $m->rolling_reserve_percent,
+            'reserve_days' => $m->rolling_reserve_days,
+            'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->label()])->values(),
         ];
     }
 
     private function owns(Request $request, ?Merchant $merchant): bool
     {
-        return $merchant !== null && $merchant->company_id !== null && $merchant->company_id === $request->user()->company_id;
+        return $merchant !== null && in_array($merchant->company_id, $this->companyIds($request), true);
     }
 
     /**
@@ -132,7 +219,7 @@ class PortalController extends Controller
     private function reportsQuery(Collection $merchants)
     {
         return DailyReportTask::query()
-            ->with(['merchant:id,name', 'merchantMid:id,mid'])
+            ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'merchantMid:id,mid'])
             ->whereIn('merchant_id', $merchants->pluck('id'))
             ->where('status', ReportStatus::Completed)
             ->orderByDesc('report_date')->orderBy('merchant_mid_id');
@@ -146,7 +233,7 @@ class PortalController extends Controller
     private function settlementsQuery(Collection $merchants)
     {
         return Settlement::query()
-            ->with(['merchant:id,name', 'wallet:id,currency,network'])
+            ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'wallet:id,currency,network'])
             ->whereIn('merchant_id', $merchants->pluck('id'))
             ->whereIn('status', [SettlementStatus::Approved, SettlementStatus::Settled])
             ->latest('id');
@@ -163,6 +250,7 @@ class PortalController extends Controller
             'period_from' => $r->period_from->toDateString(),
             'period_to' => $r->period_to->toDateString(),
             'merchant' => $r->merchant->name,
+            'company' => $r->merchant->company?->name,
             'mid' => $r->merchantMid->mid,
             'currency' => $r->currency,
             'sales_count' => $r->sales_count,
@@ -188,6 +276,7 @@ class PortalController extends Controller
             'id' => $s->id,
             'number' => $s->number,
             'merchant' => $s->merchant->name,
+            'company' => $s->merchant->company?->name,
             'status' => $s->status->value,
             'status_label' => $s->status === SettlementStatus::Settled ? 'Paid' : 'Approved',
             'total_payout' => $s->total_payout,
