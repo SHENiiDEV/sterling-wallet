@@ -14,9 +14,14 @@ import portal from '@/routes/portal';
 export type Amount = { currency: string; amount: string };
 
 export type PortalShared = {
-    company: string | null;
-    merchants: { public_id: string; name: string }[];
-    merchant: string | null;
+    portal: {
+        /** The company the login belongs to, e.g. the client group. */
+        root: string | null;
+        companies: { id: number; name: string }[];
+        company: { id: number; name: string } | null;
+        merchants: { public_id: string; name: string }[];
+        merchant: string | null;
+    };
 };
 
 export type PortalReport = {
@@ -25,6 +30,7 @@ export type PortalReport = {
     period_from: string;
     period_to: string;
     merchant: string;
+    company: string | null;
     mid: string;
     currency: string;
     sales_count: number;
@@ -40,6 +46,7 @@ export type PortalSettlement = {
     id: number;
     number: string;
     merchant: string;
+    company: string | null;
     status: 'approved' | 'settled';
     status_label: string;
     total_payout: string;
@@ -54,9 +61,10 @@ export type PortalSettlement = {
 const ALL = 'all';
 
 /**
- * Shown when the company has more than one merchant.
+ * Company, then merchant. The company comes from the URL (?company=) and
+ * is kept when switching pages; changing it resets the merchant.
  */
-export function MerchantSwitcher({
+export function PortalFilters({
     shared,
     url,
     extra = {},
@@ -65,39 +73,75 @@ export function MerchantSwitcher({
     url: string;
     extra?: Record<string, string | null>;
 }) {
-    if (shared.merchants.length < 2) {
-        return null;
-    }
+    const { companies, company, merchants, merchant } = shared.portal;
+    const go = (next: Record<string, string | null>) =>
+        router.get(
+            url,
+            Object.fromEntries(
+                Object.entries({
+                    ...extra,
+                    company: company ? String(company.id) : null,
+                    merchant,
+                    ...next,
+                }).filter(([, v]) => v),
+            ),
+            { preserveScroll: true, replace: true },
+        );
 
     return (
-        <Select
-            value={shared.merchant ?? ALL}
-            onValueChange={(value) =>
-                router.get(
-                    url,
-                    Object.fromEntries(
-                        Object.entries({
-                            ...extra,
-                            merchant: value === ALL ? null : value,
-                        }).filter(([, v]) => v),
-                    ),
-                    { preserveScroll: true, replace: true },
-                )
-            }
-        >
-            <SelectTrigger className="w-full bg-background sm:w-64">
-                <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value={ALL}>All merchants</SelectItem>
-                {shared.merchants.map((m) => (
-                    <SelectItem key={m.public_id} value={m.public_id}>
-                        {m.name}
-                    </SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-2 sm:flex-row">
+            {companies.length > 1 && (
+                <Select
+                    value={company ? String(company.id) : ALL}
+                    onValueChange={(value) =>
+                        go({
+                            company: value === ALL ? null : value,
+                            merchant: null,
+                        })
+                    }
+                >
+                    <SelectTrigger className="w-full bg-background sm:w-56">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={ALL}>All companies</SelectItem>
+                        {companies.map((c) => (
+                            <SelectItem key={c.id} value={String(c.id)}>
+                                {c.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+            {merchants.length > 1 && (
+                <Select
+                    value={merchant ?? ALL}
+                    onValueChange={(value) =>
+                        go({ merchant: value === ALL ? null : value })
+                    }
+                >
+                    <SelectTrigger className="w-full bg-background sm:w-56">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={ALL}>All merchants</SelectItem>
+                        {merchants.map((m) => (
+                            <SelectItem key={m.public_id} value={m.public_id}>
+                                {m.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+        </div>
     );
+}
+
+/** Keeps ?company= on links between portal pages. */
+export function withCompany(url: string, shared: PortalShared): string {
+    return shared.portal.company
+        ? `${url}?company=${shared.portal.company.id}`
+        : url;
 }
 
 /** One line per currency; a dash when there is nothing. */

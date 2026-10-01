@@ -27,10 +27,17 @@ export default function PortalLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { auth, company } = usePage<{
+    const { auth, portal: scope } = usePage<{
         auth: { user: User };
-        company?: string | null;
+        portal?: {
+            root: string | null;
+            company: { id: number; name: string } | null;
+        };
     }>().props;
+    const company = scope?.root;
+    // Stay in the chosen company when moving between pages.
+    const href = (url: string) =>
+        scope?.company ? `${url}?company=${scope.company.id}` : url;
     const { isCurrentUrl } = useCurrentUrl();
 
     return (
@@ -52,7 +59,7 @@ export default function PortalLayout({
                         {NAV.map((item) => (
                             <Link
                                 key={item.href}
-                                href={item.href}
+                                href={href(item.href)}
                                 className={cn(
                                     'rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
                                     isCurrentUrl(

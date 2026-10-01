@@ -23,7 +23,6 @@ use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
 use App\Models\Settlement;
-use App\Models\User;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -88,7 +87,7 @@ class MerchantController extends Controller
     public function show(Request $request, Merchant $merchant): Response
     {
         $merchant->load([
-            'company:id,name',
+            'company:id,name,parent_id',
             'cryptoProvider:id,name',
             'mids' => fn ($q) => $q->with(['bankProvider:id,name', 'gateProvider:id,name'])
                 ->withSum('reserveEntries as reserve_balance', 'amount')
@@ -174,19 +173,11 @@ class MerchantController extends Controller
                     'settled_at' => $s->settled_at?->toDateString(),
                     'tx_hash' => $s->tx_hash,
                 ]),
-            'portalUsers' => $merchant->company_id === null ? null : User::query()
-                ->where('role', UserRole::Merchant)
-                ->where('company_id', $merchant->company_id)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (User $u) => [
-                    'id' => $u->id,
-                    'name' => $u->name,
-                    'email' => $u->email,
-                    'is_active' => $u->is_active,
-                    'last_login_at' => $u->last_login_at?->toIso8601String(),
-                    'created_at' => $u->created_at?->toDateString(),
-                ]),
+            // Portal logins that see this merchant: its company's and the parents'.
+            'portalUsers' => $merchant->company ? PortalUserController::usersFor($merchant->company) : null,
+            'portalCompanies' => $merchant->company
+                ? collect($merchant->company->ancestorsWithSelf())->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name])->all()
+                : [],
             'portalUrl' => url('/merchant'),
         ]);
     }

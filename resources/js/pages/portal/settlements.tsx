@@ -2,7 +2,7 @@ import { Head } from '@inertiajs/react';
 import { Download } from 'lucide-react';
 import { Pagination } from '@/components/admin/pagination';
 import { StatusBadge } from '@/components/admin/status-badge';
-import { MerchantSwitcher, TxLink } from '@/components/portal/portal';
+import { PortalFilters, TxLink } from '@/components/portal/portal';
 import type {
     PortalSettlement,
     PortalShared,
@@ -39,10 +39,7 @@ export default function PortalSettlements(props: Props) {
                         reports it pays and the conversion rate used.
                     </p>
                 </div>
-                <MerchantSwitcher
-                    shared={props}
-                    url={portal.settlements.url()}
-                />
+                <PortalFilters shared={props} url={portal.settlements.url()} />
             </div>
 
             <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -77,11 +74,17 @@ export default function PortalSettlements(props: Props) {
                                         <span className="font-medium">
                                             {s.number}
                                         </span>
-                                        {props.merchants.length > 1 && (
-                                            <span className="block text-xs text-muted-foreground">
-                                                {s.merchant}
-                                            </span>
-                                        )}
+                                        {props.portal.merchants.length > 1 ||
+                                            (props.portal.companies.length >
+                                                1 && (
+                                                <span className="block text-xs text-muted-foreground">
+                                                    {s.merchant}
+                                                    {props.portal.companies
+                                                        .length > 1 &&
+                                                        s.company &&
+                                                        ` · ${s.company}`}
+                                                </span>
+                                            ))}
                                     </TableCell>
                                     <TableCell>
                                         <StatusBadge

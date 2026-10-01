@@ -36,7 +36,10 @@ import type {
     MerchantSettlement,
 } from '@/components/admin/merchants/merchant-tabs';
 import { PortalAccessSection } from '@/components/admin/merchants/portal-access-section';
-import type { PortalUser } from '@/components/admin/merchants/portal-access-section';
+import type {
+    PortalCompany,
+    PortalUser,
+} from '@/components/admin/merchants/portal-access-section';
 import { BarChart } from '@/components/admin/bar-chart';
 import { StatCard } from '@/components/admin/stat-card';
 import { Amounts } from '@/components/portal/portal';
@@ -106,6 +109,7 @@ type Props = {
     reports: MerchantReport[];
     settlements: MerchantSettlement[];
     portalUsers: PortalUser[] | null;
+    portalCompanies: PortalCompany[];
     portalUrl: string;
 };
 
@@ -679,8 +683,8 @@ export default function MerchantShow(props: Props) {
 
                 {tab === 'access' && (
                     <PortalAccessSection
-                        merchantId={merchant.public_id}
                         company={merchant.company?.name ?? null}
+                        companies={props.portalCompanies}
                         users={props.portalUsers}
                         portalUrl={props.portalUrl}
                     />

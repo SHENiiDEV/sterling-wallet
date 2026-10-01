@@ -1,6 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { Pagination } from '@/components/admin/pagination';
-import { MerchantSwitcher, ReportFiles } from '@/components/portal/portal';
+import { PortalFilters, ReportFiles } from '@/components/portal/portal';
 import type { PortalReport, PortalShared } from '@/components/portal/portal';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,7 +29,10 @@ export default function PortalReports(props: Props) {
             Object.fromEntries(
                 Object.entries({
                     month,
-                    merchant: props.merchant,
+                    company: props.portal.company
+                        ? String(props.portal.company.id)
+                        : null,
+                    merchant: props.portal.merchant,
                     ...next,
                 }).filter(([, v]) => v),
             ),
@@ -59,7 +62,7 @@ export default function PortalReports(props: Props) {
                             filter({ month: e.target.value || null })
                         }
                     />
-                    <MerchantSwitcher
+                    <PortalFilters
                         shared={props}
                         url={portal.reports.url()}
                         extra={{ month }}
@@ -111,11 +114,17 @@ export default function PortalReports(props: Props) {
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">
                                         {r.mid}
-                                        {props.merchants.length > 1 && (
-                                            <span className="block font-sans text-muted-foreground">
-                                                {r.merchant}
-                                            </span>
-                                        )}
+                                        {props.portal.merchants.length > 1 ||
+                                            (props.portal.companies.length >
+                                                1 && (
+                                                <span className="block font-sans text-muted-foreground">
+                                                    {r.merchant}
+                                                    {props.portal.companies
+                                                        .length > 1 &&
+                                                        r.company &&
+                                                        ` · ${r.company}`}
+                                                </span>
+                                            ))}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
                                         {formatMoney(r.turnover, r.currency)}

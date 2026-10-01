@@ -78,8 +78,10 @@ class MerchantPortalTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('portal/dashboard')
-                ->where('company', 'Our Co')
-                ->has('merchants', 1)
+                ->where('portal.root', 'Our Co')
+                ->has('portal.merchants', 1)
+                ->has('pricing', 1)
+                ->where('pricing.0.rates.0', ['Visa', '3.000', '4.000'])
                 ->where('overview.payout.0', ['currency' => 'EUR', 'amount' => '273.58'])
                 ->where('overview.unpaid.0', ['currency' => 'EUR', 'amount' => '273.58'])
                 ->has('recentReports', 1)
@@ -119,7 +121,7 @@ class MerchantPortalTest extends TestCase
 
     public function test_admins_give_and_take_portal_access_per_company()
     {
-        $this->actingAs($this->admin)->post(route('admin.merchants.portal-users.store', $this->ours), [
+        $this->actingAs($this->admin)->post(route('admin.companies.portal-users.store', $this->ours->company_id), [
             'name' => 'Ann', 'email' => 'ann@ours.test', 'password' => 'Secret-pass-123',
         ])->assertSessionHasNoErrors();
 
@@ -132,21 +134,57 @@ class MerchantPortalTest extends TestCase
                 ->has('reports', 1)
                 ->where('overview.unpaid.0.amount', '273.58'));
 
-        $this->actingAs($this->admin)->put(route('admin.merchants.portal-users.update', [$this->ours, $ann]), [
+        $this->actingAs($this->admin)->put(route('admin.companies.portal-users.update', [$this->ours->company_id, $ann]), [
             'name' => 'Ann B', 'email' => 'ann@ours.test', 'password' => '', 'is_active' => false,
         ])->assertSessionHasNoErrors();
         $this->assertFalse($ann->fresh()->is_active);
 
-        // Not through another company's merchant, and never a staff account.
-        $this->actingAs($this->admin)->delete(route('admin.merchants.portal-users.destroy', [$this->theirs, $ann]))->assertNotFound();
-        $this->actingAs($this->admin)->delete(route('admin.merchants.portal-users.destroy', [$this->ours, $this->admin]))->assertNotFound();
+        // Not through another company, and never a staff account.
+        $this->actingAs($this->admin)->delete(route('admin.companies.portal-users.destroy', [$this->theirs->company_id, $ann]))->assertNotFound();
+        $this->actingAs($this->admin)->delete(route('admin.companies.portal-users.destroy', [$this->ours->company_id, $this->admin]))->assertNotFound();
 
-        $this->actingAs($this->admin)->delete(route('admin.merchants.portal-users.destroy', [$this->ours, $ann]))->assertRedirect();
+        $this->actingAs($this->admin)->delete(route('admin.companies.portal-users.destroy', [$this->ours->company_id, $ann]))->assertRedirect();
         $this->assertNull($ann->fresh());
+    }
 
-        $loner = $this->merchantWithTariff(['company_id' => null]);
-        $this->actingAs($this->admin)->post(route('admin.merchants.portal-users.store', $loner), [
-            'name' => 'X', 'email' => 'x@x.test', 'password' => 'Secret-pass-123',
-        ])->assertSessionHasErrors('portal');
+    public function test_a_group_login_sees_all_its_companies_and_can_open_one()
+    {
+        // APS is the client group; Our Co and Their Co are its companies.
+        $aps = Company::factory()->create(['name' => 'APS']);
+        Company::query()->whereKey([$this->ours->company_id, $this->theirs->company_id])->update(['parent_id' => $aps->id]);
+        $outsider = $this->merchantWithTariff(['name' => 'Outsider', 'company_id' => Company::factory()->create()->id]);
+        $user = User::factory()->create(['role' => UserRole::Merchant, 'company_id' => $aps->id]);
+
+        $this->actingAs($user)->get(route('portal.dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('portal.root', 'APS')
+                ->has('portal.companies', 2)
+                ->where('portal.company', null)
+                ->has('analytics.companies', 2)
+                ->where('pricing', [])  // group view: no per-merchant prices
+                ->has('recentReports', 2));
+
+        $this->actingAs($user)->get(route('portal.dashboard', ['company' => $this->ours->company_id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('portal.company.name', 'Our Co')
+                ->has('pricing', 1)
+                ->where('pricing.0.name', 'Our Shop')
+                ->has('recentReports', 1));
+
+        // A company outside the group is ignored; its data is not reachable.
+        $this->actingAs($user)->get(route('portal.dashboard', ['company' => $outsider->company_id]))
+            ->assertInertia(fn (Assert $page) => $page->where('portal.company', null)->has('portal.companies', 2));
+
+        // A login on one company does not see its sibling.
+        $theirs = DailyReportTask::query()->where('merchant_id', $this->theirs->id)->sole();
+        $this->actingAs($this->portalUser($this->ours, ['email' => 'one@x.test']))
+            ->get(route('portal.reports.download', [$theirs, 'pdf']))->assertNotFound();
+        $this->actingAs($user)->get(route('portal.reports.download', [$theirs, 'pdf']))->assertOk();
+
+        // Admin: the merchant page lists the group login and offers both levels.
+        $this->actingAs($this->admin)->get(route('admin.merchants.show', $this->ours))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('portalUsers', fn ($users) => collect($users)->pluck('company')->sort()->values()->all() === ['APS', 'Our Co'])
+                ->where('portalCompanies', [['id' => $this->ours->company_id, 'name' => 'Our Co'], ['id' => $aps->id, 'name' => 'APS']]));
     }
 }

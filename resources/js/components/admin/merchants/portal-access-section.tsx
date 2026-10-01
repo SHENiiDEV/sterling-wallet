@@ -25,6 +25,13 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { useClipboard } from '@/hooks/use-clipboard';
 import { formatDate, formatRelative } from '@/lib/format';
@@ -34,6 +41,8 @@ export type PortalUser = {
     id: number;
     name: string;
     email: string;
+    company_id: number;
+    company: string | null;
     is_active: boolean;
     last_login_at: string | null;
     created_at: string | null;
@@ -48,18 +57,22 @@ function generatePassword(): string {
     return Array.from(values, (v) => chars[v % chars.length]).join('');
 }
 
+export type PortalCompany = { id: number; name: string };
+
 function UserDialog({
-    merchantId,
+    companies,
     user,
     portalUrl,
     onClose,
 }: {
-    merchantId: string;
+    /** The merchant's company first, then its parents up to the top. */
+    companies: PortalCompany[];
     user: PortalUser | null;
     portalUrl: string;
     onClose: () => void;
 }) {
     const form = useForm({
+        company_id: String(user?.company_id ?? companies[0]?.id ?? ''),
         name: user?.name ?? '',
         email: user?.email ?? '',
         password: user ? '' : generatePassword(),
@@ -81,16 +94,16 @@ function UserDialog({
                         };
                         if (user) {
                             form.put(
-                                admin.merchants.portalUsers.update.url({
-                                    merchant: merchantId,
+                                admin.companies.portalUsers.update.url({
+                                    company: user.company_id,
                                     user: user.id,
                                 }),
                                 options,
                             );
                         } else {
                             form.post(
-                                admin.merchants.portalUsers.store.url(
-                                    merchantId,
+                                admin.companies.portalUsers.store.url(
+                                    Number(form.data.company_id),
                                 ),
                                 options,
                             );
@@ -102,11 +115,37 @@ function UserDialog({
                             {user ? user.email : 'Give portal access'}
                         </DialogTitle>
                         <DialogDescription>
-                            The user signs in at {portalUrl} and sees the daily
-                            reports and settlements of every merchant of this
-                            company.
+                            The user signs in at {portalUrl} and sees the chosen
+                            company, every company under it and their merchants.
                         </DialogDescription>
                     </DialogHeader>
+                    {!user && companies.length > 1 && (
+                        <Field label="Access to" error={undefined}>
+                            <Select
+                                value={form.data.company_id}
+                                onValueChange={(v) =>
+                                    form.setData('company_id', v)
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {companies.map((c, i) => (
+                                        <SelectItem
+                                            key={c.id}
+                                            value={String(c.id)}
+                                        >
+                                            {c.name}
+                                            {i === 0
+                                                ? ' — this company only'
+                                                : ' — group, all its companies'}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                    )}
                     <Field
                         label="Name"
                         htmlFor="pu-name"
@@ -209,13 +248,13 @@ function UserDialog({
 }
 
 export function PortalAccessSection({
-    merchantId,
     company,
+    companies,
     users,
     portalUrl,
 }: {
-    merchantId: string;
     company: string | null;
+    companies: PortalCompany[];
     users: PortalUser[] | null;
     portalUrl: string;
 }) {
@@ -232,7 +271,7 @@ export function PortalAccessSection({
                     </h2>
                     <p className="text-xs text-muted-foreground">
                         {company
-                            ? `Logins for ${company}: they see daily reports and settlements of all its merchants — never our costs or profit.`
+                            ? `Logins that see ${company}: its own and those of its parent group. They see sales, payouts, our prices, daily reports and settlements — never our costs or profit.`
                             : 'Portal access is given per company.'}
                     </p>
                 </div>
@@ -260,7 +299,7 @@ export function PortalAccessSection({
                 </p>
             ) : users.length === 0 ? (
                 <p className="px-5 py-10 text-center text-sm text-muted-foreground">
-                    Nobody from {company} has portal access yet.
+                    Nobody has portal access to {company} yet.
                 </p>
             ) : (
                 <ul className="divide-y">
@@ -279,8 +318,11 @@ export function PortalAccessSection({
                                     )}
                                 </p>
                                 <p className="truncate text-xs text-muted-foreground">
-                                    {user.email} · since{' '}
-                                    {formatDate(user.created_at)} ·{' '}
+                                    {user.email} · access to{' '}
+                                    <span className="font-medium text-foreground">
+                                        {user.company}
+                                    </span>{' '}
+                                    · since {formatDate(user.created_at)} ·{' '}
                                     {user.last_login_at
                                         ? `last login ${formatRelative(user.last_login_at)}`
                                         : 'never logged in'}
@@ -308,7 +350,7 @@ export function PortalAccessSection({
             )}
             {editing && (
                 <UserDialog
-                    merchantId={merchantId}
+                    companies={companies}
                     user={editing === 'new' ? null : editing}
                     portalUrl={portalUrl}
                     onClose={() => setEditing(null)}
@@ -322,8 +364,8 @@ export function PortalAccessSection({
                 onConfirm={() =>
                     deleting &&
                     router.delete(
-                        admin.merchants.portalUsers.destroy.url({
-                            merchant: merchantId,
+                        admin.companies.portalUsers.destroy.url({
+                            company: deleting.company_id,
                             user: deleting.id,
                         }),
                         {

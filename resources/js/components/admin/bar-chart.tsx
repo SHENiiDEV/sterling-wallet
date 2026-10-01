@@ -16,10 +16,13 @@ export function BarChart({
     points,
     format,
     label,
+    formatLabel = formatDate,
 }: {
     points: Point[];
     format: (value: number) => string;
     label: string;
+    /** How a bar's date is written (axis and tooltip); days by default. */
+    formatLabel?: (date: string) => string;
 }) {
     const wrap = useRef<HTMLDivElement>(null);
     const [width, setWidth] = useState(640);
@@ -147,7 +150,7 @@ export function BarChart({
                         }
                         className="fill-muted-foreground text-[10px]"
                     >
-                        {formatDate(points[i].date)}
+                        {formatLabel(points[i].date)}
                     </text>
                 ))}
             </svg>
@@ -166,7 +169,7 @@ export function BarChart({
                     }}
                 >
                     <div className="text-muted-foreground">
-                        {formatDate(active.date)}
+                        {formatLabel(active.date)}
                     </div>
                     <div className="font-semibold tabular-nums">
                         {format(active.value)}
