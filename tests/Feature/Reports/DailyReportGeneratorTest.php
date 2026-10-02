@@ -201,7 +201,7 @@ class DailyReportGeneratorTest extends TestCase
     {
         $cardaq = $this->cardaq();
 
-        $noTariff = $this->mid($this->merchantWithTariff(['fee_visa_eu_percent' => null]), $cardaq, null);
+        $noTariff = $this->mid($this->merchantWithTariff(['fee_visa_eu_percent' => null, 'fee_acq_eu_percent' => 0]), $cardaq, null);
         $task = $this->ingestPair($noTariff, $this->cardaqCsv())->fresh();
         $this->assertSame(ReportStatus::Blocked, $task->status);
         $this->assertStringContainsString('fee_visa_eu_percent', $task->error_log);

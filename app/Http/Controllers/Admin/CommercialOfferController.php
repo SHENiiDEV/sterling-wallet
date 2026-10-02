@@ -84,7 +84,7 @@ class CommercialOfferController extends Controller
         return Inertia::render('admin/offers/form', [
             'offer' => [...$this->present($offer), ...$offer->only([
                 'contact_name', 'contact_email', 'country', 'website', 'mcc', 'currencies', 'expected_monthly_volume',
-                ...CommercialOffer::TARIFF_FIELDS, 'setup_fee', 'settlement_terms', 'fee_currency', 'extra_fees', 'intro', 'terms', 'notes',
+                ...CommercialOffer::TARIFF_FIELDS, 'setup_fee', 'rolling_reserve_cap', 'fee_collab_fixed', 'settlement_terms', 'fee_currency', 'extra_fees', 'intro', 'terms', 'notes',
             ]), 'valid_until' => $offer->valid_until?->toDateString()],
             'currencies' => Currency::options(),
         ]);

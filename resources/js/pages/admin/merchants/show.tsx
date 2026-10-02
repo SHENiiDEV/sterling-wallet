@@ -163,7 +163,7 @@ export default function MerchantShow(props: Props) {
         merchant.status === 'active' &&
             !merchant.is_test &&
             merchant.missing_tariff.length > 0 &&
-            'Card tariff is incomplete — daily reports will not be calculated until Visa and Mastercard rates are set.',
+            'Card tariff is incomplete — daily reports will not be calculated until every Visa and Mastercard rate is set (or a fallback rate covers it).',
         midsWithoutAcquirer.length > 0 &&
             `${midsWithoutAcquirer.length} active MID${midsWithoutAcquirer.length > 1 ? 's have' : ' has'} no acquirer, so provider costs cannot be priced.`,
         merchant.status === 'review' &&

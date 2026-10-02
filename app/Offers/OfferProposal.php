@@ -37,12 +37,10 @@ class OfferProposal
             ['VISA', 'Merchant Discount Rate — EEA issued cards', $rate($offer->fee_visa_eu_percent)],
             ['VISA', 'Merchant Discount Rate — Non-EEA issued cards', $rate($offer->fee_visa_non_eu_percent)],
         ];
-        $schemeRates = array_filter([$offer->fee_mastercard_eu_percent, $offer->fee_mastercard_non_eu_percent, $offer->fee_visa_eu_percent, $offer->fee_visa_non_eu_percent], fn ($v) => $v !== null);
-        $fallback = [$offer->fee_acq_eu_percent, $offer->fee_acq_non_eu_percent];
-        if (array_diff(array_map('floatval', $fallback), array_map('floatval', $schemeRates)) !== []) {
-            $acquiring[] = ['OTHER CARDS', 'Merchant Discount Rate — EEA / Non-EEA', $this->percent($fallback[0]).' / '.$this->percent($fallback[1])];
-        }
         $acquiring[] = [null, 'Rolling reserve', $this->percent($offer->rolling_reserve_percent).' ('.$offer->rolling_reserve_days.' days)'];
+        if ($offer->rolling_reserve_cap !== null && BigDecimal::of((string) $offer->rolling_reserve_cap)->isPositive()) {
+            $acquiring[] = [null, 'Rolling reserve cap', $fixed($offer->rolling_reserve_cap)];
+        }
 
         $settlement = array_values(array_filter([
             ['Payout currency', 'USDC'],
@@ -55,6 +53,7 @@ class OfferProposal
             ['Declined transaction', $fixed($offer->fee_decline_fixed)],
             ['Refund', $fixed($offer->fee_refund_fixed)],
             ['Chargeback fee', $fixed($offer->fee_chargeback_fixed)],
+            ...($offer->fee_collab_fixed !== null ? [['Collab', $fixed($offer->fee_collab_fixed)]] : []),
             ['Setup fee', $fixed($offer->setup_fee)],
         ];
         foreach ($offer->extra_fees ?? [] as $extra) {

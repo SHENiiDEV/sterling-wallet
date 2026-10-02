@@ -244,6 +244,41 @@ class ProfitTest extends TestCase
         $this->actingAs($this->admin)->delete(route('admin.offers.destroy', $offer))->assertSessionHasErrors('offer');
     }
 
+    public function test_offer_with_na_schemes_reserve_cap_and_collab()
+    {
+        $this->actingAs($this->admin)->post(route('admin.offers.store'), [
+            'company_name' => 'Mastercard Only Ltd', 'currencies' => ['EUR'],
+            'fee_visa_eu_percent' => 'N/A', 'fee_visa_non_eu_percent' => 'n/a',
+            'fee_mastercard_eu_percent' => 3.8, 'fee_mastercard_non_eu_percent' => 4.5,
+            'fee_success_fixed' => 0.3, 'fee_decline_fixed' => 0.3, 'fee_refund_fixed' => 0.3, 'fee_chargeback_fixed' => 35,
+            'fee_collab_fixed' => 1.5, 'fee_fiat_to_crypto_percent' => 0.5, 'fee_currency' => 'EUR', 'setup_fee' => 0,
+            'rolling_reserve_percent' => 10, 'rolling_reserve_days' => 180, 'rolling_reserve_cap' => 60000,
+        ])->assertSessionHasNoErrors();
+        $offer = CommercialOffer::query()->sole();
+
+        $this->assertNull($offer->fee_visa_eu_percent);
+        // The fallback for unknown brands is the dearest offered rate.
+        $this->assertSame(['3.800', '4.500'], [$offer->fee_acq_eu_percent, $offer->fee_acq_non_eu_percent]);
+
+        $data = app(OfferProposal::class)->data($offer);
+        $rows = collect($data['acquiring'])->mapWithKeys(fn ($r) => [($r[0] ?? '').' '.$r[1] => $r[2]]);
+        $this->assertSame('N/A', $rows['VISA Merchant Discount Rate — EEA issued cards']); // no success fee on N/A
+        $this->assertSame('3.8% + €0.30', $rows['MASTERCARD Merchant Discount Rate — EEA issued cards']);
+        $this->assertSame('10% (180 days)', $rows[' Rolling reserve']);
+        $this->assertSame('€60,000.00', $rows[' Rolling reserve cap']);
+        $this->assertFalse($rows->keys()->contains(fn ($k) => str_contains($k, 'OTHER CARDS')));
+        $this->assertContains(['Collab', '€1.50'], $data['charges']);
+
+        // The merchant made from it can be priced: Visa falls back to the dearest rate.
+        $this->actingAs($this->admin)->post(route('admin.offers.accept', $offer))->assertRedirect();
+        $this->assertSame([], $offer->fresh()->merchant->missingTariffFields());
+
+        // A merchant with a scheme rate missing and no fallback is still incomplete.
+        $this->assertContains('fee_visa_eu_percent', Merchant::factory()->create([
+            'fee_visa_eu_percent' => null, 'fee_acq_eu_percent' => 0,
+        ])->missingTariffFields());
+    }
+
     public function test_offer_proposal_prints_rates_and_extra_charges()
     {
         $this->actingAs($this->admin)->post(route('admin.offers.store'), [

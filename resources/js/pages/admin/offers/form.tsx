@@ -42,16 +42,16 @@ type Offer = OfferItem & {
     fee_visa_non_eu_percent: string | null;
     fee_mastercard_eu_percent: string | null;
     fee_mastercard_non_eu_percent: string | null;
-    fee_acq_eu_percent: string;
-    fee_acq_non_eu_percent: string;
     fee_success_fixed: string;
     fee_decline_fixed: string;
     fee_refund_fixed: string;
     fee_chargeback_fixed: string;
+    fee_collab_fixed: string | null;
     fee_fiat_to_crypto_percent: string;
     setup_fee: string;
     rolling_reserve_percent: string;
     rolling_reserve_days: number;
+    rolling_reserve_cap: string | null;
     settlement_terms: string | null;
     fee_currency: string;
     extra_fees: ExtraFee[] | null;
@@ -80,6 +80,21 @@ const presets: ExtraFee[] = [
 const num = (v: string | number | null | undefined, fallback = '') =>
     v === null || v === undefined ? fallback : String(Number(v));
 
+type SchemeField =
+    | 'fee_visa_eu_percent'
+    | 'fee_visa_non_eu_percent'
+    | 'fee_mastercard_eu_percent'
+    | 'fee_mastercard_non_eu_percent';
+
+/** "N/A" = the scheme is not offered; a new offer starts with a rate. */
+const schemeRate = (
+    offer: Offer | null,
+    field: SchemeField,
+    fallback: string,
+) => (offer ? (offer[field] === null ? NA : num(offer[field])) : fallback);
+
+const NA = 'N/A';
+
 export default function OfferForm({ offer, currencies }: Props) {
     const [deleting, setDeleting] = useState(false);
     const locked = offer?.status === 'accepted' || offer?.status === 'declined';
@@ -92,19 +107,27 @@ export default function OfferForm({ offer, currencies }: Props) {
         mcc: offer?.mcc ?? '',
         currencies: offer?.currencies ?? ['EUR'],
         expected_monthly_volume: num(offer?.expected_monthly_volume),
-        fee_visa_eu_percent: num(offer?.fee_visa_eu_percent, '3'),
-        fee_visa_non_eu_percent: num(offer?.fee_visa_non_eu_percent, '4'),
-        fee_mastercard_eu_percent: num(offer?.fee_mastercard_eu_percent, '3'),
-        fee_mastercard_non_eu_percent: num(
-            offer?.fee_mastercard_non_eu_percent,
+        fee_visa_eu_percent: schemeRate(offer, 'fee_visa_eu_percent', '3'),
+        fee_visa_non_eu_percent: schemeRate(
+            offer,
+            'fee_visa_non_eu_percent',
             '4',
         ),
-        fee_acq_eu_percent: num(offer?.fee_acq_eu_percent, '3'),
-        fee_acq_non_eu_percent: num(offer?.fee_acq_non_eu_percent, '4'),
+        fee_mastercard_eu_percent: schemeRate(
+            offer,
+            'fee_mastercard_eu_percent',
+            '3',
+        ),
+        fee_mastercard_non_eu_percent: schemeRate(
+            offer,
+            'fee_mastercard_non_eu_percent',
+            '4',
+        ),
         fee_success_fixed: num(offer?.fee_success_fixed, '0.2'),
         fee_decline_fixed: num(offer?.fee_decline_fixed, '0.1'),
         fee_refund_fixed: num(offer?.fee_refund_fixed, '1'),
         fee_chargeback_fixed: num(offer?.fee_chargeback_fixed, '25'),
+        fee_collab_fixed: num(offer?.fee_collab_fixed),
         fee_fiat_to_crypto_percent: num(
             offer?.fee_fiat_to_crypto_percent,
             '0.4',
@@ -112,6 +135,7 @@ export default function OfferForm({ offer, currencies }: Props) {
         setup_fee: num(offer?.setup_fee, '0'),
         rolling_reserve_percent: num(offer?.rolling_reserve_percent, '10'),
         rolling_reserve_days: String(offer?.rolling_reserve_days ?? 180),
+        rolling_reserve_cap: num(offer?.rolling_reserve_cap),
         settlement_terms: offer?.settlement_terms ?? 'Daily, T+2',
         fee_currency: offer?.fee_currency ?? 'EUR',
         extra_fees: offer?.extra_fees ?? ([] as ExtraFee[]),
@@ -165,6 +189,45 @@ export default function OfferForm({ offer, currencies }: Props) {
             />
         </Field>
     );
+    const rate = (key: SchemeField, label: string) => {
+        const notOffered = data[key] === NA;
+
+        return (
+            <Field
+                label={label}
+                htmlFor={key}
+                error={errors[key]}
+                hint={
+                    notOffered
+                        ? 'Not offered — shown as N/A on the proposal'
+                        : undefined
+                }
+            >
+                <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                        <AffixInput
+                            id={key}
+                            suffix={notOffered ? '' : '%'}
+                            inputMode="decimal"
+                            value={data[key]}
+                            onChange={(e) => setData(key, e.target.value)}
+                            disabled={locked || notOffered}
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        variant={notOffered ? 'default' : 'outline'}
+                        className="shrink-0 px-3"
+                        disabled={locked}
+                        aria-pressed={notOffered}
+                        onClick={() => setData(key, notOffered ? '' : NA)}
+                    >
+                        N/A
+                    </Button>
+                </div>
+            </Field>
+        );
+    };
     const setExtra = (index: number, patch: Partial<ExtraFee>) =>
         setData(
             'extra_fees',
@@ -348,25 +411,14 @@ export default function OfferForm({ offer, currencies }: Props) {
 
                     <FormSection
                         title="Card rates"
-                        description="Percent of each sale. The fallback rate applies when the card brand is unknown."
+                        description="Percent of each sale, plus the success fee. N/A: the scheme is not offered — the proposal shows N/A without a fee."
                     >
-                        {affix('fee_visa_eu_percent', 'Visa EU', '%')}
-                        {affix('fee_visa_non_eu_percent', 'Visa non-EU', '%')}
-                        {affix(
-                            'fee_mastercard_eu_percent',
-                            'Mastercard EU',
-                            '%',
-                        )}
-                        {affix(
+                        {rate('fee_visa_eu_percent', 'Visa EU')}
+                        {rate('fee_visa_non_eu_percent', 'Visa non-EU')}
+                        {rate('fee_mastercard_eu_percent', 'Mastercard EU')}
+                        {rate(
                             'fee_mastercard_non_eu_percent',
                             'Mastercard non-EU',
-                            '%',
-                        )}
-                        {affix('fee_acq_eu_percent', 'Fallback EU', '%')}
-                        {affix(
-                            'fee_acq_non_eu_percent',
-                            'Fallback non-EU',
-                            '%',
                         )}
                     </FormSection>
 
@@ -405,6 +457,12 @@ export default function OfferForm({ offer, currencies }: Props) {
                         {affix('fee_decline_fixed', 'Decline', 'per op')}
                         {affix('fee_refund_fixed', 'Refund', 'per op')}
                         {affix('fee_chargeback_fixed', 'Chargeback', 'per op')}
+                        {affix(
+                            'fee_collab_fixed',
+                            'Collab',
+                            'per op',
+                            'Leave empty to leave it off the proposal',
+                        )}
                     </FormSection>
 
                     <FormSection
@@ -425,6 +483,12 @@ export default function OfferForm({ offer, currencies }: Props) {
                             'rolling_reserve_days',
                             'Reserve held for',
                             'days',
+                        )}
+                        {affix(
+                            'rolling_reserve_cap',
+                            'Reserve rolling cap',
+                            data.fee_currency,
+                            'Maximum held at any time; empty = no cap',
                         )}
                         {affix('setup_fee', 'Setup fee', 'one-off')}
                         {text('settlement_terms', 'Settlement cycle')}
