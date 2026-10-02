@@ -146,11 +146,18 @@ class Merchant extends Model
      */
     public function missingTariffFields(): array
     {
-        $required = [
-            'fee_visa_eu_percent', 'fee_visa_non_eu_percent',
-            'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
-        ];
+        // A scheme may be left empty (not offered, e.g. "N/A" in the offer)
+        // only when the fallback rate for that region prices its cards.
+        $missing = [];
+        foreach (['visa', 'mastercard'] as $scheme) {
+            foreach (['eu', 'non_eu'] as $region) {
+                $field = "fee_{$scheme}_{$region}_percent";
+                if ($this->{$field} === null && ! ((float) $this->{"fee_acq_{$region}_percent"} > 0)) {
+                    $missing[] = $field;
+                }
+            }
+        }
 
-        return array_values(array_filter($required, fn (string $field) => $this->{$field} === null));
+        return $missing;
     }
 }
