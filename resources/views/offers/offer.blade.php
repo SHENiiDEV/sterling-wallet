@@ -151,33 +151,20 @@
             </table>
             <div class="foot"></div>
         </div>
+    </div>
+
+    {{-- Settlement and terms --}}
+    <div class="page">
+        <img class="ring-bl" src="{{ $img('offer-ring.png') }}" alt="">
+        <h1>Settlement</h1>
 
         <div class="ptable">
-            <table class="head"><tr><td>SETTLEMENT</td><td style="width: 30%; text-align: center">TERMS</td></tr></table>
+            <table class="head"><tr><td></td><td style="width: 30%; text-align: center">TERMS</td></tr></table>
             <table class="rows">
                 @foreach ($settlement as [$label, $value])
                     <tr>
                         <td>{{ $label }}</td>
                         <td class="fee">{{ $value }}</td>
-                    </tr>
-                @endforeach
-            </table>
-            <div class="foot"></div>
-        </div>
-    </div>
-
-    {{-- Other charges --}}
-    <div class="page">
-        <img class="ring-bl" src="{{ $img('offer-ring.png') }}" alt="">
-        <h1>Acquiring, Other Charges</h1>
-
-        <div class="ptable">
-            <table class="head"><tr><td></td><td style="width: 30%; text-align: center">FEE</td></tr></table>
-            <table class="rows">
-                @foreach ($charges as [$label, $fee])
-                    <tr>
-                        <td>{{ $label }}</td>
-                        <td class="fee">{{ $fee }}</td>
                     </tr>
                 @endforeach
             </table>
