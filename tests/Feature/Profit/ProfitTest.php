@@ -263,11 +263,12 @@ class ProfitTest extends TestCase
         $data = app(OfferProposal::class)->data($offer);
         $rows = collect($data['acquiring'])->mapWithKeys(fn ($r) => [($r[0] ?? '').' '.$r[1] => $r[2]]);
         $this->assertSame('N/A', $rows['VISA Merchant Discount Rate — EEA issued cards']); // no success fee on N/A
-        $this->assertSame('3.8% + €0.30', $rows['MASTERCARD Merchant Discount Rate — EEA issued cards']);
+        $this->assertSame('3.8%', $rows['MASTERCARD Merchant Discount Rate — EEA issued cards']);
         $this->assertSame('10% (180 days)', $rows[' Rolling reserve']);
         $this->assertSame('€60,000.00', $rows[' Rolling reserve cap']);
         $this->assertFalse($rows->keys()->contains(fn ($k) => str_contains($k, 'OTHER CARDS')));
-        $this->assertContains(['Collab', '€1.50'], $data['charges']);
+        $this->assertSame('€1.50', $rows[' Collab']);
+        $this->assertSame('€0.00', $rows[' Setup fee']); // zero is shown as €0.00
 
         // The merchant made from it can be priced: Visa falls back to the dearest rate.
         $this->actingAs($this->admin)->post(route('admin.offers.accept', $offer))->assertRedirect();
@@ -294,13 +295,21 @@ class ProfitTest extends TestCase
         $this->assertSame([['label' => 'Retrieval request', 'value' => '€5.00'], ['label' => '3DS fee', 'value' => '€0.05']], $offer->extra_fees);
 
         $data = app(OfferProposal::class)->data($offer);
-        $this->assertSame(['MASTERCARD', 'Merchant Discount Rate — EEA issued cards', '3.5% + €0.30'], $data['acquiring'][0]);
-        $this->assertSame('N/A', $data['acquiring'][1][2]); // Mastercard non-EEA not offered
-        $this->assertSame([null, 'Rolling reserve', '5% (180 days)'], end($data['acquiring']));
+        // One table: rates (success fee on its own row), per-transaction fees, reserve, one-offs, extras.
         $this->assertSame([
-            ['Declined transaction', '€0.30'], ['Refund', '€0.30'], ['Chargeback fee', '€35.00'], ['Setup fee', '€1,000.00'],
-            ['Retrieval request', '€5.00'], ['3DS fee', '€0.05'],
-        ], $data['charges']);
+            ['MASTERCARD', 'Merchant Discount Rate — EEA issued cards', '3.5%'],
+            ['MASTERCARD', 'Merchant Discount Rate — Non-EEA issued cards', 'N/A'],
+            ['VISA', 'Merchant Discount Rate — EEA issued cards', '3.5%'],
+            ['VISA', 'Merchant Discount Rate — Non-EEA issued cards', '4.5%'],
+            [null, 'Transaction fee — approved', '€0.30'],
+            [null, 'Transaction fee — declined', '€0.30'],
+            [null, 'Refund', '€0.30'],
+            [null, 'Chargeback', '€35.00'],
+            [null, 'Rolling reserve', '5% (180 days)'],
+            [null, 'Setup fee', '€1,000.00'],
+            [null, 'Retrieval request', '€5.00'],
+            [null, '3DS fee', '€0.05'],
+        ], $data['acquiring']);
 
         $html = view('offers.offer', $data)->render();
         $this->assertStringContainsString('Hartwick Ventures Ltd', $html);
