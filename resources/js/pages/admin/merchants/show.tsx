@@ -945,6 +945,12 @@ function TariffCard({ merchant }: { merchant: Merchant }) {
                         label="Chargeback"
                         value={Number(merchant.fee_chargeback_fixed).toString()}
                     />
+                    {merchant.fee_collab_fixed !== null && (
+                        <Stat
+                            label="Collab"
+                            value={Number(merchant.fee_collab_fixed).toString()}
+                        />
+                    )}
                 </dl>
                 <p className="mt-3 text-xs text-muted-foreground">
                     Fixed fees are charged in each MID's currency.
