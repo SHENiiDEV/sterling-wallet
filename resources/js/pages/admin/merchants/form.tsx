@@ -132,11 +132,7 @@ export default function MerchantForm({
                 label={label}
                 htmlFor={key}
                 error={errors[key]}
-                hint={
-                    notOffered
-                        ? 'Not offered'
-                        : undefined
-                }
+                hint={notOffered ? 'Not offered' : undefined}
             >
                 <div className="flex gap-2">
                     <div className="min-w-0 flex-1">
