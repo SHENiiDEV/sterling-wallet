@@ -36,8 +36,6 @@ class MerchantRequest extends FormRequest
             'fee_visa_non_eu_percent' => $cardPercent,
             'fee_mastercard_eu_percent' => $cardPercent,
             'fee_mastercard_non_eu_percent' => $cardPercent,
-            'fee_acq_eu_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'fee_acq_non_eu_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_fiat_to_crypto_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'rolling_reserve_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_collab_fixed' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
@@ -48,6 +46,27 @@ class MerchantRequest extends FormRequest
             'onboarding_status' => ['nullable', 'string', 'max:32'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+    }
+
+    /**
+     * The fallback (unknown card brand) rate is not asked for: it is the
+     * dearest offered scheme rate per region.
+     *
+     * @return array<string, mixed>
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $data = parent::validated($key, $default);
+        if ($key !== null) {
+            return $data;
+        }
+
+        foreach (['eu', 'non_eu'] as $region) {
+            $rates = array_filter([$data["fee_visa_{$region}_percent"] ?? null, $data["fee_mastercard_{$region}_percent"] ?? null], fn ($v) => $v !== null && $v !== '');
+            $data["fee_acq_{$region}_percent"] = $rates === [] ? 0 : max(array_map('floatval', $rates));
+        }
+
+        return $data;
     }
 
     /** @var list<string> Card rates explicitly marked "N/A" (scheme not offered). */

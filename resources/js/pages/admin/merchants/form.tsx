@@ -75,8 +75,6 @@ export default function MerchantForm({
             merchant,
             'fee_mastercard_non_eu_percent',
         ),
-        fee_acq_eu_percent: str(merchant?.fee_acq_eu_percent, '0'),
-        fee_acq_non_eu_percent: str(merchant?.fee_acq_non_eu_percent, '0'),
         fee_success_fixed: str(merchant?.fee_success_fixed, '0'),
         fee_decline_fixed: str(merchant?.fee_decline_fixed, '0'),
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
@@ -136,7 +134,7 @@ export default function MerchantForm({
                 error={errors[key]}
                 hint={
                     notOffered
-                        ? 'Not offered — priced at the fallback rate'
+                        ? 'Not offered'
                         : undefined
                 }
             >
@@ -348,17 +346,6 @@ export default function MerchantForm({
                                 'fee_mastercard_non_eu_percent',
                                 'Mastercard non-EU',
                             )}
-                            {input(
-                                'fee_acq_eu_percent',
-                                'Fallback EU',
-                                '%',
-                                'When the card brand is unknown',
-                            )}
-                            {input(
-                                'fee_acq_non_eu_percent',
-                                'Fallback non-EU',
-                                '%',
-                            )}
                         </FormSection>
 
                         <FormSection
@@ -500,7 +487,7 @@ function TariffPreview({
 }: {
     data: {
         fee_visa_eu_percent: string;
-        fee_acq_eu_percent: string;
+        fee_mastercard_eu_percent: string;
         fee_success_fixed: string;
         rolling_reserve_percent: string;
         fee_fiat_to_crypto_percent: string;
@@ -509,10 +496,13 @@ function TariffPreview({
     const n = (value: string) => Number(value) || 0;
     const volume = 10000;
     const count = 100;
+    const offered = [data.fee_visa_eu_percent, data.fee_mastercard_eu_percent]
+        .filter((v) => v !== '' && v !== NA)
+        .map(n);
     const rate =
         data.fee_visa_eu_percent && data.fee_visa_eu_percent !== NA
             ? n(data.fee_visa_eu_percent)
-            : n(data.fee_acq_eu_percent);
+            : Math.max(0, ...offered);
     const fee = (volume * rate) / 100 + n(data.fee_success_fixed) * count;
     const base = volume - fee;
     const reserve = (base * n(data.rolling_reserve_percent)) / 100;

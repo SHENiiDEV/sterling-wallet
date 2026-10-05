@@ -61,6 +61,7 @@ class MerchantTest extends TestCase
 
         $merchant = Merchant::query()->sole();
         $this->assertNull($merchant->fee_visa_non_eu_percent);
+        $this->assertSame('4.000', $merchant->fee_acq_non_eu_percent); // dearest offered rate
         $this->assertSame('1.5000', $merchant->fee_collab_fixed);
     }
 
@@ -251,8 +252,6 @@ class MerchantTest extends TestCase
             'fee_visa_non_eu_percent' => 4,
             'fee_mastercard_eu_percent' => 3,
             'fee_mastercard_non_eu_percent' => 4,
-            'fee_acq_eu_percent' => 3,
-            'fee_acq_non_eu_percent' => 4,
             'fee_success_fixed' => 0.1,
             'fee_decline_fixed' => 0,
             'fee_refund_fixed' => 0.5,
