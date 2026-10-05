@@ -44,7 +44,7 @@ class CommercialOffer extends Model
     public const TARIFF_FIELDS = [
         'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
         'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
-        'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_fiat_to_crypto_percent',
+        'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'fee_fiat_to_crypto_percent',
         'rolling_reserve_percent', 'rolling_reserve_days',
     ];
 
@@ -57,7 +57,6 @@ class CommercialOffer extends Model
             'expected_monthly_volume' => 'decimal:2',
             'setup_fee' => 'decimal:2',
             'rolling_reserve_cap' => 'decimal:2',
-            'fee_collab_fixed' => 'decimal:4',
             'rolling_reserve_days' => 'integer',
             'valid_until' => DateOnly::class,
             'sent_at' => 'datetime',

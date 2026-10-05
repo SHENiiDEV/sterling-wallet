@@ -171,6 +171,7 @@ export type Merchant = {
     fee_decline_fixed: string;
     fee_refund_fixed: string;
     fee_chargeback_fixed: string;
+    fee_collab_fixed: string | null;
     fee_fiat_to_crypto_percent: string;
     rolling_reserve_percent: string;
     rolling_reserve_days: number;

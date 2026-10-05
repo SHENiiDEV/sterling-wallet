@@ -49,6 +49,21 @@ class MerchantTest extends TestCase
             ->assertSessionHasErrors('fee_visa_eu_percent');
     }
 
+    public function test_na_scheme_and_collab_fee_are_saved()
+    {
+        $this->actingAs($this->admin)
+            ->post(route('admin.merchants.store'), $this->payload([
+                'status' => 'active',
+                'fee_visa_non_eu_percent' => 'N/A',
+                'fee_collab_fixed' => '1.5',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $merchant = Merchant::query()->sole();
+        $this->assertNull($merchant->fee_visa_non_eu_percent);
+        $this->assertSame('1.5000', $merchant->fee_collab_fixed);
+    }
+
     public function test_test_merchant_may_go_active_without_tariff()
     {
         $this->actingAs($this->admin)

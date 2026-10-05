@@ -31,6 +31,17 @@ type Props = {
 };
 
 const NONE = 'none';
+const NA = 'N/A';
+
+type SchemeField =
+    | 'fee_visa_eu_percent'
+    | 'fee_visa_non_eu_percent'
+    | 'fee_mastercard_eu_percent'
+    | 'fee_mastercard_non_eu_percent';
+
+/** "N/A" = the scheme is not offered; a new merchant starts empty. */
+const schemeRate = (merchant: Merchant | null, field: SchemeField) =>
+    merchant ? (merchant[field] === null ? NA : str(merchant[field])) : '';
 
 const str = (value: string | number | null | undefined, fallback = '') =>
     value === null || value === undefined ? fallback : String(Number(value));
@@ -51,11 +62,18 @@ export default function MerchantForm({
         crypto_provider_id: merchant?.crypto_provider_id
             ? String(merchant.crypto_provider_id)
             : '',
-        fee_visa_eu_percent: str(merchant?.fee_visa_eu_percent),
-        fee_visa_non_eu_percent: str(merchant?.fee_visa_non_eu_percent),
-        fee_mastercard_eu_percent: str(merchant?.fee_mastercard_eu_percent),
-        fee_mastercard_non_eu_percent: str(
-            merchant?.fee_mastercard_non_eu_percent,
+        fee_visa_eu_percent: schemeRate(merchant, 'fee_visa_eu_percent'),
+        fee_visa_non_eu_percent: schemeRate(
+            merchant,
+            'fee_visa_non_eu_percent',
+        ),
+        fee_mastercard_eu_percent: schemeRate(
+            merchant,
+            'fee_mastercard_eu_percent',
+        ),
+        fee_mastercard_non_eu_percent: schemeRate(
+            merchant,
+            'fee_mastercard_non_eu_percent',
         ),
         fee_acq_eu_percent: str(merchant?.fee_acq_eu_percent, '0'),
         fee_acq_non_eu_percent: str(merchant?.fee_acq_non_eu_percent, '0'),
@@ -63,6 +81,7 @@ export default function MerchantForm({
         fee_decline_fixed: str(merchant?.fee_decline_fixed, '0'),
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
         fee_chargeback_fixed: str(merchant?.fee_chargeback_fixed, '0'),
+        fee_collab_fixed: str(merchant?.fee_collab_fixed),
         fee_fiat_to_crypto_percent: str(
             merchant?.fee_fiat_to_crypto_percent,
             String(defaults.fee_fiat_to_crypto_percent),
@@ -106,6 +125,45 @@ export default function MerchantForm({
             />
         </Field>
     );
+
+    const rate = (key: SchemeField, label: string) => {
+        const notOffered = data[key] === NA;
+
+        return (
+            <Field
+                label={label}
+                htmlFor={key}
+                error={errors[key]}
+                hint={
+                    notOffered
+                        ? 'Not offered — priced at the fallback rate'
+                        : undefined
+                }
+            >
+                <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                        <AffixInput
+                            id={key}
+                            suffix={notOffered ? '' : '%'}
+                            inputMode="decimal"
+                            value={data[key]}
+                            onChange={(e) => setData(key, e.target.value)}
+                            disabled={notOffered}
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        variant={notOffered ? 'default' : 'outline'}
+                        className="shrink-0 px-3"
+                        aria-pressed={notOffered}
+                        onClick={() => setData(key, notOffered ? '' : NA)}
+                    >
+                        N/A
+                    </Button>
+                </div>
+            </Field>
+        );
+    };
 
     const back = merchant
         ? admin.merchants.show(merchant.public_id)
@@ -281,23 +339,14 @@ export default function MerchantForm({
 
                         <FormSection
                             title="Card tariff"
-                            description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active."
+                            description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active. N/A: the scheme is not offered."
                         >
-                            {input('fee_visa_eu_percent', 'Visa EU', '%')}
-                            {input(
-                                'fee_visa_non_eu_percent',
-                                'Visa non-EU',
-                                '%',
-                            )}
-                            {input(
-                                'fee_mastercard_eu_percent',
-                                'Mastercard EU',
-                                '%',
-                            )}
-                            {input(
+                            {rate('fee_visa_eu_percent', 'Visa EU')}
+                            {rate('fee_visa_non_eu_percent', 'Visa non-EU')}
+                            {rate('fee_mastercard_eu_percent', 'Mastercard EU')}
+                            {rate(
                                 'fee_mastercard_non_eu_percent',
                                 'Mastercard non-EU',
-                                '%',
                             )}
                             {input(
                                 'fee_acq_eu_percent',
@@ -331,6 +380,12 @@ export default function MerchantForm({
                                 'fee_chargeback_fixed',
                                 'Chargeback fee',
                                 'per op',
+                            )}
+                            {input(
+                                'fee_collab_fixed',
+                                'Collab',
+                                'per op',
+                                'Optional; leave empty if not agreed',
                             )}
                         </FormSection>
 
@@ -454,9 +509,10 @@ function TariffPreview({
     const n = (value: string) => Number(value) || 0;
     const volume = 10000;
     const count = 100;
-    const rate = data.fee_visa_eu_percent
-        ? n(data.fee_visa_eu_percent)
-        : n(data.fee_acq_eu_percent);
+    const rate =
+        data.fee_visa_eu_percent && data.fee_visa_eu_percent !== NA
+            ? n(data.fee_visa_eu_percent)
+            : n(data.fee_acq_eu_percent);
     const fee = (volume * rate) / 100 + n(data.fee_success_fixed) * count;
     const base = volume - fee;
     const reserve = (base * n(data.rolling_reserve_percent)) / 100;

@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
     'company_id', 'name', 'website', 'status', 'is_test', 'crypto_provider_id',
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
     'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
-    'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_fiat_to_crypto_percent',
+    'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'fee_fiat_to_crypto_percent',
     'rolling_reserve_percent', 'rolling_reserve_days',
     'invoice_email', 'mcc', 'onboarding_status', 'notes',
 ])]
@@ -59,6 +59,7 @@ class Merchant extends Model
             'rolling_reserve_days' => 'integer',
             ...array_fill_keys(self::PERCENT_FIELDS, 'decimal:3'),
             ...array_fill_keys(self::FIXED_FIELDS, 'decimal:4'),
+            'fee_collab_fixed' => 'decimal:4',
         ];
     }
 
