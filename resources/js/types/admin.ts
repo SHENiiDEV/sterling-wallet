@@ -341,3 +341,13 @@ export type ProfitOperations = {
 };
 
 export type Period = { from: string; to: string };
+
+export type DocumentTemplate = {
+    id: number;
+    name: string;
+    description: string | null;
+    original_name: string;
+    size: number;
+    uploader: string | null;
+    updated_at: string;
+};
