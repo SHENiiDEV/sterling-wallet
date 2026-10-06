@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\DocumentController;
 use App\Http\Controllers\Admin\DocumentFileController;
 use App\Http\Controllers\Admin\DocumentStatusChangeController;
 use App\Http\Controllers\Admin\DocumentStatusController;
+use App\Http\Controllers\Admin\DocumentTemplateController;
 use App\Http\Controllers\Admin\FxRateController;
 use App\Http\Controllers\Admin\MerchantAcquirerController;
 use App\Http\Controllers\Admin\MerchantController;
@@ -133,6 +134,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('documents/{document}/files', [DocumentFileController::class, 'store'])->name('documents.files.store');
         Route::get('documents/{document}/files/{file}', [DocumentFileController::class, 'show'])->name('documents.files.show')->scopeBindings();
         Route::delete('documents/{document}/files/{file}', [DocumentFileController::class, 'destroy'])->name('documents.files.destroy')->scopeBindings();
+        Route::resource('document-templates', DocumentTemplateController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::get('document-templates/{document_template}/download', [DocumentTemplateController::class, 'download'])->name('document-templates.download');
         Route::resource('document-statuses', DocumentStatusController::class)->only(['index', 'store', 'update', 'destroy']);
     });
 

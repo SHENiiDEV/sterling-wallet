@@ -63,6 +63,10 @@ class MerchantTest extends TestCase
         $this->assertNull($merchant->fee_visa_non_eu_percent);
         $this->assertSame('4.000', $merchant->fee_acq_non_eu_percent); // dearest offered rate
         $this->assertSame('1.5000', $merchant->fee_collab_fixed);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.merchants.edit', $merchant))
+            ->assertInertia(fn (Assert $page) => $page->where('merchant.fee_collab_fixed', '1.5000'));
     }
 
     public function test_test_merchant_may_go_active_without_tariff()

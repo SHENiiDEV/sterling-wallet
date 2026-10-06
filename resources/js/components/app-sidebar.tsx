@@ -6,6 +6,7 @@ import {
     Building2,
     CalendarCheck,
     FileStack,
+    FileText,
     FolderKanban,
     Handshake,
     LayoutDashboard,
@@ -122,6 +123,12 @@ const navGroups: NavGroup[] = [
                 title: 'Document Center',
                 href: admin.documents.index(),
                 icon: FolderKanban,
+                module: 'documents',
+            },
+            {
+                title: 'Document templates',
+                href: admin.documentTemplates.index(),
+                icon: FileText,
                 module: 'documents',
             },
             {
