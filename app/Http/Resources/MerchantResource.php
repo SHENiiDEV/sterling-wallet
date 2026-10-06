@@ -29,7 +29,7 @@ class MerchantResource extends JsonResource
             'company' => $this->whenLoaded('company', fn () => $this->company ? ['id' => $this->company->id, 'name' => $this->company->name] : null),
             'crypto_provider_id' => $this->crypto_provider_id,
             'crypto_provider' => $this->whenLoaded('cryptoProvider', fn () => $this->cryptoProvider?->name),
-            ...Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS]),
+            ...Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed']),
             'rolling_reserve_days' => $this->rolling_reserve_days,
             'invoice_email' => $this->invoice_email,
             'mcc' => $this->mcc,
