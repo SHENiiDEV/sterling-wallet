@@ -39,7 +39,7 @@ class ProviderRequest extends FormRequest
             'cost_mastercard_non_eu_percent' => $nullablePercent,
             ...array_fill_keys(array_diff(Provider::PERCENT_FIELDS, [
                 'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
-                'cost_wallet_percent', 'cost_settlement_fx_percent',
+                'cost_wallet_percent', 'cost_settlement_fx_percent', 'cost_acq_eu_percent', 'cost_acq_non_eu_percent',
             ]), $percent),
             'cost_wallet_percent' => $nullablePercent,
             'cost_settlement_fx_percent' => $nullablePercent,
@@ -60,6 +60,32 @@ class ProviderRequest extends FormRequest
             'matching.tie_breakers' => ['sometimes', 'array'],
             'matching.tie_breakers.*' => ['string', Rule::in(['email', 'closest_time'])],
         ];
+    }
+
+    /**
+     * The fallback (unknown card brand) rate is not asked for: it is the
+     * dearest scheme rate per region.
+     *
+     * @return array<string, mixed>
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $data = parent::validated($key, $default);
+        if ($key !== null) {
+            return $data;
+        }
+
+        foreach (['eu', 'non_eu'] as $region) {
+            $fields = ["cost_visa_{$region}_percent", "cost_mastercard_{$region}_percent"];
+            if (array_intersect($fields, array_keys($data)) === []) {
+                continue; // card rates were not part of the form (e.g. a crypto provider)
+            }
+
+            $rates = array_filter(array_map(fn ($field) => $data[$field] ?? null, $fields), fn ($v) => $v !== null && $v !== '');
+            $data["cost_acq_{$region}_percent"] = $rates === [] ? 0 : max(array_map('floatval', $rates));
+        }
+
+        return $data;
     }
 
     /**
