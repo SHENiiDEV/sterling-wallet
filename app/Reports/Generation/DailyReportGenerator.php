@@ -139,10 +139,10 @@ class DailyReportGenerator
         // acquirer charges us, both on the same amount.
         $settled = BigDecimal::max(BigDecimal::zero(), $turnover->minus($refundsAmount)->minus($chargebacksAmount));
         $fxApplies = $currency !== config('sterling.settlement_currency');
-        $fxFee = $fxApplies ? $this->round($this->percentAmount($settled, $fee->percent('settlement_fx'))) : BigDecimal::zero();
+        $fxFee = $this->round($fxApplies ? $this->percentAmount($settled, $fee->percent('settlement_fx')) : BigDecimal::zero());
         $fxCost = $fxApplies && $mid->bankProvider
             ? $this->round($this->percentAmount($settled, Tariff::provider($mid->bankProvider)->percent('settlement_fx')))
-            : BigDecimal::zero();
+            : $this->round(BigDecimal::zero());
 
         $walletSales = $sales->filter(fn (MerchantOperation $op) => $op->wallet !== null);
         $walletFee = $this->round($walletSales->reduce(
@@ -153,7 +153,7 @@ class DailyReportGenerator
         $merchantFee = $this->round($merchantPercentFee->plus($merchantFixedFee)->plus($fxFee));
 
         // What the providers charge us, each on its own operations.
-        $bankCost = $this->providerCost($mid->bankProvider, $bankOps)->plus($fxCost);
+        $bankCost = $this->providerCost($mid->bankProvider, $bankOps);
         $gateCost = $mid->gateProvider ? $this->providerCost($mid->gateProvider, $gateOps) : BigDecimal::zero();
 
         // Rolling reserve, capped by what's left under the MID limit.
@@ -170,7 +170,7 @@ class DailyReportGenerator
             : BigDecimal::zero();
 
         $netPayout = $netVolume->minus($conversionFee);
-        $providerCost = $bankCost->plus($gateCost)->plus($cryptoCost);
+        $providerCost = $bankCost->plus($gateCost)->plus($cryptoCost)->plus($fxCost);
         $netProfit = $merchantFee->plus($conversionFee)->minus($providerCost);
 
         $baseCurrency = config('sterling.base_currency');
@@ -229,10 +229,10 @@ class DailyReportGenerator
                     ],
                     'provider_cost' => [
                         'bank' => (string) $bankCost,
-                        'fx_markup' => (string) $fxCost,
                         'gate' => (string) $gateCost,
                         'crypto' => (string) $cryptoCost,
                     ],
+                    'provider_fx_markup' => (string) $fxCost,
                     'by_scheme' => $this->breakdown($sales, $fee),
                 ],
                 'generated_at' => now(),
