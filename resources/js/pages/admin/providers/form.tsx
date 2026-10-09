@@ -54,8 +54,6 @@ export default function ProviderForm({
         cost_mastercard_non_eu_percent: str(
             provider?.cost_mastercard_non_eu_percent,
         ),
-        cost_acq_eu_percent: str(provider?.cost_acq_eu_percent, '0'),
-        cost_acq_non_eu_percent: str(provider?.cost_acq_non_eu_percent, '0'),
         cost_success_fixed: str(provider?.cost_success_fixed, '0'),
         cost_decline_fixed: str(provider?.cost_decline_fixed, '0'),
         cost_refund_fixed: str(provider?.cost_refund_fixed, '0'),
@@ -358,7 +356,7 @@ export default function ProviderForm({
                         <>
                             <FormSection
                                 title="Card costs"
-                                description="Leave a card rate empty to fall back to the generic EU / non-EU rate."
+                                description="Leave a card rate empty if the provider does not price it. Unknown cards are costed at the highest rate of the region."
                             >
                                 {percent('cost_visa_eu_percent', 'Visa EU')}
                                 {percent(
@@ -372,15 +370,6 @@ export default function ProviderForm({
                                 {percent(
                                     'cost_mastercard_non_eu_percent',
                                     'Mastercard non-EU',
-                                )}
-                                {percent(
-                                    'cost_acq_eu_percent',
-                                    'Fallback EU',
-                                    'Used when the card brand is unknown',
-                                )}
-                                {percent(
-                                    'cost_acq_non_eu_percent',
-                                    'Fallback non-EU',
                                 )}
                                 {percent(
                                     'cost_wallet_percent',
