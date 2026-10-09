@@ -127,6 +127,7 @@ abstract class HeaderMappedParser implements ReportParser
             'cardBin' => $cardBin,
             'cardLast4' => $cardLast4,
             'ips' => Values::ips($get('ips'), $cardBin),
+            'wallet' => Values::wallet($get('wallet')),
             'region' => Values::region($get('region'), $issuerCountry),
             'issuerCountry' => $issuerCountry,
             'issuerName' => Values::text($get('issuer_name')),

@@ -31,6 +31,7 @@ final readonly class OperationRow
         public ?string $cardBin = null,
         public ?string $cardLast4 = null,
         public ?string $ips = null,
+        public ?string $wallet = null,
         public ?string $region = null,
         public ?string $issuerCountry = null,
         public ?string $issuerName = null,

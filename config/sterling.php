@@ -9,6 +9,12 @@ return [
     'base_currency' => env('STERLING_BASE_CURRENCY', 'EUR'),
 
     /*
+    | Currency the acquirer settles in. A MID in another currency is
+    | converted on settlement, which carries the settlement FX markup.
+    */
+    'settlement_currency' => env('STERLING_SETTLEMENT_CURRENCY', 'EUR'),
+
+    /*
     | Clearing trn_type codes, compared case-insensitively (write them in
     | lower case). Chargebacks are not classified yet: only Cardaq logic
     | exists and its chargeback codes are still to be confirmed.
@@ -110,6 +116,7 @@ return [
             'card_bin' => ['bin', 'card bin'],
             'card_last4' => ['last4', 'last 4', 'card last 4'],
             'ips' => ['ips', 'card brand', 'brand', 'scheme', 'card type', 'payment system'],
+            'wallet' => ['wallet', 'wallet type', 'digital wallet', 'payment method'],
             'region' => ['region', 'area', 'eu non eu', 'eu/non-eu'],
             'issuer_country' => ['issuer country', 'bin country', 'card country', 'country'],
             'issuer_name' => ['issuer', 'issuer name', 'issuer bank', 'bank'],
@@ -141,6 +148,7 @@ return [
             'card_bin' => ['bin', 'card bin'],
             'card_last4' => ['last4', 'card last 4'],
             'ips' => ['card brand', 'brand', 'payment method', 'card type'],
+            'wallet' => ['wallet', 'wallet type', 'digital wallet', 'payment method'],
             'issuer_country' => ['card country', 'issuer country', 'bin country'],
             'issuer_name' => ['issuer', 'card issuer', 'bank'],
             'email' => ['email', 'customer email', 'payer email', 'customer'],
@@ -162,6 +170,7 @@ return [
             'card_bin' => ['bin'],
             'card_last4' => ['last4', 'last 4'],
             'ips' => ['card brand', 'scheme', 'brand', 'card type'],
+            'wallet' => ['wallet', 'wallet type', 'digital wallet', 'payment method'],
             'region' => ['region'],
             'issuer_country' => ['issuer country', 'card country', 'country'],
             'amount' => ['amount', 'transaction amount'],

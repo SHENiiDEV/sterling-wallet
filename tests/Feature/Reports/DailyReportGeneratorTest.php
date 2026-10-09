@@ -9,6 +9,7 @@ use App\Enums\ReserveEntryType;
 use App\Mail\DailyReportMail;
 use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
+use App\Models\MerchantOperation;
 use App\Models\ReserveLedgerEntry;
 use App\Reports\Generation\DailyReportGenerator;
 use App\Reports\Ingestion\ReportIngestionService;
@@ -215,5 +216,59 @@ class DailyReportGeneratorTest extends TestCase
         app(ReportIngestionService::class)->ingest($cardaq, $this->cardaqCsv('4499999999'), CarbonImmutable::parse('2026-09-15'));
         $unknown = MerchantMid::query()->where('mid', '4499999999')->sole();
         $this->assertSame(ReportStatus::Blocked, $unknown->dailyReports()->sole()->status);
+    }
+
+    public function test_apple_pay_surcharge_is_added_to_merchant_fee_and_provider_cost()
+    {
+        $merchant = $this->merchantWithTariff(['crypto_provider_id' => $this->oxen()->id, 'fee_wallet_percent' => 0.4]);
+        $mid = $this->mid($merchant, $this->cardaq(['cost_wallet_percent' => 0.2]), $this->corefy());
+        $task = $this->ingestPair($mid, $this->cardaqCsv());
+
+        // The Visa EU sale of 100.00 was paid with Apple Pay.
+        MerchantOperation::query()->where('payment_id', 'CQ-1')->update(['wallet' => 'apple_pay']);
+        app(DailyReportGenerator::class)->generate($task->fresh());
+        $task = $task->fresh();
+
+        $this->assertMoney('15.20', $task->total_merchant_fee); // 14.80 + 0.40% × 100
+        $this->assertMoney('9.19', $task->total_provider_cost); // 8.99 + 0.20% × 100
+        $this->assertSame(1, $task->summary_data['merchant_fee']['wallet']['count']);
+        $this->assertMoney('0.40', $task->summary_data['merchant_fee']['wallet']['fee']);
+    }
+
+    public function test_settlement_fx_markup_applies_only_outside_the_settlement_currency()
+    {
+        $this->eurUsdRate('2026-09-01', '1.10');
+        $merchant = $this->merchantWithTariff(['crypto_provider_id' => $this->oxen()->id, 'fee_settlement_fx_percent' => 0.2]);
+        $bank = $this->cardaq(['cost_settlement_fx_percent' => 0.1]);
+
+        // USD MID: converted to EUR on settlement → 0.20% × (350 − 30) = 0.64 charged, 0.32 paid.
+        $usd = $this->ingestPair($this->mid($merchant, $bank, $this->corefy(), ['currency' => Currency::Usd]), $this->cardaqCsv(currency: 'USD'))->fresh();
+        $this->assertMoney('15.44', $usd->total_merchant_fee);
+        $this->assertMoney('9.31', $usd->total_provider_cost);
+        $this->assertMoney('0.64', $usd->summary_data['merchant_fee']['fx_markup']);
+    }
+
+    public function test_no_fx_markup_on_a_eur_mid()
+    {
+        $merchant = $this->merchantWithTariff(['crypto_provider_id' => $this->oxen()->id, 'fee_settlement_fx_percent' => 0.2]);
+        $task = $this->ingestPair($this->mid($merchant, $this->cardaq(['cost_settlement_fx_percent' => 0.1]), $this->corefy()), $this->cardaqCsv())->fresh();
+
+        $this->assertWorkedExample($task);
+        $this->assertMoney('0.00', $task->summary_data['merchant_fee']['fx_markup']);
+    }
+
+    public function test_merchant_wide_reserve_cap_stops_holding_and_pays_the_rest_out()
+    {
+        $merchant = $this->merchantWithTariff(['rolling_reserve_cap' => 995]);
+        $mid = $this->mid($merchant, $this->cardaq(), $this->corefy());
+        ReserveLedgerEntry::query()->create([
+            'merchant_id' => $merchant->id, 'merchant_mid_id' => $mid->id, 'currency' => 'EUR',
+            'type' => ReserveEntryType::Hold, 'amount' => '990.00',
+        ]);
+
+        $task = $this->ingestPair($mid, $this->cardaqCsv())->fresh();
+
+        $this->assertMoney('5.00', $task->reserve_amount); // 995 − 990 left under the cap
+        $this->assertMoney('300.20', $task->net_volume); // the rest of 305.20 is paid out
     }
 }

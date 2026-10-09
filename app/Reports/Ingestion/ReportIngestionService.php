@@ -241,6 +241,7 @@ class ReportIngestionService
             'card_last4' => $row->cardLast4,
             'customer_email' => $row->email,
             'ips' => $row->ips,
+            'wallet' => $row->wallet,
             'region' => $row->region,
             'issuer_country' => $row->issuerCountry,
             'issuer_name' => $row->issuerName,

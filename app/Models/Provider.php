@@ -26,8 +26,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name', 'code', 'type', 'is_active', 'logo_path',
     'report_format', 'connector', 'timezone', 'report_delay_days', 'matching',
     'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
-    'cost_acq_eu_percent', 'cost_acq_non_eu_percent',
-    'cost_success_fixed', 'cost_decline_fixed', 'cost_refund_fixed', 'cost_chargeback_fixed', 'cost_crypto_percent',
+    'cost_acq_eu_percent', 'cost_acq_non_eu_percent', 'cost_wallet_percent',
+    'cost_success_fixed', 'cost_decline_fixed', 'cost_refund_fixed', 'cost_chargeback_fixed', 'cost_crypto_percent', 'cost_settlement_fx_percent',
     'settlement_fee', 'settlement_cycle', 'min_settlement',
     'rolling_reserve_percent', 'rolling_reserve_days', 'rolling_reserve_cap', 'notes',
 ])]
@@ -39,6 +39,7 @@ class Provider extends Model
     public const PERCENT_FIELDS = [
         'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
         'cost_acq_eu_percent', 'cost_acq_non_eu_percent', 'cost_crypto_percent', 'rolling_reserve_percent',
+        'cost_wallet_percent', 'cost_settlement_fx_percent',
     ];
 
     public const FIXED_FIELDS = [

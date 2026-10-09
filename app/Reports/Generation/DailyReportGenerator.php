@@ -132,10 +132,28 @@ class DailyReportGenerator
             $merchantFixedFee = $merchantFixedFee->plus($total);
             $fixedLines[$name] = ['count' => $ops->count(), 'unit' => (string) $unit, 'total' => (string) $this->round($total)];
         }
-        $merchantFee = $this->round($merchantPercentFee->plus($merchantFixedFee));
+
+        // Settlement FX markup: a MID outside the settlement currency is
+        // converted by the acquirer, on what it settles (sales less
+        // refunds and chargebacks). We charge the merchant and the
+        // acquirer charges us, both on the same amount.
+        $settled = BigDecimal::max(BigDecimal::zero(), $turnover->minus($refundsAmount)->minus($chargebacksAmount));
+        $fxApplies = $currency !== config('sterling.settlement_currency');
+        $fxFee = $fxApplies ? $this->round($this->percentAmount($settled, $fee->percent('settlement_fx'))) : BigDecimal::zero();
+        $fxCost = $fxApplies && $mid->bankProvider
+            ? $this->round($this->percentAmount($settled, Tariff::provider($mid->bankProvider)->percent('settlement_fx')))
+            : BigDecimal::zero();
+
+        $walletSales = $sales->filter(fn (MerchantOperation $op) => $op->wallet !== null);
+        $walletFee = $this->round($walletSales->reduce(
+            fn (BigDecimal $c, MerchantOperation $op) => $c->plus($this->percentAmount(BigDecimal::of($op->amount)->abs(), $fee->percent('wallet'))),
+            BigDecimal::zero(),
+        ));
+
+        $merchantFee = $this->round($merchantPercentFee->plus($merchantFixedFee)->plus($fxFee));
 
         // What the providers charge us, each on its own operations.
-        $bankCost = $this->providerCost($mid->bankProvider, $bankOps);
+        $bankCost = $this->providerCost($mid->bankProvider, $bankOps)->plus($fxCost);
         $gateCost = $mid->gateProvider ? $this->providerCost($mid->gateProvider, $gateOps) : BigDecimal::zero();
 
         // Rolling reserve, capped by what's left under the MID limit.
@@ -161,7 +179,7 @@ class DailyReportGenerator
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
@@ -198,11 +216,20 @@ class DailyReportGenerator
                         'percent' => (string) $this->round($merchantPercentFee),
                         'fixed' => (string) $this->round($merchantFixedFee),
                         'fixed_lines' => $fixedLines,
+                        'fx_markup' => (string) $fxFee,
+                        'fx_markup_percent' => $fxApplies ? (string) $fee->percent('settlement_fx') : '0',
+                        'wallet' => [
+                            'count' => $walletSales->count(),
+                            'amount' => (string) $this->sum($walletSales),
+                            'percent' => (string) $fee->percent('wallet'),
+                            'fee' => (string) $walletFee,
+                        ],
                         'conversion_percent' => (string) $fee->percent('fiat_to_crypto'),
                         'reserve_percent' => (string) ($merchant->rolling_reserve_percent ?? 0),
                     ],
                     'provider_cost' => [
                         'bank' => (string) $bankCost,
+                        'fx_markup' => (string) $fxCost,
                         'gate' => (string) $gateCost,
                         'crypto' => (string) $cryptoCost,
                     ],
@@ -255,6 +282,11 @@ class DailyReportGenerator
         return $this->round($ops->reduce(fn (BigDecimal $c, MerchantOperation $op) => $c->plus(BigDecimal::of($op->amount)->abs()), BigDecimal::zero()));
     }
 
+    private function percentAmount(BigDecimal $amount, BigDecimal $percent): BigDecimal
+    {
+        return $amount->multipliedBy($percent)->dividedBy(100, 8, RoundingMode::HalfUp);
+    }
+
     private function round(BigDecimal $value): BigDecimal
     {
         return $value->toScale(self::SCALE, RoundingMode::HalfUp);
@@ -266,17 +298,27 @@ class DailyReportGenerator
      */
     private function capReserve(DailyReportTask $task, BigDecimal $reserve): BigDecimal
     {
+        $others = fn () => ReserveLedgerEntry::query()
+            ->where(fn ($q) => $q->whereNull('daily_report_task_id')->orWhere('daily_report_task_id', '!=', $task->id));
+
         $limit = BigDecimal::of($task->merchantMid->rolling_reserve_limit ?? 0);
-        if (! $limit->isPositive()) {
-            return $reserve;
+        if ($limit->isPositive()) {
+            $balance = BigDecimal::of((string) $others()->where('merchant_mid_id', $task->merchant_mid_id)->sum('amount'));
+            $reserve = BigDecimal::min($reserve, BigDecimal::max(BigDecimal::zero(), $limit->minus($balance)));
         }
 
-        $balance = BigDecimal::of((string) ReserveLedgerEntry::query()
-            ->where('merchant_mid_id', $task->merchant_mid_id)
-            ->where(fn ($q) => $q->whereNull('daily_report_task_id')->orWhere('daily_report_task_id', '!=', $task->id))
-            ->sum('amount'));
+        // Merchant-wide cap (Appendix 1: maximum reserve balance): once the
+        // balance reaches it nothing more is held and the rest is paid out.
+        $cap = BigDecimal::of($task->merchantMid->merchant->rolling_reserve_cap ?? 0);
+        if ($cap->isPositive()) {
+            $balance = BigDecimal::of((string) $others()
+                ->where('merchant_id', $task->merchant_id)
+                ->where('currency', $task->merchantMid->currency->value)
+                ->sum('amount'));
+            $reserve = BigDecimal::min($reserve, BigDecimal::max(BigDecimal::zero(), $cap->minus($balance)));
+        }
 
-        return BigDecimal::min($reserve, BigDecimal::max(BigDecimal::zero(), $limit->minus($balance)))->toScale(self::SCALE, RoundingMode::HalfUp);
+        return $reserve->toScale(self::SCALE, RoundingMode::HalfUp);
     }
 
     /**

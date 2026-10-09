@@ -39,7 +39,10 @@ class ProviderRequest extends FormRequest
             'cost_mastercard_non_eu_percent' => $nullablePercent,
             ...array_fill_keys(array_diff(Provider::PERCENT_FIELDS, [
                 'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
+                'cost_wallet_percent', 'cost_settlement_fx_percent',
             ]), $percent),
+            'cost_wallet_percent' => $nullablePercent,
+            'cost_settlement_fx_percent' => $nullablePercent,
             ...array_fill_keys(Provider::FIXED_FIELDS, $fixed),
             'settlement_cycle' => ['nullable', 'string', 'max:32'],
             'rolling_reserve_days' => ['required', 'integer', 'min:0', 'max:3650'],
@@ -72,6 +75,13 @@ class ProviderRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        // Optional surcharges: empty means none.
+        foreach (['cost_wallet_percent', 'cost_settlement_fx_percent'] as $field) {
+            if (! $this->filled($field)) {
+                $this->merge([$field => 0]);
+            }
+        }
+
         $matching = $this->input('matching');
         if (is_string($matching)) {
             $decoded = trim($matching) === '' ? null : json_decode($matching, true);

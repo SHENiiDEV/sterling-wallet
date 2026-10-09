@@ -952,8 +952,34 @@ function TariffCard({ merchant }: { merchant: Merchant }) {
                         />
                     )}
                 </dl>
+                <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
+                    <Stat
+                        label="Apple/Google Pay"
+                        value={`+${Number(merchant.fee_wallet_percent)}%`}
+                    />
+                    <Stat
+                        label="Settlement FX"
+                        value={`${Number(merchant.fee_settlement_fx_percent)}%`}
+                    />
+                    <Stat
+                        label="Settlement charge"
+                        value={Number(merchant.fee_settlement_fixed).toString()}
+                    />
+                    <Stat
+                        label="Max reserve"
+                        value={
+                            merchant.rolling_reserve_cap === null
+                                ? '—'
+                                : Number(
+                                      merchant.rolling_reserve_cap,
+                                  ).toString()
+                        }
+                    />
+                </dl>
                 <p className="mt-3 text-xs text-muted-foreground">
                     Fixed fees are charged in each MID's currency.
+                    {merchant.settlement_terms &&
+                        ` Settlement: ${merchant.settlement_terms}.`}
                 </p>
             </div>
         </section>

@@ -6,6 +6,7 @@ use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReserveEntryType;
 use App\Models\DailyReportTask;
+use App\Models\Merchant;
 use App\Models\MerchantOperation;
 use App\Models\ReserveLedgerEntry;
 use App\Support\PdfRenderer;
@@ -53,6 +54,9 @@ class DailyStatement
         $fee = $this->dec($task->total_merchant_fee);
         $percentFee = $this->dec($summary['merchant_fee']['percent'] ?? $task->total_merchant_fee);
         $fixedFee = $this->dec($summary['merchant_fee']['fixed'] ?? 0);
+        $fxFee = $this->dec($summary['merchant_fee']['fx_markup'] ?? 0);
+        $fxPercent = $summary['merchant_fee']['fx_markup_percent'] ?? '0';
+        $wallet = $summary['merchant_fee']['wallet'] ?? null;
         $reserve = $this->dec($task->reserve_amount);
         $netVolume = $this->dec($task->net_volume);
         $conversion = $this->dec($task->conversion_fee);
@@ -78,6 +82,7 @@ class DailyStatement
             ['kind' => 'plus', 'label' => 'Gross sales', 'detail' => $count('sales').' approved '.($count('sales') === 1 ? 'sale' : 'sales'), 'amount' => $turnover],
             ['kind' => 'minus', 'label' => 'Processing fee', 'detail' => 'Card scheme rates · table A', 'amount' => $percentFee->negated()],
             ['kind' => 'minus', 'label' => 'Transaction fees', 'detail' => 'Success · decline · refund · chargeback · table B', 'amount' => $fixedFee->negated()],
+            ...($fxFee->isZero() ? [] : [['kind' => 'minus', 'label' => 'Settlement FX markup', 'detail' => PdfRenderer::percent($fxPercent).' on the amount converted to '.config('sterling.settlement_currency'), 'amount' => $fxFee->negated()]]),
             ['kind' => 'minus', 'label' => 'Refunds', 'detail' => $count('refunds').' refunded', 'amount' => $refunds->negated()],
             ['kind' => 'minus', 'label' => 'Chargebacks', 'detail' => $count('chargebacks').' disputed', 'amount' => $chargebacks->negated()],
             ['kind' => 'subtotal', 'label' => 'Net after fees', 'detail' => null, 'amount' => $afterFees],
@@ -102,6 +107,13 @@ class DailyStatement
             'steps' => $steps,
             'schemes' => $this->schemes($summary['by_scheme'] ?? [], $tariff, $currency),
             'percentFee' => $percentFee,
+            'wallet' => $wallet && (int) $wallet['count'] > 0 ? [
+                'count' => (int) $wallet['count'],
+                'amount' => $this->dec($wallet['amount']),
+                'percent' => BigDecimal::of($wallet['percent']),
+                'fee' => $this->dec($wallet['fee']),
+            ] : null,
+            'terms' => $this->terms($merchant, $currency),
             'transactionFees' => $transactionFees,
             'fixedFee' => $fixedFee,
             'counts' => [
@@ -123,6 +135,33 @@ class DailyStatement
             'operations' => $operations,
             'operationsTotal' => $operationsTotal,
         ];
+    }
+
+    /**
+     * Commercial terms of the merchant printed under the statement.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function terms(Merchant $merchant, string $currency): array
+    {
+        $money = fn (mixed $value) => PdfRenderer::money($this->dec($value), $currency);
+        $terms = [];
+
+        if ($merchant->rolling_reserve_percent !== null) {
+            $terms[] = ['Rolling reserve', PdfRenderer::percent($merchant->rolling_reserve_percent).' for '.($merchant->rolling_reserve_days ?? 0).' days'
+                .($merchant->rolling_reserve_cap ? ', held up to '.$money($merchant->rolling_reserve_cap) : '')];
+        }
+        if (BigDecimal::of($merchant->fee_settlement_fixed ?? 0)->isPositive()) {
+            $terms[] = ['Settlement charge', $money($merchant->fee_settlement_fixed).' per settlement'];
+        }
+        if ($merchant->min_settlement_amount) {
+            $terms[] = ['Minimum settlement', $money($merchant->min_settlement_amount)];
+        }
+        if ($merchant->settlement_terms) {
+            $terms[] = ['Settlement', $merchant->settlement_terms];
+        }
+
+        return $terms;
     }
 
     /**

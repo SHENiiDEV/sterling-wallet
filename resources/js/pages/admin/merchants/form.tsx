@@ -80,6 +80,15 @@ export default function MerchantForm({
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
         fee_chargeback_fixed: str(merchant?.fee_chargeback_fixed, '0'),
         fee_collab_fixed: str(merchant?.fee_collab_fixed),
+        fee_wallet_percent: str(merchant?.fee_wallet_percent, '0'),
+        fee_settlement_fx_percent: str(
+            merchant?.fee_settlement_fx_percent,
+            '0',
+        ),
+        fee_settlement_fixed: str(merchant?.fee_settlement_fixed, '0'),
+        min_settlement_amount: str(merchant?.min_settlement_amount),
+        rolling_reserve_cap: str(merchant?.rolling_reserve_cap),
+        settlement_terms: merchant?.settlement_terms ?? '',
         fee_fiat_to_crypto_percent: str(
             merchant?.fee_fiat_to_crypto_percent,
             String(defaults.fee_fiat_to_crypto_percent),
@@ -342,6 +351,12 @@ export default function MerchantForm({
                                 'fee_mastercard_non_eu_percent',
                                 'Mastercard non-EU',
                             )}
+                            {input(
+                                'fee_wallet_percent',
+                                'Apple Pay / Google Pay',
+                                '%',
+                                'Added to the card rate on wallet payments',
+                            )}
                         </FormSection>
 
                         <FormSection
@@ -400,11 +415,52 @@ export default function MerchantForm({
                                 />
                             </Field>
                             {input(
+                                'rolling_reserve_cap',
+                                'Max reserve balance',
+                                'cap',
+                                'Once held, nothing more is reserved and the rest is paid out. Empty = no cap',
+                            )}
+                            {input(
                                 'fee_fiat_to_crypto_percent',
                                 'Conversion fee',
                                 '%',
                                 'Charged on the net payout',
                             )}
+                            {input(
+                                'fee_settlement_fx_percent',
+                                'Settlement FX markup',
+                                '%',
+                                'On MIDs outside EUR, which the acquirer converts',
+                            )}
+                            {input(
+                                'fee_settlement_fixed',
+                                'Settlement charge',
+                                'per settlement',
+                                'Deducted from the payout when a settlement is created',
+                            )}
+                            {input(
+                                'min_settlement_amount',
+                                'Minimum settlement',
+                                'min',
+                                'For reference, not enforced',
+                            )}
+                            <Field
+                                label="Settlement terms"
+                                htmlFor="settlement_terms"
+                                error={errors.settlement_terms}
+                                hint="Printed on the daily report, e.g. Daily, T+3 Business Days"
+                            >
+                                <Input
+                                    id="settlement_terms"
+                                    value={data.settlement_terms}
+                                    onChange={(e) =>
+                                        setData(
+                                            'settlement_terms',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
                             <Field
                                 label="Crypto provider"
                                 error={errors.crypto_provider_id}
