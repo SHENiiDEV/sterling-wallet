@@ -151,7 +151,7 @@ class CommercialOfferController extends Controller
                 'mcc' => $offer->mcc,
                 'invoice_email' => $offer->contact_email,
                 'notes' => "Created from offer {$offer->number}.",
-                ...$offer->only(CommercialOffer::TARIFF_FIELDS),
+                ...$offer->only([...CommercialOffer::TARIFF_FIELDS, 'rolling_reserve_cap', 'settlement_terms']),
             ]);
             $offer->update(['status' => OfferStatus::Accepted, 'decided_at' => now(), 'merchant_id' => $merchant->id]);
             AuditLogger::log('offer.accepted', $offer, ['merchant' => $merchant->public_id, 'by' => $request->user()->id]);

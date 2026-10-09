@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $card_last4
  * @property string|null $customer_email
  * @property string|null $ips
+ * @property string|null $wallet
  * @property string|null $region
  * @property array<string, mixed>|null $raw
  * @property OperationType $operation_type
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'merchant_id', 'merchant_mid_id', 'provider_id', 'role', 'mid', 'merchant_name',
     'payment_id', 'sp_id', 'matched_operation_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'card_bin', 'card_last4', 'customer_email',
-    'ips', 'region', 'issuer_country', 'issuer_name',
+    'ips', 'wallet', 'region', 'issuer_country', 'issuer_name',
     'trn_type', 'operation_type', 'processing_code', 'resolution',
     'report_date', 'transaction_at', 'processing_at', 'amount', 'currency',
     'eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee', 'raw',

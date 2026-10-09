@@ -124,6 +124,20 @@ final class Values
      * Card scheme as `visa` / `mastercard` / other lowercase name; falls back
      * to the BIN range when the file has no usable brand column.
      */
+    /**
+     * Apple Pay / Google Pay marker of a "wallet" or "payment method" cell.
+     */
+    public static function wallet(mixed $value): ?string
+    {
+        $value = strtolower(self::text($value) ?? '');
+
+        return match (true) {
+            str_contains($value, 'apple') => 'apple_pay',
+            str_contains($value, 'google'), str_contains($value, 'gpay') => 'google_pay',
+            default => null,
+        };
+    }
+
     public static function ips(mixed $value, ?string $bin = null): ?string
     {
         $value = strtolower(self::text($value) ?? '');

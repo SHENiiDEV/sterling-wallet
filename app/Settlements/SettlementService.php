@@ -158,6 +158,9 @@ class SettlementService
     {
         $settlement = $line->settlement;
         $this->assertEditable($settlement);
+        if ($line->type === SettlementLineType::Fee) {
+            throw ValidationException::withMessages(['settlement' => 'The settlement charge follows the merchant terms; waive it with a positive adjustment.']);
+        }
         $line->delete();
         $this->recalculate($settlement);
     }
@@ -180,6 +183,7 @@ class SettlementService
     public function recalculate(Settlement $settlement): Settlement
     {
         $settlement->refresh();
+        $this->syncFee($settlement);
         $rates = $settlement->rates ?? [];
         $today = CarbonImmutable::now();
 
@@ -205,6 +209,34 @@ class SettlementService
         $settlement->update(['rates' => $rates, 'total_payout' => (string) $total]);
 
         return $settlement->refresh();
+    }
+
+    /**
+     * The merchant's fixed charge per settlement: one negative line while
+     * the draft pays anything out, none for an empty draft.
+     */
+    private function syncFee(Settlement $settlement): void
+    {
+        if (! $settlement->isEditable()) {
+            return;
+        }
+
+        $charge = BigDecimal::of($settlement->merchant->fee_settlement_fixed ?? 0);
+        $paysOut = $settlement->lines()->whereIn('type', [SettlementLineType::Report, SettlementLineType::ReserveRelease])->exists();
+        $line = $settlement->lines()->where('type', SettlementLineType::Fee)->first();
+
+        if (! $charge->isPositive() || ! $paysOut) {
+            $line?->delete();
+
+            return;
+        }
+
+        $values = [
+            'description' => 'Settlement charge',
+            'currency' => config('sterling.settlement_currency'),
+            'amount' => (string) $charge->negated(),
+        ];
+        $line ? $line->update($values) : $settlement->lines()->create(['type' => SettlementLineType::Fee, ...$values]);
     }
 
     /**

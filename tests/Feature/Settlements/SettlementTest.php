@@ -4,6 +4,7 @@ namespace Tests\Feature\Settlements;
 
 use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
+use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
 use App\Models\DailyReportTask;
 use App\Models\FxRate;
@@ -23,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsReportFixtures;
 use Tests\TestCase;
@@ -286,5 +288,33 @@ class SettlementTest extends TestCase
         ])->assertRedirect()->assertInertiaFlash('toast.type', 'success');
 
         $this->assertSame(4, $this->mid->operations()->count());
+    }
+
+    public function test_settlement_charge_is_deducted_once_per_settlement()
+    {
+        $this->merchant->update(['fee_settlement_fixed' => 60]);
+        $this->report();
+        $service = app(SettlementService::class);
+
+        $settlement = $service->createDraft($this->merchant, $this->admin);
+
+        $fee = $settlement->lines()->where('type', SettlementLineType::Fee)->sole();
+        $this->assertMoney('-60', $fee->amount);
+        $this->assertSame('EUR', $fee->currency);
+
+        // Recalculating does not stack the charge, and it cannot be removed by hand.
+        $service->recalculate($settlement);
+        $this->assertSame(1, $settlement->lines()->where('type', SettlementLineType::Fee)->count());
+        $this->expectException(ValidationException::class);
+        $service->removeLine($fee);
+    }
+
+    public function test_empty_settlement_has_no_charge()
+    {
+        $this->merchant->update(['fee_settlement_fixed' => 60]);
+
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+
+        $this->assertSame(0, $settlement->lines()->count());
     }
 }

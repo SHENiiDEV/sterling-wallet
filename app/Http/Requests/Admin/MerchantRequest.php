@@ -38,6 +38,12 @@ class MerchantRequest extends FormRequest
             'fee_mastercard_non_eu_percent' => $cardPercent,
             'fee_fiat_to_crypto_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'rolling_reserve_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'fee_wallet_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'fee_settlement_fx_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'fee_settlement_fixed' => ['required', 'numeric', 'min:0', 'max:1000000'],
+            'min_settlement_amount' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
+            'rolling_reserve_cap' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
+            'settlement_terms' => ['nullable', 'string', 'max:255'],
             'fee_collab_fixed' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             ...array_fill_keys(Merchant::FIXED_FIELDS, ['required', 'numeric', 'min:0', 'max:1000000']),
             'rolling_reserve_days' => ['required', 'integer', 'min:0', 'max:3650'],
@@ -74,6 +80,13 @@ class MerchantRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // Optional charges: empty means none.
+        foreach (['fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed'] as $field) {
+            if (! $this->filled($field)) {
+                $this->merge([$field => 0]);
+            }
+        }
+
         foreach (self::SCHEME_FIELDS as $field) {
             $value = $this->input($field);
             if (! is_string($value)) {

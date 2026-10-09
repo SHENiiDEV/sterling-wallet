@@ -93,6 +93,8 @@ export type Provider = {
     cost_refund_fixed: string;
     cost_chargeback_fixed: string;
     cost_crypto_percent: string;
+    cost_wallet_percent: string;
+    cost_settlement_fx_percent: string;
     settlement_fee: string;
     settlement_cycle: string | null;
     min_settlement: string;
@@ -173,6 +175,12 @@ export type Merchant = {
     fee_chargeback_fixed: string;
     fee_collab_fixed: string | null;
     fee_fiat_to_crypto_percent: string;
+    fee_wallet_percent: string;
+    fee_settlement_fx_percent: string;
+    fee_settlement_fixed: string;
+    min_settlement_amount: string | null;
+    rolling_reserve_cap: string | null;
+    settlement_terms: string | null;
     rolling_reserve_percent: string;
     rolling_reserve_days: number;
     invoice_email: string | null;

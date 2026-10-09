@@ -38,14 +38,14 @@ class SettlementStatementPdf
             ->map(fn (Collection $group, string $currency) => $this->reportGroup($group, $currency));
 
         $releases = $lines->where('type', SettlementLineType::ReserveRelease)->values();
-        $adjustments = $lines->where('type', SettlementLineType::Adjustment)->values();
+        $adjustments = $lines->whereIn('type', [SettlementLineType::Adjustment, SettlementLineType::Fee])->values();
 
         // Per currency: what the lines add up to, the rate, and the payout.
         $conversion = $lines->groupBy('currency')->map(fn (Collection $group, string $currency) => [
             'currency' => $currency,
             'reports' => $this->sum($group->where('type', SettlementLineType::Report), 'amount'),
             'releases' => $this->sum($group->where('type', SettlementLineType::ReserveRelease), 'amount'),
-            'adjustments' => $this->sum($group->where('type', SettlementLineType::Adjustment), 'amount'),
+            'adjustments' => $this->sum($group->whereIn('type', [SettlementLineType::Adjustment, SettlementLineType::Fee]), 'amount'),
             'amount' => $this->sum($group, 'amount'),
             'rate' => $settlement->rates[$currency] ?? null,
             'payout' => $this->sum($group, 'amount_payout'),

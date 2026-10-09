@@ -11,6 +11,7 @@ enum SettlementLineType: string
     case Report = 'report';
     case ReserveRelease = 'reserve_release';
     case Adjustment = 'adjustment';
+    case Fee = 'fee';
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum SettlementLineType: string
             self::Report => 'Daily report',
             self::ReserveRelease => 'Reserve release',
             self::Adjustment => 'Adjustment',
+            self::Fee => 'Settlement charge',
         };
     }
 }

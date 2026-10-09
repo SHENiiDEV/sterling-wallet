@@ -111,6 +111,15 @@
                                 <td class="num">{{ $money($row['fee']) }}</td>
                             </tr>
                         @endforeach
+                        @if ($wallet)
+                            <tr class="muted">
+                                <td>incl. Apple Pay / Google Pay {{ '+'.$percent($wallet['percent']) }}</td>
+                                <td class="num">{{ $wallet['count'] }}</td>
+                                <td class="num">{{ $money($wallet['amount']) }}</td>
+                                <td></td>
+                                <td class="num">{{ $money($wallet['fee']) }}</td>
+                            </tr>
+                        @endif
                         <tr class="sub">
                             <td>Total</td>
                             <td class="num">{{ array_sum(array_column($schemes, 'count')) }}</td>
@@ -152,6 +161,19 @@
             </td>
         </tr>
     </table>
+
+    @if ($terms !== [])
+        <table class="grid" style="margin-top: 12px">
+            <tbody>
+                @foreach ($terms as [$label, $value])
+                    <tr>
+                        <td>{{ $label }}</td>
+                        <td class="num">{{ $value }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @endif
 
     <div class="note">
         The net payout is added to your balance and paid out with the next settlement statement.

@@ -27,7 +27,8 @@ final readonly class Tariff
     /**
      * Percent for a sale: Visa / Mastercard × EU / non-EU, falling back to
      * the acquiring (card-agnostic) rate when the scheme rate isn't set.
-     * An unknown region is priced as non-EU.
+     * An unknown region is priced as non-EU. Apple Pay / Google Pay add
+     * the wallet surcharge.
      */
     public function percentFor(MerchantOperation $op): BigDecimal
     {
@@ -40,8 +41,10 @@ final readonly class Tariff
 
         $value = $scheme ? $this->source->getAttribute("{$this->prefix}{$scheme}_{$region}_percent") : null;
         $value ??= $this->source->getAttribute("{$this->prefix}acq_{$region}_percent");
+        $percent = BigDecimal::of($value ?? 0);
 
-        return BigDecimal::of($value ?? 0);
+        // Apple Pay / Google Pay come on top of the card rate.
+        return $op->wallet ? $percent->plus($this->percent('wallet')) : $percent;
     }
 
     public function fixed(string $name): BigDecimal

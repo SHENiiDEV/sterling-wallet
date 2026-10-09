@@ -5,11 +5,13 @@ namespace App\Profit;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
+use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
+use App\Models\SettlementLine;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -44,18 +46,38 @@ class ProfitQuery
             .'count(*) as reports, coalesce(sum(sales_count), 0) as sales',
         )->first();
 
+        // Settlement charges are pure revenue (no provider cost), booked
+        // on the settlement in the base currency.
+        $settlementFees = $this->settlementFees($from, $to);
+
         $turnover = (float) $row->turnover;
-        $profit = (float) $row->net_profit;
+        $profit = (float) $row->net_profit + $settlementFees;
 
         return [
             'turnover' => round($turnover, 2),
-            'revenue' => round((float) $row->revenue, 2),
+            'revenue' => round((float) $row->revenue + $settlementFees, 2),
+            'settlement_fees' => round($settlementFees, 2),
             'cost' => round((float) $row->cost, 2),
             'net_profit' => round($profit, 2),
             'margin' => $turnover > 0 ? round($profit / $turnover * 100, 2) : null,
             'reports' => (int) $row->reports,
             'sales' => (int) $row->sales,
         ];
+    }
+
+    /**
+     * Charges taken per settlement, in the base currency, for settlements
+     * created in the period (cancelled ones excluded).
+     */
+    private function settlementFees(CarbonImmutable $from, CarbonImmutable $to): float
+    {
+        return abs((float) SettlementLine::query()
+            ->where('type', SettlementLineType::Fee)
+            ->where('currency', config('sterling.base_currency'))
+            ->whereHas('settlement', fn (Builder $q) => $q
+                ->whereIn('status', SettlementStatus::active())
+                ->whereBetween('created_at', [$from->startOfDay(), $to->endOfDay()]))
+            ->sum('amount'));
     }
 
     /**

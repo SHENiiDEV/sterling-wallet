@@ -61,6 +61,11 @@ export default function ProviderForm({
         cost_refund_fixed: str(provider?.cost_refund_fixed, '0'),
         cost_chargeback_fixed: str(provider?.cost_chargeback_fixed, '0'),
         cost_crypto_percent: str(provider?.cost_crypto_percent, '0'),
+        cost_wallet_percent: str(provider?.cost_wallet_percent, '0'),
+        cost_settlement_fx_percent: str(
+            provider?.cost_settlement_fx_percent,
+            '0',
+        ),
         settlement_fee: str(provider?.settlement_fee, '0'),
         settlement_cycle: provider?.settlement_cycle ?? '',
         min_settlement: str(provider?.min_settlement, '0'),
@@ -376,6 +381,16 @@ export default function ProviderForm({
                                 {percent(
                                     'cost_acq_non_eu_percent',
                                     'Fallback non-EU',
+                                )}
+                                {percent(
+                                    'cost_wallet_percent',
+                                    'Apple Pay / Google Pay',
+                                    'Added to the card rate on wallet payments',
+                                )}
+                                {percent(
+                                    'cost_settlement_fx_percent',
+                                    'Settlement FX markup',
+                                    'Charged when a MID is converted to the settlement currency (EUR)',
                                 )}
                             </FormSection>
                             <FormSection
