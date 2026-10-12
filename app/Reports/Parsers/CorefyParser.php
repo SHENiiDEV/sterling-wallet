@@ -19,7 +19,7 @@ class CorefyParser extends HeaderMappedParser
         $status = strtolower((string) $attributes['processingCode']);
 
         // Invoices still in flight are not operations yet.
-        if (in_array($status, ['created', 'processing', 'pending', 'new'], true)) {
+        if (in_array($status, ['created', 'processing', 'pending', 'process_pending', 'new'], true)) {
             return null;
         }
 

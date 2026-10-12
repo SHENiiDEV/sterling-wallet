@@ -104,6 +104,27 @@ class ParserTest extends TestCase
         $this->assertSame(OperationType::Sale, MerchantOperation::classify(['trn_type' => 'DEPOSIT', 'amount' => '179', 'resolution' => 'COMPLETED']));
     }
 
+    public function test_corefy_export_reads_account_payer_and_skips_pending_invoices()
+    {
+        $file = $this->csvFile([
+            ['created', 'updated', 'id', 'reference_id', 'service_method', 'amount', 'currency', 'status', 'account', 'resolution', 'payer', 'issuer_country', 'payment_card_issuer_name'],
+            ['2026-10-08 09:47:53', '2026-10-08 09:48:10', 'cpi_1', 'pay_1', 'payment_card', '88.00', 'EUR', 'processed', 'coma_d91', 'ok', '523641******0410', 'PT', 'BANK A'],
+            ['2026-10-08 12:42:12', '2026-10-08 12:43:00', 'cpi_2', 'pay_2', 'payment_card', '48.00', 'EUR', 'process_failed', 'coma_d91', 'issuer_decline', '431947******3361', 'IE', 'BANK B'],
+            ['2026-10-06 08:00:46', '2026-10-06 08:00:50', 'cpi_3', 'order_mc_1', 'payment_card', '5.01', 'EUR', 'process_pending', 'coma_d91', 'ok', '535456******1378', 'LV', 'BANK C'],
+            ['2026-10-07 13:38:33', '2026-10-07 13:39:00', 'cpi_4', 'pay_4', 'payment_card', '26.50', 'EUR', 'refunded', 'coma_d91', 'ok', '549619******2297', 'ES', 'BANK D'],
+        ], 'corefy.csv');
+
+        $rows = $this->parse('corefy', $file);
+
+        $this->assertCount(3, $rows); // the pending invoice is not an operation yet
+        $this->assertSame(['coma_d91', 'cpi_1', '88.00', 'EUR', '523641', '0410', 'mastercard', 'eu'], [
+            $rows[0]->mid, $rows[0]->paymentId, $rows[0]->amount, $rows[0]->currency, $rows[0]->cardBin, $rows[0]->cardLast4, $rows[0]->ips, $rows[0]->region,
+        ]);
+        $this->assertSame(OperationType::Decline, MerchantOperation::classify(['amount' => $rows[1]->amount, 'resolution' => $rows[1]->resolution, 'processing_code' => $rows[1]->processingCode]));
+        // A refunded payment was approved at the gateway: it still counts as a sale there.
+        $this->assertSame(OperationType::Sale, MerchantOperation::classify(['amount' => $rows[2]->amount, 'resolution' => $rows[2]->resolution, 'processing_code' => $rows[2]->processingCode]));
+    }
+
     public function test_a_file_without_a_recognisable_header_yields_nothing()
     {
         $rows = $this->parse('cardaq', $this->csvFile([['hello', 'world'], ['1', '2']]));
