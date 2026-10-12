@@ -121,10 +121,6 @@ final class Values
     }
 
     /**
-     * Card scheme as `visa` / `mastercard` / other lowercase name; falls back
-     * to the BIN range when the file has no usable brand column.
-     */
-    /**
      * Apple Pay / Google Pay marker of a "wallet" or "payment method" cell.
      */
     public static function wallet(mixed $value): ?string
@@ -138,6 +134,10 @@ final class Values
         };
     }
 
+    /**
+     * Card scheme as `visa` / `mastercard` / other lowercase name; falls back
+     * to the BIN range when the file has no usable brand column.
+     */
     public static function ips(mixed $value, ?string $bin = null): ?string
     {
         $value = strtolower(self::text($value) ?? '');
@@ -169,10 +169,10 @@ final class Values
     {
         $value = strtolower(preg_replace('/[^A-Za-z]/', '', (string) $value) ?? '');
         if ($value !== '') {
-            if (in_array($value, ['noneu', 'noneea', 'intl', 'international', 'interregional', 'nonsepa', 'row', 'outsideeu'], true)) {
+            if (in_array($value, ['noneu', 'noneea', 'intl', 'international', 'interregional', 'interregion', 'nonsepa', 'row', 'outsideeu'], true)) {
                 return 'non_eu';
             }
-            if (in_array($value, ['eu', 'eea', 'intra', 'intraregional', 'domestic', 'sepa', 'europe'], true)) {
+            if (in_array($value, ['eu', 'eea', 'intra', 'intraregional', 'intraregion', 'domestic', 'sepa', 'europe'], true)) {
                 return 'eu';
             }
         }

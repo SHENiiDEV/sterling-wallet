@@ -64,6 +64,8 @@ export type Company = {
     id: number;
     name: string;
     parent_id: number | null;
+    client_id: number | null;
+    client?: CompanyRef | null;
     parent?: CompanyRef | null;
     registration_number: string | null;
     country: string | null;
@@ -358,4 +360,12 @@ export type DocumentTemplate = {
     size: number;
     uploader: string | null;
     updated_at: string;
+};
+
+export type Client = {
+    id: number;
+    name: string;
+    invoice_email: string | null;
+    notes: string | null;
+    companies: CompanyRef[];
 };

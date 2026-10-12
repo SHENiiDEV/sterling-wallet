@@ -15,6 +15,9 @@ abstract class HeaderMappedParser implements ReportParser
     /** Rows scanned for the header line (reports often start with a title block). */
     protected const HEADER_SCAN_ROWS = 40;
 
+    /** Workbook sheets to read, by name, when the rows are not on the first one. */
+    protected const SHEETS = [];
+
     public function __construct(protected TabularReader $reader) {}
 
     abstract public function format(): string;
@@ -35,7 +38,7 @@ abstract class HeaderMappedParser implements ReportParser
         $headers = [];
         $scanned = 0;
 
-        foreach ($this->reader->rows($file) as $cells) {
+        foreach ($this->reader->rows($file, static::SHEETS) as $cells) {
             if ($columns === null) {
                 if (++$scanned > static::HEADER_SCAN_ROWS) {
                     return;

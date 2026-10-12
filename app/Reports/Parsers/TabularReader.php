@@ -16,11 +16,13 @@ use SplFileObject;
 class TabularReader
 {
     /**
+     * @param  list<string>  $sheets  workbook sheets that hold the rows, by name (any case); the
+     *                                first sheet when none matches. Ignored for CSV.
      * @return Generator<int, list<string|null>>
      */
-    public function rows(SplFileInfo $file): Generator
+    public function rows(SplFileInfo $file, array $sheets = []): Generator
     {
-        return $this->isSpreadsheet($file) ? $this->spreadsheetRows($file) : $this->csvRows($file);
+        return $this->isSpreadsheet($file) ? $this->spreadsheetRows($file, $sheets) : $this->csvRows($file);
     }
 
     private function isSpreadsheet(SplFileInfo $file): bool
@@ -91,9 +93,10 @@ class TabularReader
     }
 
     /**
+     * @param  list<string>  $sheets
      * @return Generator<int, list<string|null>>
      */
-    private function spreadsheetRows(SplFileInfo $file): Generator
+    private function spreadsheetRows(SplFileInfo $file, array $sheets = []): Generator
     {
         $reader = IOFactory::createReaderForFile($file->getPathname());
         if ($reader instanceof Csv) {
@@ -104,7 +107,17 @@ class TabularReader
         $reader->setReadDataOnly(true);
         $reader->setReadEmptyCells(false);
 
-        $sheet = $reader->load($file->getPathname())->getSheet(0);
+        $book = $reader->load($file->getPathname());
+        $sheet = $book->getSheet(0);
+        foreach ($sheets as $wanted) {
+            foreach ($book->getSheetNames() as $index => $name) {
+                if (strcasecmp($name, $wanted) === 0) {
+                    $sheet = $book->getSheet($index);
+
+                    break 2;
+                }
+            }
+        }
 
         foreach ($sheet->getRowIterator() as $row) {
             $cells = [];
