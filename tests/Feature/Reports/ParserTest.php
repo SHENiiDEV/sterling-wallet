@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Enums\OperationType;
+use App\Models\MerchantOperation;
 use App\Reports\Parsers\OperationRow;
 use App\Reports\Parsers\ParserRegistry;
 use Illuminate\Http\UploadedFile;
@@ -74,6 +76,32 @@ class ParserTest extends TestCase
         $this->assertCount(4, $rows);
         $this->assertSame(['5500000001', 'MF-1', '100.00', 'visa', 'eu'], [$rows[0]->mid, $rows[0]->paymentId, $rows[0]->amount, $rows[0]->ips, $rows[0]->region]);
         $this->assertSame('Refund', $rows[3]->trnType);
+    }
+
+    public function test_madfin_workbook_reads_the_transactions_sheet_and_its_columns()
+    {
+        $book = new Spreadsheet;
+        $book->getActiveSheet()->setTitle('Main')->fromArray([['Settlement statement for:', 'LUNEHOM LTD'], ['Transaction Volume', 88]]);
+        $header = ['created', 'updated', 'id', 'type', 'state', 'error_code', 'method', 'amount_proc_curr', 'proc_curr', 'merchant_name', 'shop_name', 'customer_account_number', 'card_country_code', 'region', 'reference_id', 'bank_date', 'card_brand'];
+        $book->createSheet()->setTitle('Transactions')->fromArray([
+            $header,
+            [46301.486111111, 46301.486805556, 'aaa1', 'DEPOSIT', 'DECLINED', 7, 'BASIC_CARD', 5.02, 'EUR', 'LUNEHOM LTD', '1792-1_CC_IN', '535456***1378', 'LV', 'Intraregion', 'pay_one', 46301, 'MASTERCARD'],
+            [46303.443055556, 46303.443055556, 'aaa2', 'DEPOSIT', 'COMPLETED', null, 'APPLE_PAY', 179, 'EUR', 'LUNEHOM LTD', '1792-1_CC_IN', '440066***9874', 'US', 'Interregion', 'pay_two', 46303, 'VISA'],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'mf').'.xlsx';
+        (new Xlsx($book))->save($path);
+
+        $rows = $this->parse('madfin', new UploadedFile($path, 'LUNEHOM_20261006-20261008.xlsx', null, null, true));
+
+        $this->assertCount(2, $rows);
+        $this->assertSame(['1792-1_CC_IN', 'aaa1', '5.02', 'EUR', 'mastercard', 'eu', 'LV', 'DECLINED', null], [
+            $rows[0]->mid, $rows[0]->paymentId, $rows[0]->amount, $rows[0]->currency, $rows[0]->ips, $rows[0]->region, $rows[0]->issuerCountry, $rows[0]->resolution, $rows[0]->wallet,
+        ]);
+        $this->assertSame(['535456', '1378'], [$rows[0]->cardBin, $rows[0]->cardLast4]);
+        $this->assertSame(['179', 'visa', 'non_eu', 'apple_pay'], [$rows[1]->amount, $rows[1]->ips, $rows[1]->region, $rows[1]->wallet]);
+
+        $this->assertSame(OperationType::Decline, MerchantOperation::classify(['trn_type' => 'DEPOSIT', 'amount' => '5.02', 'resolution' => 'DECLINED']));
+        $this->assertSame(OperationType::Sale, MerchantOperation::classify(['trn_type' => 'DEPOSIT', 'amount' => '179', 'resolution' => 'COMPLETED']));
     }
 
     public function test_a_file_without_a_recognisable_header_yields_nothing()

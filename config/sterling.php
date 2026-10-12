@@ -27,7 +27,7 @@ return [
     /*
     | Gateway resolutions that mean the payment went through.
     */
-    'successful_resolutions' => ['ok', 'approved', 'success', 'successful'],
+    'successful_resolutions' => ['ok', 'approved', 'success', 'successful', 'completed'],
 
     /*
     | Defaults for merchants created from an unknown MID (status: review).
@@ -160,25 +160,25 @@ return [
             'transacted_at' => ['created', 'created at', 'created_at', 'date', 'processed', 'processed at'],
         ],
         'madfin' => [
-            'mid' => ['mid', 'merchant id', 'terminal id'],
+            'mid' => ['mid', 'merchant id', 'terminal id', 'shop name'],
             'merchant_name' => ['merchant name', 'merchant'],
             'payment_id' => ['transaction id', 'id', 'payment id'],
             'arn' => ['arn'],
             'rrn' => ['rrn'],
             'approval_code' => ['auth code', 'approval code'],
-            'card' => ['card', 'card number', 'pan', 'masked pan'],
+            'card' => ['card', 'card number', 'pan', 'masked pan', 'customer account number'],
             'card_bin' => ['bin'],
             'card_last4' => ['last4', 'last 4'],
             'ips' => ['card brand', 'scheme', 'brand', 'card type'],
-            'wallet' => ['wallet', 'wallet type', 'digital wallet', 'payment method'],
+            'wallet' => ['wallet', 'wallet type', 'digital wallet', 'payment method', 'method'],
             'region' => ['region'],
-            'issuer_country' => ['issuer country', 'card country', 'country'],
-            'amount' => ['amount', 'transaction amount'],
-            'currency' => ['currency'],
+            'issuer_country' => ['issuer country', 'card country', 'country', 'card country code'],
+            'amount' => ['amount', 'transaction amount', 'amount proc curr'],
+            'currency' => ['currency', 'proc curr'],
             'trn_type' => ['transaction type', 'type', 'trn type'],
-            'resolution' => ['status', 'result'],
+            'resolution' => ['status', 'result', 'state'],
             'transacted_at' => ['transaction date', 'date', 'created'],
-            'processed_at' => ['settlement date', 'processing date'],
+            'processed_at' => ['settlement date', 'processing date', 'bank date'],
         ],
     ],
 
