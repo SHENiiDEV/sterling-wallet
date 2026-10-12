@@ -12,13 +12,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property int $id
  * @property int|null $parent_id
+ * @property int|null $client_id
  * @property string $name
  * @property string|null $registration_number
  * @property string|null $country
  * @property string|null $billing_details
  * @property string|null $notes
  */
-#[Fillable(['parent_id', 'name', 'registration_number', 'country', 'billing_details', 'notes'])]
+#[Fillable(['parent_id', 'client_id', 'name', 'registration_number', 'country', 'billing_details', 'notes'])]
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
@@ -30,6 +31,14 @@ class Company extends Model
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Company::class, 'parent_id');
+    }
+
+    /**
+     * @return BelongsTo<Client, $this>
+     */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
     }
 
     /**

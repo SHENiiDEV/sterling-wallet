@@ -3,6 +3,7 @@ import {
     ArrowLeftRight,
     ArrowRightLeft as ArrowRightLeftIcon,
     Bot,
+    Briefcase,
     Building2,
     CalendarCheck,
     FileStack,
@@ -59,6 +60,12 @@ const navGroups: NavGroup[] = [
                 title: 'Companies',
                 href: admin.companies.index(),
                 icon: Building2,
+                module: 'merchants',
+            },
+            {
+                title: 'Clients',
+                href: admin.clients.index(),
+                icon: Briefcase,
                 module: 'merchants',
             },
             {

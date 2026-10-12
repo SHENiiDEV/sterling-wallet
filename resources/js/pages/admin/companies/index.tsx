@@ -49,6 +49,7 @@ type ParentOption = { id: number; name: string; parent_id: number | null };
 type Props = {
     companies: Company[];
     parents: ParentOption[];
+    clients: { id: number; name: string }[];
     filters: { search: string };
 };
 
@@ -79,7 +80,12 @@ function asTree(companies: Company[]): { company: Company; depth: number }[] {
     return rows;
 }
 
-export default function CompaniesIndex({ companies, parents, filters }: Props) {
+export default function CompaniesIndex({
+    companies,
+    parents,
+    clients,
+    filters,
+}: Props) {
     const [editing, setEditing] = useState<Company | 'new' | null>(null);
     const [deleting, setDeleting] = useState<Company | null>(null);
     const [search, setSearch] = useState(filters.search);
@@ -160,6 +166,9 @@ export default function CompaniesIndex({ companies, parents, filters }: Props) {
                                     <TableHead className="pl-4">
                                         Company
                                     </TableHead>
+                                    <TableHead className="hidden lg:table-cell">
+                                        Client
+                                    </TableHead>
                                     <TableHead className="hidden md:table-cell">
                                         Reg. number
                                     </TableHead>
@@ -196,6 +205,9 @@ export default function CompaniesIndex({ companies, parents, filters }: Props) {
                                                     </span>
                                                 )}
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="hidden text-muted-foreground lg:table-cell">
+                                            {company.client?.name ?? '—'}
                                         </TableCell>
                                         <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
                                             {company.registration_number ?? '—'}
@@ -263,6 +275,7 @@ export default function CompaniesIndex({ companies, parents, filters }: Props) {
                     key={editing === 'new' ? 'new' : editing.id}
                     company={editing === 'new' ? null : editing}
                     parents={parents}
+                    clients={clients}
                     onClose={() => setEditing(null)}
                 />
             )}
@@ -286,15 +299,18 @@ export default function CompaniesIndex({ companies, parents, filters }: Props) {
 function CompanyDialog({
     company,
     parents,
+    clients,
     onClose,
 }: {
     company: Company | null;
     parents: ParentOption[];
+    clients: { id: number; name: string }[];
     onClose: () => void;
 }) {
     const form = useForm({
         name: company?.name ?? '',
         parent_id: company?.parent_id ? String(company.parent_id) : '',
+        client_id: company?.client_id ? String(company.client_id) : '',
         registration_number: company?.registration_number ?? '',
         country: company?.country ?? '',
         billing_details: company?.billing_details ?? '',
@@ -373,6 +389,39 @@ function CompanyDialog({
                                                 {parent.name}
                                             </SelectItem>
                                         ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field
+                            label="Client"
+                            error={form.errors.client_id}
+                            hint="Companies of one client share a consolidated daily report"
+                            className="sm:col-span-2"
+                        >
+                            <Select
+                                value={form.data.client_id || NONE}
+                                onValueChange={(value) =>
+                                    form.setData(
+                                        'client_id',
+                                        value === NONE ? '' : value,
+                                    )
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE}>
+                                        No client
+                                    </SelectItem>
+                                    {clients.map((client) => (
+                                        <SelectItem
+                                            key={client.id}
+                                            value={String(client.id)}
+                                        >
+                                            {client.name}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </Field>

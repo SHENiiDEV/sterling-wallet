@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CompanyRequest;
 use App\Http\Resources\CompanyResource;
+use App\Models\Client;
 use App\Models\Company;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -20,7 +21,7 @@ class CompanyController extends Controller
         $search = (string) $request->string('search');
 
         $companies = Company::query()
-            ->with('parent:id,name')
+            ->with('parent:id,name', 'client:id,name')
             ->withCount(['merchants', 'children'])
             ->when($search !== '', fn (Builder $q) => $q->where(
                 fn (Builder $q) => $q->where('name', 'like', "%{$search}%")->orWhere('registration_number', 'like', "%{$search}%"),
@@ -31,6 +32,7 @@ class CompanyController extends Controller
         return Inertia::render('admin/companies/index', [
             'companies' => CompanyResource::collection($companies)->resolve(),
             'parents' => Company::query()->orderBy('name')->get(['id', 'name', 'parent_id']),
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
             'filters' => ['search' => $search],
         ]);
     }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BankHolidayController;
 use App\Http\Controllers\Admin\BotController;
 use App\Http\Controllers\Admin\CommercialOfferController;
+use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentCommentController;
@@ -62,6 +63,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
         });
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::resource('clients', ClientController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::get('clients/{client}/report', [ClientController::class, 'report'])->name('clients.report');
+        Route::post('clients/{client}/send-report', [ClientController::class, 'send'])->name('clients.send-report');
         Route::post('companies/{company}/portal-users', [PortalUserController::class, 'store'])->name('companies.portal-users.store');
         Route::put('companies/{company}/portal-users/{user}', [PortalUserController::class, 'update'])->name('companies.portal-users.update');
         Route::delete('companies/{company}/portal-users/{user}', [PortalUserController::class, 'destroy'])->name('companies.portal-users.destroy');

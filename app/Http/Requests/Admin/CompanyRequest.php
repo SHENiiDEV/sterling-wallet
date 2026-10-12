@@ -31,6 +31,7 @@ class CompanyRequest extends FormRequest
                     }
                 },
             ],
+            'client_id' => ['nullable', 'exists:clients,id'],
             'registration_number' => ['nullable', 'string', 'max:64'],
             'country' => ['nullable', 'string', 'size:2', 'alpha'],
             'billing_details' => ['nullable', 'string', 'max:5000'],
