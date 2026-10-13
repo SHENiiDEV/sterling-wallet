@@ -9,5 +9,6 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('bots:dispatch')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('reports:release-due')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reports:reconcile')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reserve:release')->dailyAt('06:10')->withoutOverlapping();
