@@ -81,6 +81,7 @@ class TransferReportApiTest extends TestCase
         $mid = MerchantMid::query()->where('mid', 'BASILDON LIMITED EUR')->sole();
         $this->assertSame(MidStatus::Review, $mid->status);
         $this->assertSame(2, MerchantOperation::query()->count());
+        $this->assertLessThanOrEqual(16, strlen((string) MerchantOperation::query()->first()->trn_type)); // the column is varchar(16)
         $this->assertSame('2026-10-12', MerchantOperation::query()->first()->report_date->toDateString());
 
         // The same batch again, with the pending transfer completed, adds only that one.

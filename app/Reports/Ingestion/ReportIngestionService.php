@@ -265,7 +265,7 @@ class ReportIngestionService
         MerchantOperation::query()->updateOrCreate([
             'provider_id' => $provider->id,
             'payment_id' => $this->paymentId($row),
-            'trn_type' => $row->trnType,
+            'trn_type' => $row->trnType !== null ? Str::limit($row->trnType, 16, '') : null,
             'amount' => $row->amount,
         ], $attributes);
     }
