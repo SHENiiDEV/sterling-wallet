@@ -9,7 +9,6 @@ use App\Reports\Ingestion\ReportIngestionService;
 use App\Reports\Parsers\LapkiPayParser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use SplFileInfo;
 

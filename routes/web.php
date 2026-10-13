@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\Admin\BankHolidayController;
 use App\Http\Controllers\Admin\BotController;
-use App\Http\Controllers\Admin\CommercialOfferController;
 use App\Http\Controllers\Admin\ClientController;
+use App\Http\Controllers\Admin\CommercialOfferController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentCommentController;
