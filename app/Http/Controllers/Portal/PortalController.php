@@ -186,10 +186,16 @@ class PortalController extends Controller
         $m->loadMissing('mids', 'tariffs');
         $rate = fn (?string $scheme, string $region) => $m->getAttribute("fee_{$scheme}_{$region}_percent") ?? $m->getAttribute("fee_acq_{$region}_percent");
 
+        // Cards are offered when any scheme has a rate (or a fallback rate prices them).
+        $cardOffered = collect(['fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent'])
+            ->contains(fn (string $field) => $m->getAttribute($field) !== null)
+            || (float) $m->fee_acq_eu_percent > 0 || (float) $m->fee_acq_non_eu_percent > 0;
+
         return [
             'public_id' => $m->public_id,
             'name' => $m->name,
             'company' => $m->company?->name,
+            'card_offered' => $cardOffered,
             'status' => $m->status->label(),
             'website' => $m->website,
             'rates' => [

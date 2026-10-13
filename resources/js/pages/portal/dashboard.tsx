@@ -87,6 +87,7 @@ type Pricing = {
     rates: [string, string | null, string | null][];
     fixed: [string, string][];
     conversion_percent: string;
+    card_offered: boolean;
     products: {
         key: string;
         label: string;
@@ -287,7 +288,7 @@ export default function PortalDashboard(props: Props) {
             {pricing.length > 0 && (
                 <section className="grid gap-4">
                     <h2 className="text-sm font-semibold">Your pricing</h2>
-                    <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="grid gap-6">
                         {pricing.map((m) => (
                             <PricingCard key={m.public_id} merchant={m} />
                         ))}
@@ -429,16 +430,31 @@ function ChartCard({
     );
 }
 
-function PricingCard({ merchant }: { merchant: Pricing }) {
-    const cardOffered = merchant.rates.some(
-        ([, eu, nonEu]) => eu !== null || nonEu !== null,
-    );
-    // Cards are the default product: shown unless the merchant only has others.
-    const showCard = cardOffered || merchant.products.length === 0;
-
+/** One product of a merchant: its own card, so more can sit next to each other. */
+function ProductCard({
+    title,
+    children,
+}: {
+    title: string;
+    children: React.ReactNode;
+}) {
     return (
         <div className="rounded-xl border bg-card shadow-xs">
-            <div className="flex items-start justify-between gap-3 border-b px-5 py-3.5">
+            <h3 className="border-b px-5 py-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                {title}
+            </h3>
+            <div className="grid gap-4 p-5 text-sm">{children}</div>
+        </div>
+    );
+}
+
+function PricingCard({ merchant }: { merchant: Pricing }) {
+    // Cards are the default product: shown unless the merchant only has others.
+    const showCard = merchant.card_offered || merchant.products.length === 0;
+
+    return (
+        <div className="grid gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="truncate font-medium">{merchant.name}</p>
                     <p className="text-xs text-muted-foreground">
@@ -458,12 +474,10 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                     ))}
                 </div>
             </div>
-            <div className="grid gap-5 p-5 text-sm">
+
+            <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {showCard && (
-                    <section className="grid gap-3 sm:grid-cols-2">
-                        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase sm:col-span-2">
-                            Card acquiring
-                        </h3>
+                    <ProductCard title="Card acquiring">
                         <table className="w-full">
                             <thead>
                                 <tr className="text-xs text-muted-foreground">
@@ -496,7 +510,7 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                                 ))}
                             </tbody>
                         </table>
-                        <dl className="grid gap-1">
+                        <dl className="grid gap-1 border-t pt-3">
                             {merchant.fixed.map(([label, value]) => (
                                 <div
                                     key={label}
@@ -521,18 +535,12 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                                 </dd>
                             </div>
                         </dl>
-                    </section>
+                    </ProductCard>
                 )}
 
                 {merchant.products.map((product) => (
-                    <section
-                        key={product.key}
-                        className={`grid gap-3 ${showCard ? 'border-t pt-5' : ''}`}
-                    >
-                        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                            {product.label}
-                        </h3>
-                        <dl className="grid gap-1 sm:max-w-sm">
+                    <ProductCard key={product.key} title={product.label}>
+                        <dl className="grid gap-1">
                             {product.lines.map(([label, value, kind]) => (
                                 <div
                                     key={label}
@@ -551,25 +559,19 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                                 </div>
                             ))}
                         </dl>
-                    </section>
+                    </ProductCard>
                 ))}
-
-                <dl className="grid grid-cols-2 gap-3 border-t pt-3">
-                    <div>
-                        <dt className="text-xs text-muted-foreground">
-                            Rolling reserve
-                        </dt>
-                        <dd className="font-medium">
-                            {Number(merchant.reserve_percent) > 0
-                                ? `${formatPercent(merchant.reserve_percent)} · ${merchant.reserve_days} days`
-                                : 'None'}
-                        </dd>
-                    </div>
-                </dl>
-                <p className="text-xs text-muted-foreground">
-                    Fixed fees are charged in each MID's currency.
-                </p>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+                Rolling reserve:{' '}
+                <span className="font-medium text-foreground">
+                    {Number(merchant.reserve_percent) > 0
+                        ? `${formatPercent(merchant.reserve_percent)} · ${merchant.reserve_days} days`
+                        : 'none'}
+                </span>{' '}
+                · Fixed fees are charged in each MID's currency.
+            </p>
         </div>
     );
 }
