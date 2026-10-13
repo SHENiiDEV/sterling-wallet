@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Enums\ReportStatus;
 use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
@@ -34,7 +35,7 @@ class TransferReportApiTest extends TestCase
     private function lapkipay(): Provider
     {
         return Provider::factory()->create([
-            'name' => 'LapkiPay', 'code' => 'lapkipay', 'type' => ProviderType::Bank, 'report_format' => 'lapkipay',
+            'name' => 'LapkiPay', 'code' => 'lapkipay', 'type' => ProviderType::Bank, 'product' => TariffProduct::C2b, 'report_format' => 'lapkipay',
             'timezone' => 'UTC', 'report_delay_days' => 0,
             'cost_visa_eu_percent' => null, 'cost_visa_non_eu_percent' => null, 'cost_mastercard_eu_percent' => null, 'cost_mastercard_non_eu_percent' => null,
             'cost_acq_eu_percent' => 0, 'cost_acq_non_eu_percent' => 0,
@@ -93,11 +94,11 @@ class TransferReportApiTest extends TestCase
 
     public function test_a_transfer_report_uses_the_transfer_rate_and_needs_no_card_rates()
     {
-        $merchant = $this->merchantWithTariff([
-            'fee_visa_eu_percent' => null, 'fee_visa_non_eu_percent' => null, 'fee_mastercard_eu_percent' => null, 'fee_mastercard_non_eu_percent' => null,
-            'fee_acq_eu_percent' => 0, 'fee_acq_non_eu_percent' => 0,
-            'fee_transfer_percent' => 1.5, 'fee_success_fixed' => 0.30, 'fee_fiat_to_crypto_percent' => 0.15,
-        ]);
+        // The merchant's card tariff (3%, 0.20, 0.4%) must not touch a transfer: C2B has its own.
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => [
+            'transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0.15, 'settlement_fx_percent' => 0,
+        ]]);
         $bank = $this->lapkipay();
         $this->mid($merchant, $bank, null, ['mid' => 'BASILDON LIMITED EUR']);
 
@@ -114,9 +115,20 @@ class TransferReportApiTest extends TestCase
         $this->assertSame('transfer_unknown', array_key_first(array_filter($task->summary_data['by_scheme'], fn ($g) => $g['count'] > 0)));
     }
 
+    public function test_a_transfer_report_is_blocked_while_the_merchant_has_no_c2b_tariff()
+    {
+        $this->mid($this->merchantWithTariff(), $this->lapkipay(), null, ['mid' => 'BASILDON LIMITED EUR']);
+
+        $this->sendBatch(['transactions' => $this->batch()])->assertOk();
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame(ReportStatus::Blocked, $task->status);
+        $this->assertStringContainsString('Bank transfers (C2B) tariff', (string) $task->error_log);
+    }
+
     public function test_balances_are_stored_on_the_matching_mid()
     {
-        $merchant = $this->merchantWithTariff(['fee_transfer_percent' => 1.5]);
+        $merchant = $this->merchantWithTariff();
         $mid = $this->mid($merchant, $this->lapkipay(), null, ['mid' => 'BASILDON LIMITED EUR']);
 
         $this->sendBatch([

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Bots\ConnectorRegistry;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Models\Provider;
 use App\Reports\Parsers\ParserRegistry;
 use Illuminate\Foundation\Http\FormRequest;
@@ -32,6 +33,7 @@ class ProviderRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'code' => ['required', 'string', 'max:32', 'alpha_dash', Rule::unique('providers', 'code')->ignore($this->route('provider'))],
             'type' => ['required', Rule::enum(ProviderType::class)],
+            'product' => ['required', Rule::enum(TariffProduct::class)],
             'is_active' => ['boolean'],
             'cost_visa_eu_percent' => $nullablePercent,
             'cost_visa_non_eu_percent' => $nullablePercent,
@@ -102,6 +104,10 @@ class ProviderRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        if (! $this->filled('product')) {
+            $this->merge(['product' => TariffProduct::Card->value]);
+        }
+
         // "N/A": a rate the provider does not charge is empty, any other amount is zero.
         $notCharged = fn (string $field) => is_string($this->input($field)) && in_array(strtoupper(trim($this->input($field))), ['N/A', 'NA', '-'], true);
         foreach (['cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent', 'cost_transfer_percent'] as $field) {

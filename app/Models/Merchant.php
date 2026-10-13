@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MerchantStatus;
+use App\Enums\TariffProduct;
 use Database\Factories\MerchantFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -25,7 +26,7 @@ use Illuminate\Support\Str;
 #[Fillable([
     'company_id', 'name', 'website', 'status', 'is_test', 'crypto_provider_id',
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
-    'fee_acq_eu_percent', 'fee_acq_non_eu_percent', 'fee_transfer_percent',
+    'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'fee_fiat_to_crypto_percent',
     'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap', 'settlement_terms',
     'rolling_reserve_percent', 'rolling_reserve_days',
@@ -39,7 +40,7 @@ class Merchant extends Model
     public const PERCENT_FIELDS = [
         'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
         'fee_acq_eu_percent', 'fee_acq_non_eu_percent', 'fee_fiat_to_crypto_percent', 'rolling_reserve_percent',
-        'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_transfer_percent',
+        'fee_wallet_percent', 'fee_settlement_fx_percent',
     ];
 
     public const FIXED_FIELDS = [
@@ -87,6 +88,45 @@ class Merchant extends Model
     public function cryptoProvider(): BelongsTo
     {
         return $this->belongsTo(Provider::class, 'crypto_provider_id');
+    }
+
+    /**
+     * @return HasMany<MerchantTariff, $this>
+     */
+    public function tariffs(): HasMany
+    {
+        return $this->hasMany(MerchantTariff::class);
+    }
+
+    /**
+     * The tariff row of a non-card product, if the merchant is offered it.
+     */
+    public function tariffFor(TariffProduct $product): ?MerchantTariff
+    {
+        return $this->tariffs->firstWhere('product', $product);
+    }
+
+    /**
+     * Replace the non-card tariffs: a product with no row is not offered.
+     *
+     * @param  array<string, array<string, mixed>|null>  $tariffs  product value => fields, or null to switch it off
+     */
+    public function syncTariffs(array $tariffs): void
+    {
+        foreach (TariffProduct::separate() as $product) {
+            if (! array_key_exists($product->value, $tariffs)) {
+                continue;
+            }
+
+            $fields = $tariffs[$product->value];
+            if ($fields === null) {
+                $this->tariffs()->where('product', $product->value)->delete();
+            } else {
+                $this->tariffs()->updateOrCreate(['product' => $product->value], $fields);
+            }
+        }
+
+        $this->unsetRelation('tariffs');
     }
 
     /**
@@ -152,12 +192,6 @@ class Merchant extends Model
      */
     public function missingTariffFields(): array
     {
-        // A transfers-only merchant (C2B) offers no card at all: the transfer rate is its tariff.
-        $cardFields = ['fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent'];
-        if ($this->fee_transfer_percent !== null && array_filter($cardFields, fn (string $f) => $this->{$f} !== null) === []) {
-            return [];
-        }
-
         // A scheme may be left empty (not offered, e.g. "N/A" in the offer)
         // only when the fallback rate for that region prices its cards.
         $missing = [];

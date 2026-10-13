@@ -8,6 +8,7 @@ use App\Enums\IntegrationStatus;
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Enums\UserRole;
 use App\Enums\WalletType;
 use App\Http\Controllers\Controller;
@@ -78,6 +79,7 @@ class MerchantController extends Controller
     public function store(MerchantRequest $request): RedirectResponse
     {
         $merchant = Merchant::query()->create($request->validated());
+        $merchant->syncTariffs($request->tariffs());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Merchant created. Add its MIDs next.']);
 
@@ -87,6 +89,7 @@ class MerchantController extends Controller
     public function show(Request $request, Merchant $merchant): Response
     {
         $merchant->load([
+            'tariffs',
             'company:id,name,parent_id',
             'cryptoProvider:id,name',
             'mids' => fn ($q) => $q->with(['bankProvider:id,name', 'gateProvider:id,name'])
@@ -185,7 +188,7 @@ class MerchantController extends Controller
     public function edit(Merchant $merchant): Response
     {
         return Inertia::render('admin/merchants/form', [
-            'merchant' => MerchantResource::make($merchant)->resolve(),
+            'merchant' => MerchantResource::make($merchant->load('tariffs'))->resolve(),
             ...$this->formOptions(),
         ]);
     }
@@ -193,6 +196,7 @@ class MerchantController extends Controller
     public function update(MerchantRequest $request, Merchant $merchant): RedirectResponse
     {
         $merchant->update($request->validated());
+        $merchant->syncTariffs($request->tariffs());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Merchant saved.']);
 
@@ -233,6 +237,7 @@ class MerchantController extends Controller
             'cryptoProviders' => Provider::query()->ofType(ProviderType::Crypto)->orderBy('name')->get(['id', 'name']),
             'statuses' => MerchantStatus::options(),
             'defaults' => config('sterling.merchant_defaults'),
+            'products' => array_map(fn (TariffProduct $p) => ['value' => $p->value, 'label' => $p->label()], TariffProduct::separate()),
         ];
     }
 }

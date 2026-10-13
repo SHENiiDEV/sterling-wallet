@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use Database\Factories\ProviderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<string, mixed>|null $matching
  */
 #[Fillable([
-    'name', 'code', 'type', 'is_active', 'logo_path',
+    'name', 'code', 'type', 'product', 'is_active', 'logo_path',
     'report_format', 'connector', 'timezone', 'report_delay_days', 'matching',
     'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
     'cost_acq_eu_percent', 'cost_acq_non_eu_percent', 'cost_transfer_percent', 'cost_wallet_percent',
@@ -51,6 +52,7 @@ class Provider extends Model
     {
         return [
             'type' => ProviderType::class,
+            'product' => TariffProduct::class,
             'is_active' => 'boolean',
             'rolling_reserve_days' => 'integer',
             'report_delay_days' => 'integer',

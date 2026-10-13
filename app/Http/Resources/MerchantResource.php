@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Merchant;
+use App\Models\MerchantTariff;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Arr;
@@ -31,6 +32,7 @@ class MerchantResource extends JsonResource
             'crypto_provider' => $this->whenLoaded('cryptoProvider', fn () => $this->cryptoProvider?->name),
             ...Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap']),
             'settlement_terms' => $this->settlement_terms,
+            'tariffs' => $this->whenLoaded('tariffs', fn () => (object) $this->tariffs->mapWithKeys(fn ($t) => [$t->product->value => [...$t->only(MerchantTariff::FIELDS), 'label' => $t->product->label()]])->all()),
             'rolling_reserve_days' => $this->rolling_reserve_days,
             'invoice_email' => $this->invoice_email,
             'mcc' => $this->mcc,

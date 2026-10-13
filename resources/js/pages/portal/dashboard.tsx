@@ -87,6 +87,11 @@ type Pricing = {
     rates: [string, string | null, string | null][];
     fixed: [string, string][];
     conversion_percent: string;
+    products: {
+        key: string;
+        label: string;
+        lines: [string, string, 'percent' | 'money'][];
+    }[];
     reserve_percent: string;
     reserve_days: number;
     mids: { mid: string; currency: string; status: string }[];
@@ -425,6 +430,12 @@ function ChartCard({
 }
 
 function PricingCard({ merchant }: { merchant: Pricing }) {
+    const cardOffered = merchant.rates.some(
+        ([, eu, nonEu]) => eu !== null || nonEu !== null,
+    );
+    // Cards are the default product: shown unless the merchant only has others.
+    const showCard = cardOffered || merchant.products.length === 0;
+
     return (
         <div className="rounded-xl border bg-card shadow-xs">
             <div className="flex items-start justify-between gap-3 border-b px-5 py-3.5">
@@ -447,69 +458,115 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                     ))}
                 </div>
             </div>
-            <div className="grid gap-4 p-5 text-sm sm:grid-cols-2">
-                <table className="w-full">
-                    <thead>
-                        <tr className="text-xs text-muted-foreground">
-                            <th className="pb-1.5 text-left font-medium">
-                                Card rate
-                            </th>
-                            <th className="pb-1.5 text-right font-medium">
-                                EU
-                            </th>
-                            <th className="pb-1.5 text-right font-medium">
-                                Non-EU
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="tabular-nums">
-                        {merchant.rates.map(([scheme, eu, nonEu]) => (
-                            <tr key={scheme}>
-                                <td className="py-1">{scheme}</td>
-                                <td className="py-1 text-right">
-                                    {eu === null ? 'N/A' : formatPercent(eu)}
-                                </td>
-                                <td className="py-1 text-right">
-                                    {nonEu === null
-                                        ? 'N/A'
-                                        : formatPercent(nonEu)}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                <dl className="grid gap-1">
-                    {merchant.fixed.map(([label, value]) => (
-                        <div key={label} className="flex justify-between gap-3">
-                            <dt className="text-muted-foreground">{label}</dt>
-                            <dd className="tabular-nums">
-                                {Number(value) > 0
-                                    ? formatMoney(value)
-                                    : 'Free'}
-                            </dd>
-                        </div>
-                    ))}
-                </dl>
-                <dl className="grid grid-cols-2 gap-3 border-t pt-3 sm:col-span-2">
+            <div className="grid gap-5 p-5 text-sm">
+                {showCard && (
+                    <section className="grid gap-3 sm:grid-cols-2">
+                        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase sm:col-span-2">
+                            Card acquiring
+                        </h3>
+                        <table className="w-full">
+                            <thead>
+                                <tr className="text-xs text-muted-foreground">
+                                    <th className="pb-1.5 text-left font-medium">
+                                        Card rate
+                                    </th>
+                                    <th className="pb-1.5 text-right font-medium">
+                                        EU
+                                    </th>
+                                    <th className="pb-1.5 text-right font-medium">
+                                        Non-EU
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="tabular-nums">
+                                {merchant.rates.map(([scheme, eu, nonEu]) => (
+                                    <tr key={scheme}>
+                                        <td className="py-1">{scheme}</td>
+                                        <td className="py-1 text-right">
+                                            {eu === null
+                                                ? 'N/A'
+                                                : formatPercent(eu)}
+                                        </td>
+                                        <td className="py-1 text-right">
+                                            {nonEu === null
+                                                ? 'N/A'
+                                                : formatPercent(nonEu)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <dl className="grid gap-1">
+                            {merchant.fixed.map(([label, value]) => (
+                                <div
+                                    key={label}
+                                    className="flex justify-between gap-3"
+                                >
+                                    <dt className="text-muted-foreground">
+                                        {label}
+                                    </dt>
+                                    <dd className="tabular-nums">
+                                        {Number(value) > 0
+                                            ? formatMoney(value)
+                                            : 'Free'}
+                                    </dd>
+                                </div>
+                            ))}
+                            <div className="flex justify-between gap-3">
+                                <dt className="text-muted-foreground">
+                                    Conversion to USDC
+                                </dt>
+                                <dd className="tabular-nums">
+                                    {formatPercent(merchant.conversion_percent)}
+                                </dd>
+                            </div>
+                        </dl>
+                    </section>
+                )}
+
+                {merchant.products.map((product) => (
+                    <section
+                        key={product.key}
+                        className={`grid gap-3 ${showCard ? 'border-t pt-5' : ''}`}
+                    >
+                        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            {product.label}
+                        </h3>
+                        <dl className="grid gap-1 sm:max-w-sm">
+                            {product.lines.map(([label, value, kind]) => (
+                                <div
+                                    key={label}
+                                    className="flex justify-between gap-3"
+                                >
+                                    <dt className="text-muted-foreground">
+                                        {label}
+                                    </dt>
+                                    <dd className="tabular-nums">
+                                        {kind === 'percent'
+                                            ? formatPercent(value)
+                                            : Number(value) > 0
+                                              ? formatMoney(value)
+                                              : 'Free'}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </section>
+                ))}
+
+                <dl className="grid grid-cols-2 gap-3 border-t pt-3">
                     <div>
                         <dt className="text-xs text-muted-foreground">
                             Rolling reserve
                         </dt>
                         <dd className="font-medium">
-                            {formatPercent(merchant.reserve_percent)} ·{' '}
-                            {merchant.reserve_days} days
-                        </dd>
-                    </div>
-                    <div>
-                        <dt className="text-xs text-muted-foreground">
-                            Conversion to USDC
-                        </dt>
-                        <dd className="font-medium">
-                            {formatPercent(merchant.conversion_percent)}
+                            {Number(merchant.reserve_percent) > 0
+                                ? `${formatPercent(merchant.reserve_percent)} · ${merchant.reserve_days} days`
+                                : 'None'}
                         </dd>
                     </div>
                 </dl>
-                <p className="text-xs text-muted-foreground sm:col-span-2">
+                <p className="text-xs text-muted-foreground">
                     Fixed fees are charged in each MID's currency.
                 </p>
             </div>
