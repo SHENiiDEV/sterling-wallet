@@ -73,7 +73,7 @@ class LapkiPayParser implements ReportParser
             currency: $currency,
             ips: 'transfer',
             issuerName: Values::text($tx['bicSwift'] ?? null),
-            trnType: 'incoming transfer',
+            trnType: 'incoming', // the operations column is 16 characters wide
             resolution: 'completed',
             transactedAt: $transactedAt,
             transactedOn: $transactedOn,

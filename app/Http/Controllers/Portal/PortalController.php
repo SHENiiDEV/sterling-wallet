@@ -10,6 +10,7 @@ use App\Merchants\PortalAnalytics;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantTariff;
 use App\Models\Settlement;
 use App\Settlements\SettlementStatementPdf;
 use Illuminate\Database\Eloquent\Collection;
@@ -182,7 +183,7 @@ class PortalController extends Controller
      */
     private function pricing(Merchant $m): array
     {
-        $m->loadMissing('mids');
+        $m->loadMissing('mids', 'tariffs');
         $rate = fn (?string $scheme, string $region) => $m->getAttribute("fee_{$scheme}_{$region}_percent") ?? $m->getAttribute("fee_acq_{$region}_percent");
 
         return [
@@ -202,6 +203,17 @@ class PortalController extends Controller
                 ['Chargeback', $m->fee_chargeback_fixed],
             ],
             'conversion_percent' => $m->fee_fiat_to_crypto_percent,
+            // Every other product the merchant is offered, priced by its own tariff.
+            'products' => $m->tariffs->filter(fn (MerchantTariff $t) => $t->transfer_percent !== null)->map(fn (MerchantTariff $t) => [
+                'key' => $t->product->value,
+                'label' => $t->product->label(),
+                'lines' => [
+                    ['Processing fee', $t->transfer_percent, 'percent'],
+                    ['Successful transaction', $t->success_fixed, 'money'],
+                    ['Refund', $t->refund_fixed, 'money'],
+                    ['Conversion to USDC', $t->fiat_to_crypto_percent, 'percent'],
+                ],
+            ])->values()->all(),
             'reserve_percent' => $m->rolling_reserve_percent,
             'reserve_days' => $m->rolling_reserve_days,
             'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->label()])->values(),

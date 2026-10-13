@@ -6,6 +6,7 @@ use App\Enums\Currency;
 use App\Enums\MerchantStatus;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Enums\UserRole;
 use App\Models\AdminAuditLog;
 use App\Models\Merchant;
@@ -67,6 +68,29 @@ class MerchantTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.merchants.edit', $merchant))
             ->assertInertia(fn (Assert $page) => $page->where('merchant.fee_collab_fixed', '1.5000'));
+    }
+
+    public function test_c2b_tariff_is_saved_per_product_and_na_switches_it_off()
+    {
+        $this->actingAs($this->admin)
+            ->post(route('admin.merchants.store'), $this->payload([
+                'tariffs' => ['c2b' => ['transfer_percent' => '1.5', 'success_fixed' => '0.3', 'refund_fixed' => '', 'fiat_to_crypto_percent' => '0.15', 'settlement_fx_percent' => 'N/A']],
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $merchant = Merchant::query()->sole();
+        $tariff = $merchant->tariffFor(TariffProduct::C2b);
+        $this->assertSame(['1.500', '0.3000', '0.0000', '0.150', '0.000'], [$tariff->transfer_percent, $tariff->success_fixed, $tariff->refund_fixed, $tariff->fiat_to_crypto_percent, $tariff->settlement_fx_percent]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.merchants.edit', $merchant))
+            ->assertInertia(fn (Assert $page) => $page->where('merchant.tariffs.c2b.transfer_percent', '1.500')->where('merchant.tariffs.c2b.label', 'Bank transfers (C2B)'));
+
+        // N/A on the processing fee: the merchant is not offered C2B any more.
+        $this->actingAs($this->admin)
+            ->put(route('admin.merchants.update', $merchant), $this->payload(['tariffs' => ['c2b' => ['transfer_percent' => 'N/A']]]))
+            ->assertSessionHasNoErrors();
+        $this->assertNull($merchant->fresh()->tariffFor(TariffProduct::C2b));
     }
 
     public function test_test_merchant_may_go_active_without_tariff()

@@ -23,6 +23,7 @@ class ProviderResource extends JsonResource
             'code' => $this->code,
             'type' => $this->type->value,
             'type_label' => $this->type->label(),
+            'product' => $this->product->value,
             'is_active' => $this->is_active,
             'settlement_cycle' => $this->settlement_cycle,
             'rolling_reserve_days' => $this->rolling_reserve_days,

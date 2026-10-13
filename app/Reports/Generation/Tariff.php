@@ -2,6 +2,8 @@
 
 namespace App\Reports\Generation;
 
+use App\Enums\TariffProduct;
+use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +19,18 @@ final readonly class Tariff
     public static function merchant(Model $merchant): self
     {
         return new self($merchant, 'fee_');
+    }
+
+    /**
+     * The tariff a MID is priced by: its provider's product decides whether
+     * that is the merchant's card tariff or the tariff of another product.
+     */
+    public static function forMid(MerchantMid $mid): self
+    {
+        $product = $mid->bankProvider?->product ?? TariffProduct::Card;
+        $tariff = $product === TariffProduct::Card ? null : $mid->merchant->tariffFor($product);
+
+        return $tariff !== null ? new self($tariff, '') : self::merchant($mid->merchant);
     }
 
     public static function provider(Model $provider): self

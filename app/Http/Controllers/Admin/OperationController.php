@@ -111,7 +111,7 @@ class OperationController extends Controller
         }
 
         $amount = BigDecimal::of($op->amount)->abs();
-        $merchantPercent = Tariff::merchant($op->merchant)->percentFor($op);
+        $merchantPercent = ($op->merchantMid ? Tariff::forMid($op->merchantMid) : Tariff::merchant($op->merchant))->percentFor($op);
         $providerPercent = Tariff::provider($op->provider)->percentFor($op);
 
         return [

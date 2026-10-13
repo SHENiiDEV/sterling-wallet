@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\MerchantStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Models\Merchant;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -38,13 +39,14 @@ class MerchantRequest extends FormRequest
             'fee_mastercard_non_eu_percent' => $cardPercent,
             'fee_fiat_to_crypto_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'rolling_reserve_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'fee_transfer_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'fee_wallet_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_settlement_fx_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_settlement_fixed' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'min_settlement_amount' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
             'rolling_reserve_cap' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
             'settlement_terms' => ['nullable', 'string', 'max:255'],
+            'tariffs' => ['sometimes', 'array'],
+            ...$this->tariffRules(),
             'fee_collab_fixed' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             ...array_fill_keys(Merchant::FIXED_FIELDS, ['required', 'numeric', 'min:0', 'max:1000000']),
             'rolling_reserve_days' => ['required', 'integer', 'min:0', 'max:3650'],
@@ -73,7 +75,57 @@ class MerchantRequest extends FormRequest
             $data["fee_acq_{$region}_percent"] = $rates === [] ? 0 : max(array_map('floatval', $rates));
         }
 
+        unset($data['tariffs']); // saved separately, see tariffs()
+
         return $data;
+    }
+
+    /**
+     * Per non-card product: its fields, or null when the merchant is not
+     * offered it (no processing fee). Products missing from the form are absent.
+     *
+     * @return array<string, array<string, string|null>|null>
+     */
+    public function tariffs(): array
+    {
+        $input = $this->validated('tariffs') ?? [];
+        $tariffs = [];
+
+        foreach (TariffProduct::separate() as $product) {
+            if (! array_key_exists($product->value, $input)) {
+                continue;
+            }
+
+            $fields = $input[$product->value] ?? [];
+            $tariffs[$product->value] = ($fields['transfer_percent'] ?? null) === null ? null : [
+                'transfer_percent' => $fields['transfer_percent'],
+                'success_fixed' => $fields['success_fixed'] ?? 0,
+                'refund_fixed' => $fields['refund_fixed'] ?? 0,
+                'fiat_to_crypto_percent' => $fields['fiat_to_crypto_percent'] ?? 0,
+                'settlement_fx_percent' => $fields['settlement_fx_percent'] ?? 0,
+            ];
+        }
+
+        return $tariffs;
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function tariffRules(): array
+    {
+        $rules = [];
+        foreach (TariffProduct::separate() as $product) {
+            $rules["tariffs.{$product->value}"] = ['nullable', 'array'];
+            foreach (['transfer_percent', 'fiat_to_crypto_percent', 'settlement_fx_percent'] as $field) {
+                $rules["tariffs.{$product->value}.{$field}"] = ['nullable', 'numeric', 'min:0', 'max:100'];
+            }
+            foreach (['success_fixed', 'refund_fixed'] as $field) {
+                $rules["tariffs.{$product->value}.{$field}"] = ['nullable', 'numeric', 'min:0', 'max:1000000'];
+            }
+        }
+
+        return $rules;
     }
 
     /** @var list<string> Card rates explicitly marked "N/A" (scheme not offered). */
@@ -88,12 +140,26 @@ class MerchantRequest extends FormRequest
                 $this->merge([$field => 0]);
             }
         }
-        if ($isNa('fee_transfer_percent') || $this->input('fee_transfer_percent') === '') {
-            $this->merge(['fee_transfer_percent' => null]);
-        }
         // No reserve: nothing is held, so there is nothing to keep for N days.
         if ((float) $this->input('rolling_reserve_percent') === 0.0 && ! $this->filled('rolling_reserve_days')) {
             $this->merge(['rolling_reserve_days' => 0]);
+        }
+
+        // A product's tariff: N/A or an empty processing fee switches the product off, N/A elsewhere means none.
+        $tariffs = $this->input('tariffs');
+        if (is_array($tariffs)) {
+            $na = fn (mixed $v) => is_string($v) && in_array(strtoupper(trim($v)), ['N/A', 'NA', '-'], true);
+            foreach ($tariffs as $product => $fields) {
+                if (! is_array($fields)) {
+                    continue;
+                }
+                foreach ($fields as $field => $value) {
+                    if ($na($value)) {
+                        $tariffs[$product][$field] = $field === 'transfer_percent' ? null : 0;
+                    }
+                }
+            }
+            $this->merge(['tariffs' => $tariffs]);
         }
 
         // Optional charges: empty means none.

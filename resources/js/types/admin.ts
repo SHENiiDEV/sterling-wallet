@@ -20,6 +20,16 @@ export type DocumentStatus = {
 
 export type Option = { value: string; label: string };
 
+/** Tariff of a product other than cards, e.g. C2B bank transfers. */
+export type ProductTariff = {
+    label: string;
+    transfer_percent: string | null;
+    success_fixed: string;
+    refund_fixed: string;
+    fiat_to_crypto_percent: string;
+    settlement_fx_percent: string;
+};
+
 export type StaffMember = { id: number; name: string };
 
 export type DocumentItem = {
@@ -97,6 +107,7 @@ export type Provider = {
     cost_crypto_percent: string;
     cost_wallet_percent: string;
     cost_transfer_percent: string | null;
+    product: string;
     cost_settlement_fx_percent: string;
     settlement_fee: string;
     settlement_cycle: string | null;
@@ -172,12 +183,12 @@ export type Merchant = {
     fee_mastercard_non_eu_percent: string | null;
     fee_acq_eu_percent: string;
     fee_acq_non_eu_percent: string;
-    fee_transfer_percent: string | null;
     fee_success_fixed: string;
     fee_decline_fixed: string;
     fee_refund_fixed: string;
     fee_chargeback_fixed: string;
     fee_collab_fixed: string | null;
+    tariffs?: Record<string, ProductTariff>;
     fee_fiat_to_crypto_percent: string;
     fee_wallet_percent: string;
     fee_settlement_fx_percent: string;

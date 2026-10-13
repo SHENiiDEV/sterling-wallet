@@ -43,7 +43,7 @@ class DailyStatement
         $task->loadMissing('merchant.company', 'merchantMid.bankProvider');
         $merchant = $task->merchant;
         $currency = $task->currency;
-        $tariff = Tariff::merchant($merchant);
+        $tariff = Tariff::forMid($task->merchantMid);
         $summary = $task->summary_data ?? [];
         $counts = $summary['counts'] ?? [];
         $count = fn (string $key) => (int) ($counts[$key] ?? 0);

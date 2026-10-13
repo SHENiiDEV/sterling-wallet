@@ -23,6 +23,7 @@ import type { MatchingRules, Option, Provider } from '@/types';
 type Props = {
     provider: Provider | null;
     types: Option[];
+    products: Option[];
     reportFormats: Option[];
     connectors: Option[];
     defaultMatching: MatchingRules;
@@ -37,6 +38,7 @@ const str = (value: string | number | null | undefined, fallback = '') =>
 export default function ProviderForm({
     provider,
     types,
+    products,
     reportFormats,
     connectors,
     defaultMatching,
@@ -47,6 +49,7 @@ export default function ProviderForm({
         name: provider?.name ?? '',
         code: provider?.code ?? '',
         type: provider?.type ?? 'bank',
+        product: provider?.product ?? 'card',
         is_active: provider?.is_active ?? true,
         cost_visa_eu_percent: str(provider?.cost_visa_eu_percent),
         cost_visa_non_eu_percent: str(provider?.cost_visa_non_eu_percent),
@@ -241,6 +244,34 @@ export default function ProviderForm({
                                 </SelectContent>
                             </Select>
                         </Field>
+                        {!isCrypto && (
+                            <Field
+                                label="Product"
+                                error={errors.product}
+                                hint="Decides which merchant tariff prices its MIDs"
+                            >
+                                <Select
+                                    value={data.product}
+                                    onValueChange={(value) =>
+                                        setData('product', value)
+                                    }
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {products.map((product) => (
+                                            <SelectItem
+                                                key={product.value}
+                                                value={product.value}
+                                            >
+                                                {product.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                        )}
                         <label className="flex items-center gap-3 self-end pb-2 text-sm">
                             <Checkbox
                                 checked={data.is_active}

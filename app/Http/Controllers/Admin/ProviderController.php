@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Bots\ConnectorRegistry;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ProviderRequest;
 use App\Http\Resources\ProviderResource;
@@ -27,6 +28,7 @@ class ProviderController extends Controller
         return Inertia::render('admin/providers/index', [
             'providers' => ProviderResource::collection($providers)->resolve(),
             'types' => ProviderType::options(),
+            'products' => TariffProduct::options(),
         ]);
     }
 

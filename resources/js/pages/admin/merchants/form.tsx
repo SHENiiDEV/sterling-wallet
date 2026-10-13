@@ -23,6 +23,7 @@ type Props = {
     companies: CompanyRef[];
     cryptoProviders: CompanyRef[];
     statuses: Option[];
+    products: Option[];
     defaults: {
         rolling_reserve_percent: number;
         rolling_reserve_days: number;
@@ -37,8 +38,7 @@ type SchemeField =
     | 'fee_visa_eu_percent'
     | 'fee_visa_non_eu_percent'
     | 'fee_mastercard_eu_percent'
-    | 'fee_mastercard_non_eu_percent'
-    | 'fee_transfer_percent';
+    | 'fee_mastercard_non_eu_percent';
 
 /** "N/A" = the scheme is not offered; a new merchant starts empty. */
 const schemeRate = (merchant: Merchant | null, field: SchemeField) =>
@@ -47,11 +47,20 @@ const schemeRate = (merchant: Merchant | null, field: SchemeField) =>
 const str = (value: string | number | null | undefined, fallback = '') =>
     value === null || value === undefined ? fallback : String(Number(value));
 
+type TariffForm = {
+    transfer_percent: string;
+    success_fixed: string;
+    refund_fixed: string;
+    fiat_to_crypto_percent: string;
+    settlement_fx_percent: string;
+};
+
 export default function MerchantForm({
     merchant,
     companies,
     cryptoProviders,
     statuses,
+    products,
     defaults,
 }: Props) {
     const form = useForm({
@@ -80,7 +89,6 @@ export default function MerchantForm({
         fee_decline_fixed: str(merchant?.fee_decline_fixed, '0'),
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
         fee_chargeback_fixed: str(merchant?.fee_chargeback_fixed, '0'),
-        fee_transfer_percent: schemeRate(merchant, 'fee_transfer_percent'),
         fee_collab_fixed: str(merchant?.fee_collab_fixed),
         fee_wallet_percent: str(merchant?.fee_wallet_percent, '0'),
         fee_settlement_fx_percent: str(
@@ -106,8 +114,158 @@ export default function MerchantForm({
         mcc: merchant?.mcc ?? '',
         onboarding_status: merchant?.onboarding_status ?? '',
         notes: merchant?.notes ?? '',
+        // One tariff per product other than cards (C2B, later Open Banking).
+        tariffs: Object.fromEntries(
+            products.map((product) => {
+                const t = merchant?.tariffs?.[product.value];
+
+                return [
+                    product.value,
+                    {
+                        transfer_percent: t
+                            ? str(t.transfer_percent)
+                            : merchant
+                              ? NA
+                              : '',
+                        success_fixed: str(t?.success_fixed, '0'),
+                        refund_fixed: str(t?.refund_fixed, '0'),
+                        fiat_to_crypto_percent: str(
+                            t?.fiat_to_crypto_percent,
+                            String(defaults.fee_fiat_to_crypto_percent),
+                        ),
+                        settlement_fx_percent: str(
+                            t?.settlement_fx_percent,
+                            '0',
+                        ),
+                    } satisfies TariffForm,
+                ];
+            }),
+        ) as Record<string, TariffForm>,
     });
     const { data, setData, errors } = form;
+
+    const setTariff = (
+        product: string,
+        field: keyof TariffForm,
+        value: string,
+    ) =>
+        setData('tariffs', {
+            ...data.tariffs,
+            [product]: { ...data.tariffs[product], [field]: value },
+        });
+
+    const tariffField = (
+        product: string,
+        field: keyof TariffForm,
+        label: string,
+        suffix: string,
+        hint?: string,
+    ) => (
+        <Field
+            label={label}
+            htmlFor={`${product}-${field}`}
+            error={
+                (errors as Record<string, string | undefined>)[
+                    `tariffs.${product}.${field}`
+                ]
+            }
+            hint={hint}
+        >
+            <AffixInput
+                id={`${product}-${field}`}
+                suffix={suffix}
+                inputMode="decimal"
+                value={data.tariffs[product][field]}
+                disabled={data.tariffs[product].transfer_percent === NA}
+                onChange={(e) => setTariff(product, field, e.target.value)}
+            />
+        </Field>
+    );
+
+    /** One product's own tariff: the N/A button switches the product off. */
+    const productSection = (product: Option) => {
+        const off = data.tariffs[product.value].transfer_percent === NA;
+
+        return (
+            <FormSection
+                key={product.value}
+                title={product.label}
+                description="Its own processing fee, success fee and conversion. N/A: the merchant is not offered this product."
+            >
+                <Field
+                    label="Processing fee"
+                    htmlFor={`${product.value}-transfer_percent`}
+                    error={
+                        (errors as Record<string, string | undefined>)[
+                            `tariffs.${product.value}.transfer_percent`
+                        ]
+                    }
+                    hint={off ? 'Not offered' : 'Percent of each transfer'}
+                >
+                    <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                            <AffixInput
+                                id={`${product.value}-transfer_percent`}
+                                suffix={off ? '' : '%'}
+                                inputMode="decimal"
+                                value={
+                                    data.tariffs[product.value].transfer_percent
+                                }
+                                disabled={off}
+                                onChange={(e) =>
+                                    setTariff(
+                                        product.value,
+                                        'transfer_percent',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant={off ? 'default' : 'outline'}
+                            className="shrink-0 px-3"
+                            aria-pressed={off}
+                            onClick={() =>
+                                setTariff(
+                                    product.value,
+                                    'transfer_percent',
+                                    off ? '' : NA,
+                                )
+                            }
+                        >
+                            N/A
+                        </Button>
+                    </div>
+                </Field>
+                {tariffField(
+                    product.value,
+                    'success_fixed',
+                    'Success fee',
+                    'per op',
+                )}
+                {tariffField(
+                    product.value,
+                    'refund_fixed',
+                    'Refund fee',
+                    'per op',
+                )}
+                {tariffField(
+                    product.value,
+                    'fiat_to_crypto_percent',
+                    'Conversion fee',
+                    '%',
+                    'Charged on the net payout',
+                )}
+                {tariffField(
+                    product.value,
+                    'settlement_fx_percent',
+                    'Settlement FX markup',
+                    '%',
+                )}
+            </FormSection>
+        );
+    };
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -348,7 +506,7 @@ export default function MerchantForm({
 
                         <FormSection
                             title="Card tariff"
-                            description="Our fee on successful volume, by card brand and issuer region, or on bank transfers. Required once the merchant is active. N/A: not offered."
+                            description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active. N/A: the scheme is not offered."
                         >
                             {rate('fee_visa_eu_percent', 'Visa EU')}
                             {rate('fee_visa_non_eu_percent', 'Visa non-EU')}
@@ -356,11 +514,6 @@ export default function MerchantForm({
                             {rate(
                                 'fee_mastercard_non_eu_percent',
                                 'Mastercard non-EU',
-                            )}
-                            {rate(
-                                'fee_transfer_percent',
-                                'Bank transfer (C2B)',
-                                'Percent of each incoming transfer. N/A when the merchant takes cards only',
                             )}
                             {input(
                                 'fee_wallet_percent',
@@ -371,7 +524,7 @@ export default function MerchantForm({
                         </FormSection>
 
                         <FormSection
-                            title="Per-operation fees"
+                            title="Card per-operation fees"
                             description="Flat fees, charged in the currency of the MID the operation ran on."
                         >
                             {input(
@@ -398,9 +551,11 @@ export default function MerchantForm({
                             )}
                         </FormSection>
 
+                        {products.map(productSection)}
+
                         <FormSection
                             title="Reserve & payout"
-                            description="Reserve is held per MID up to that MID's limit. Payouts are converted to USDC."
+                            description="Reserve is held per MID up to that MID's limit and is the same for every product. Payouts are converted to USDC."
                         >
                             {rate(
                                 'rolling_reserve_percent',
@@ -433,7 +588,7 @@ export default function MerchantForm({
                             )}
                             {input(
                                 'fee_fiat_to_crypto_percent',
-                                'Conversion fee',
+                                'Conversion fee (cards)',
                                 '%',
                                 'Charged on the net payout',
                             )}

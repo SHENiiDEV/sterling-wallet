@@ -8,6 +8,7 @@ use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
+use App\Enums\TariffProduct;
 use App\Mail\DailyReportMail;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
@@ -86,8 +87,14 @@ class DailyReportGenerator
         if ($mid->bank_provider_id === null) {
             throw new ReportBlocked("MID {$mid->mid} has no acquirer.");
         }
-        if (($missing = $merchant->missingTariffFields()) !== []) {
-            throw new ReportBlocked('Merchant tariff is incomplete: '.implode(', ', $missing).'.');
+
+        $product = $mid->bankProvider?->product ?? TariffProduct::Card;
+        if ($product === TariffProduct::Card) {
+            if (($missing = $merchant->missingTariffFields()) !== []) {
+                throw new ReportBlocked('Merchant tariff is incomplete: '.implode(', ', $missing).'.');
+            }
+        } elseif ($merchant->tariffFor($product)?->transfer_percent === null) {
+            throw new ReportBlocked("Merchant has no {$product->label()} tariff.");
         }
     }
 
@@ -122,7 +129,7 @@ class DailyReportGenerator
         $chargebacksAmount = $this->sum($chargebacks);
 
         // What the merchant pays us.
-        $fee = Tariff::merchant($merchant);
+        $fee = Tariff::forMid($mid);
         $merchantPercentFee = $this->percentOf($sales, $fee);
         $fixedLines = [];
         $merchantFixedFee = BigDecimal::zero();
