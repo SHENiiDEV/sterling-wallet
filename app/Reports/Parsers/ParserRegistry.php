@@ -40,7 +40,7 @@ class ParserRegistry
     {
         $formats = [];
         foreach ($this->parsers as $parser) {
-            if ($parser instanceof HeaderMappedParser) {
+            if ($parser instanceof HeaderMappedParser || $parser instanceof LapkiPayParser) {
                 $formats[] = $parser->format();
             }
         }

@@ -39,8 +39,9 @@ class ProviderRequest extends FormRequest
             'cost_mastercard_non_eu_percent' => $nullablePercent,
             ...array_fill_keys(array_diff(Provider::PERCENT_FIELDS, [
                 'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
-                'cost_wallet_percent', 'cost_settlement_fx_percent', 'cost_acq_eu_percent', 'cost_acq_non_eu_percent',
+                'cost_wallet_percent', 'cost_settlement_fx_percent', 'cost_acq_eu_percent', 'cost_acq_non_eu_percent', 'cost_transfer_percent',
             ]), $percent),
+            'cost_transfer_percent' => $nullablePercent,
             'cost_wallet_percent' => $nullablePercent,
             'cost_settlement_fx_percent' => $nullablePercent,
             ...array_fill_keys(Provider::FIXED_FIELDS, $fixed),
@@ -101,6 +102,19 @@ class ProviderRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        // "N/A": a rate the provider does not charge is empty, any other amount is zero.
+        $notCharged = fn (string $field) => is_string($this->input($field)) && in_array(strtoupper(trim($this->input($field))), ['N/A', 'NA', '-'], true);
+        foreach (['cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent', 'cost_transfer_percent'] as $field) {
+            if ($notCharged($field)) {
+                $this->merge([$field => null]);
+            }
+        }
+        foreach (['cost_success_fixed', 'cost_decline_fixed', 'cost_refund_fixed', 'cost_chargeback_fixed', 'cost_crypto_percent', 'cost_wallet_percent', 'cost_settlement_fx_percent', 'settlement_fee', 'min_settlement', 'rolling_reserve_percent', 'rolling_reserve_cap'] as $field) {
+            if ($notCharged($field)) {
+                $this->merge([$field => 0]);
+            }
+        }
+
         // Optional surcharges: empty means none.
         foreach (['cost_wallet_percent', 'cost_settlement_fx_percent'] as $field) {
             if (! $this->filled($field)) {

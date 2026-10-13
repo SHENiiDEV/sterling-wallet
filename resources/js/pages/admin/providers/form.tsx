@@ -60,6 +60,10 @@ export default function ProviderForm({
         cost_chargeback_fixed: str(provider?.cost_chargeback_fixed, '0'),
         cost_crypto_percent: str(provider?.cost_crypto_percent, '0'),
         cost_wallet_percent: str(provider?.cost_wallet_percent, '0'),
+        cost_transfer_percent:
+            provider?.cost_transfer_percent == null
+                ? 'N/A'
+                : str(provider.cost_transfer_percent),
         cost_settlement_fx_percent: str(
             provider?.cost_settlement_fx_percent,
             '0',
@@ -102,6 +106,45 @@ export default function ProviderForm({
             />
         </Field>
     );
+
+    // A rate the provider may not charge at all: the N/A button switches it off.
+    const optionalPercent = (
+        key: 'cost_transfer_percent',
+        label: string,
+        hint?: string,
+    ) => {
+        const off = data[key] === 'N/A';
+
+        return (
+            <Field
+                label={label}
+                htmlFor={key}
+                error={errors[key]}
+                hint={off ? 'Not charged' : hint}
+            >
+                <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                        <AffixInput
+                            id={key}
+                            suffix={off ? '' : '%'}
+                            value={data[key]}
+                            onChange={(e) => setData(key, e.target.value)}
+                            disabled={off}
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        variant={off ? 'default' : 'outline'}
+                        className="shrink-0 px-3"
+                        aria-pressed={off}
+                        onClick={() => setData(key, off ? '' : 'N/A')}
+                    >
+                        N/A
+                    </Button>
+                </div>
+            </Field>
+        );
+    };
 
     const fixed = (key: keyof typeof data, label: string) => (
         <Field label={label} htmlFor={key} error={errors[key]}>
@@ -370,6 +413,11 @@ export default function ProviderForm({
                                 {percent(
                                     'cost_mastercard_non_eu_percent',
                                     'Mastercard non-EU',
+                                )}
+                                {optionalPercent(
+                                    'cost_transfer_percent',
+                                    'Bank transfer (C2B)',
+                                    'Percent of each incoming transfer',
                                 )}
                                 {percent(
                                     'cost_wallet_percent',

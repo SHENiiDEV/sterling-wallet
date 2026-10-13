@@ -38,6 +38,7 @@ class MerchantRequest extends FormRequest
             'fee_mastercard_non_eu_percent' => $cardPercent,
             'fee_fiat_to_crypto_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'rolling_reserve_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'fee_transfer_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'fee_wallet_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_settlement_fx_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'fee_settlement_fixed' => ['required', 'numeric', 'min:0', 'max:1000000'],
@@ -80,6 +81,21 @@ class MerchantRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // "N/A" on a charge that always has a value means none; on the transfer rate, not offered.
+        $isNa = fn (string $field) => is_string($this->input($field)) && in_array(strtoupper(trim($this->input($field))), ['N/A', 'NA', '-'], true);
+        foreach (['fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_fiat_to_crypto_percent', 'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'rolling_reserve_percent', 'rolling_reserve_days'] as $field) {
+            if ($isNa($field)) {
+                $this->merge([$field => 0]);
+            }
+        }
+        if ($isNa('fee_transfer_percent') || $this->input('fee_transfer_percent') === '') {
+            $this->merge(['fee_transfer_percent' => null]);
+        }
+        // No reserve: nothing is held, so there is nothing to keep for N days.
+        if ((float) $this->input('rolling_reserve_percent') === 0.0 && ! $this->filled('rolling_reserve_days')) {
+            $this->merge(['rolling_reserve_days' => 0]);
+        }
+
         // Optional charges: empty means none.
         foreach (['fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed'] as $field) {
             if (! $this->filled($field)) {

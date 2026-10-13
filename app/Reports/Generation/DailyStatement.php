@@ -23,7 +23,7 @@ class DailyStatement
     /** Operations listed in the PDF; the CSV always has all of them. */
     public const MAX_OPERATIONS = 400;
 
-    private const SCHEMES = ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'other' => 'Other card'];
+    private const SCHEMES = ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'other' => 'Other card', 'transfer' => 'Bank transfer'];
 
     private const REGIONS = ['eu' => 'EU', 'non_eu' => 'Non-EU', 'unknown' => '(region n/a)'];
 
@@ -174,8 +174,13 @@ class DailyStatement
         $extra = array_diff(array_keys($groups), self::MAIN_GROUPS);
         sort($extra);
 
+        // A transfers-only merchant has no card groups to show.
+        $cardSales = array_sum(array_map(fn (string $key) => (int) ($groups[$key]['count'] ?? 0), self::MAIN_GROUPS));
+        $transferSales = array_sum(array_map(fn (string $key) => str_starts_with($key, 'transfer') ? (int) $groups[$key]['count'] : 0, array_keys($groups)));
+        $main = $cardSales === 0 && $transferSales > 0 ? [] : self::MAIN_GROUPS;
+
         $rows = [];
-        foreach ([...self::MAIN_GROUPS, ...$extra] as $key) {
+        foreach ([...$main, ...$extra] as $key) {
             $group = $groups[$key] ?? ['count' => 0, 'amount' => '0'];
             [$scheme, $region] = array_pad(explode('_', $key, 2), 2, 'unknown');
             $amount = $this->dec($group['amount']);
@@ -193,7 +198,7 @@ class DailyStatement
             }
 
             $rows[] = [
-                'label' => (self::SCHEMES[$scheme] ?? ucfirst($scheme)).' '.(self::REGIONS[$region] ?? $region),
+                'label' => $scheme === 'transfer' ? self::SCHEMES['transfer'] : (self::SCHEMES[$scheme] ?? ucfirst($scheme)).' '.(self::REGIONS[$region] ?? $region),
                 'count' => (int) $group['count'],
                 'amount' => $amount,
                 'rate' => $rate,

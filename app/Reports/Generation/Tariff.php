@@ -32,6 +32,11 @@ final readonly class Tariff
      */
     public function percentFor(MerchantOperation $op): BigDecimal
     {
+        // A C2B bank transfer has its own rate, no scheme and no region.
+        if ($op->ips === 'transfer') {
+            return BigDecimal::of($this->source->getAttribute("{$this->prefix}transfer_percent") ?? 0);
+        }
+
         $region = $op->region === 'eu' ? 'eu' : 'non_eu';
         $scheme = match ($op->ips) {
             'visa' => 'visa',

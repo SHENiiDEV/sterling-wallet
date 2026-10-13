@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
 #[Fillable([
     'company_id', 'name', 'website', 'status', 'is_test', 'crypto_provider_id',
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
-    'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
+    'fee_acq_eu_percent', 'fee_acq_non_eu_percent', 'fee_transfer_percent',
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'fee_fiat_to_crypto_percent',
     'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap', 'settlement_terms',
     'rolling_reserve_percent', 'rolling_reserve_days',
@@ -39,7 +39,7 @@ class Merchant extends Model
     public const PERCENT_FIELDS = [
         'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
         'fee_acq_eu_percent', 'fee_acq_non_eu_percent', 'fee_fiat_to_crypto_percent', 'rolling_reserve_percent',
-        'fee_wallet_percent', 'fee_settlement_fx_percent',
+        'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_transfer_percent',
     ];
 
     public const FIXED_FIELDS = [
@@ -152,6 +152,12 @@ class Merchant extends Model
      */
     public function missingTariffFields(): array
     {
+        // A transfers-only merchant (C2B) offers no card at all: the transfer rate is its tariff.
+        $cardFields = ['fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent'];
+        if ($this->fee_transfer_percent !== null && array_filter($cardFields, fn (string $f) => $this->{$f} !== null) === []) {
+            return [];
+        }
+
         // A scheme may be left empty (not offered, e.g. "N/A" in the offer)
         // only when the fallback rate for that region prices its cards.
         $missing = [];

@@ -37,7 +37,8 @@ type SchemeField =
     | 'fee_visa_eu_percent'
     | 'fee_visa_non_eu_percent'
     | 'fee_mastercard_eu_percent'
-    | 'fee_mastercard_non_eu_percent';
+    | 'fee_mastercard_non_eu_percent'
+    | 'fee_transfer_percent';
 
 /** "N/A" = the scheme is not offered; a new merchant starts empty. */
 const schemeRate = (merchant: Merchant | null, field: SchemeField) =>
@@ -79,6 +80,7 @@ export default function MerchantForm({
         fee_decline_fixed: str(merchant?.fee_decline_fixed, '0'),
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
         fee_chargeback_fixed: str(merchant?.fee_chargeback_fixed, '0'),
+        fee_transfer_percent: schemeRate(merchant, 'fee_transfer_percent'),
         fee_collab_fixed: str(merchant?.fee_collab_fixed),
         fee_wallet_percent: str(merchant?.fee_wallet_percent, '0'),
         fee_settlement_fx_percent: str(
@@ -133,7 +135,11 @@ export default function MerchantForm({
         </Field>
     );
 
-    const rate = (key: SchemeField, label: string) => {
+    const rate = (
+        key: SchemeField | 'rolling_reserve_percent',
+        label: string,
+        hint?: string,
+    ) => {
         const notOffered = data[key] === NA;
 
         return (
@@ -141,7 +147,7 @@ export default function MerchantForm({
                 label={label}
                 htmlFor={key}
                 error={errors[key]}
-                hint={notOffered ? 'Not offered' : undefined}
+                hint={notOffered ? 'Not offered' : hint}
             >
                 <div className="flex gap-2">
                     <div className="min-w-0 flex-1">
@@ -342,7 +348,7 @@ export default function MerchantForm({
 
                         <FormSection
                             title="Card tariff"
-                            description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active. N/A: the scheme is not offered."
+                            description="Our fee on successful volume, by card brand and issuer region, or on bank transfers. Required once the merchant is active. N/A: not offered."
                         >
                             {rate('fee_visa_eu_percent', 'Visa EU')}
                             {rate('fee_visa_non_eu_percent', 'Visa non-EU')}
@@ -350,6 +356,11 @@ export default function MerchantForm({
                             {rate(
                                 'fee_mastercard_non_eu_percent',
                                 'Mastercard non-EU',
+                            )}
+                            {rate(
+                                'fee_transfer_percent',
+                                'Bank transfer (C2B)',
+                                'Percent of each incoming transfer. N/A when the merchant takes cards only',
                             )}
                             {input(
                                 'fee_wallet_percent',
@@ -391,10 +402,10 @@ export default function MerchantForm({
                             title="Reserve & payout"
                             description="Reserve is held per MID up to that MID's limit. Payouts are converted to USDC."
                         >
-                            {input(
+                            {rate(
                                 'rolling_reserve_percent',
                                 'Rolling reserve',
-                                '%',
+                                'N/A = no reserve is held',
                             )}
                             <Field
                                 label="Reserve held for"
