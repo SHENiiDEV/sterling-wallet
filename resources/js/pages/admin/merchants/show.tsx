@@ -953,6 +953,12 @@ function TariffCard({ merchant }: { merchant: Merchant }) {
                     )}
                 </dl>
                 <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
+                    {merchant.fee_transfer_percent !== null && (
+                        <Stat
+                            label="Bank transfer"
+                            value={`${Number(merchant.fee_transfer_percent)}%`}
+                        />
+                    )}
                     <Stat
                         label="Apple/Google Pay"
                         value={`+${Number(merchant.fee_wallet_percent)}%`}

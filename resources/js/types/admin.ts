@@ -96,6 +96,7 @@ export type Provider = {
     cost_chargeback_fixed: string;
     cost_crypto_percent: string;
     cost_wallet_percent: string;
+    cost_transfer_percent: string | null;
     cost_settlement_fx_percent: string;
     settlement_fee: string;
     settlement_cycle: string | null;
@@ -171,6 +172,7 @@ export type Merchant = {
     fee_mastercard_non_eu_percent: string | null;
     fee_acq_eu_percent: string;
     fee_acq_non_eu_percent: string;
+    fee_transfer_percent: string | null;
     fee_success_fixed: string;
     fee_decline_fixed: string;
     fee_refund_fixed: string;
