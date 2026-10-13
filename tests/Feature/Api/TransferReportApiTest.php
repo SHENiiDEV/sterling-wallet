@@ -55,7 +55,7 @@ class TransferReportApiTest extends TestCase
         return [$tx('TR1', 100.00), $tx('TR2', 200.00), $tx('TR3', 50.00, 'Pending')];
     }
 
-    private function post(array $payload, string $code = 'lapkipay')
+    private function sendBatch(array $payload, string $code = 'lapkipay')
     {
         return $this->postJson("/api/v1/transfers/{$code}", $payload, ['Authorization' => 'Bearer secret-token']);
     }
@@ -76,7 +76,7 @@ class TransferReportApiTest extends TestCase
     {
         $this->lapkipay();
 
-        $this->post(['transactions' => $this->batch()])->assertOk()->assertJsonPath('rows', 2)->assertJsonPath('unknown_mids.0', 'BASILDON LIMITED EUR');
+        $this->sendBatch(['transactions' => $this->batch()])->assertOk()->assertJsonPath('rows', 2)->assertJsonPath('unknown_mids.0', 'BASILDON LIMITED EUR');
 
         $mid = MerchantMid::query()->where('mid', 'BASILDON LIMITED EUR')->sole();
         $this->assertSame(MidStatus::Review, $mid->status);
@@ -86,7 +86,7 @@ class TransferReportApiTest extends TestCase
         // The same batch again, with the pending transfer completed, adds only that one.
         $second = $this->batch();
         $second[2]['status'] = 'Completed';
-        $this->post(['transactions' => $second])->assertOk();
+        $this->sendBatch(['transactions' => $second])->assertOk();
         $this->assertSame(3, MerchantOperation::query()->count());
     }
 
@@ -100,7 +100,7 @@ class TransferReportApiTest extends TestCase
         $bank = $this->lapkipay();
         $this->mid($merchant, $bank, null, ['mid' => 'BASILDON LIMITED EUR']);
 
-        $this->post(['transactions' => $this->batch()])->assertOk();
+        $this->sendBatch(['transactions' => $this->batch()])->assertOk();
 
         $task = DailyReportTask::query()->sole();
         $this->assertSame(ReportStatus::Completed, $task->status, (string) $task->error_log);
@@ -118,7 +118,7 @@ class TransferReportApiTest extends TestCase
         $merchant = $this->merchantWithTariff(['fee_transfer_percent' => 1.5]);
         $mid = $this->mid($merchant, $this->lapkipay(), null, ['mid' => 'BASILDON LIMITED EUR']);
 
-        $this->post([
+        $this->sendBatch([
             'transactions' => $this->batch(),
             'balances' => [['company' => 'Basildon Limited', 'currency' => 'EUR', 'available' => 5.0, 'hold' => 0]],
         ])->assertOk()->assertJsonPath('balances_updated', 1);
@@ -131,6 +131,6 @@ class TransferReportApiTest extends TestCase
     {
         $this->cardaq();
 
-        $this->post(['transactions' => $this->batch()], 'cardaq')->assertStatus(422);
+        $this->sendBatch(['transactions' => $this->batch()], 'cardaq')->assertStatus(422);
     }
 }
