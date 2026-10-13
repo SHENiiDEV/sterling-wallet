@@ -57,6 +57,26 @@ class MerchantPortalTest extends TestCase
         return User::factory()->create(['role' => UserRole::Merchant, 'company_id' => $merchant->company_id, ...$overrides]);
     }
 
+    public function test_each_product_is_priced_on_its_own_and_cards_are_hidden_when_not_offered()
+    {
+        $this->ours->syncTariffs(['c2b' => [
+            'transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0.15, 'settlement_fx_percent' => 0,
+        ]]);
+        $user = $this->portalUser($this->ours);
+
+        $this->actingAs($user)->get(route('portal.dashboard'))->assertInertia(fn (Assert $page) => $page
+            ->where('pricing.0.card_offered', true)
+            ->where('pricing.0.products.0.label', 'Bank transfers (C2B)')
+            ->where('pricing.0.products.0.lines.0', ['Processing fee', '1.500', 'percent']));
+
+        // A merchant with no card rate at all only shows its C2B card.
+        $this->ours->update([
+            'fee_visa_eu_percent' => null, 'fee_visa_non_eu_percent' => null, 'fee_mastercard_eu_percent' => null, 'fee_mastercard_non_eu_percent' => null,
+            'fee_acq_eu_percent' => 0, 'fee_acq_non_eu_percent' => 0,
+        ]);
+        $this->actingAs($user)->get(route('portal.dashboard'))->assertInertia(fn (Assert $page) => $page->where('pricing.0.card_offered', false)->has('pricing.0.products', 1));
+    }
+
     public function test_after_login_everyone_lands_in_their_own_area()
     {
         $user = $this->portalUser($this->ours);
