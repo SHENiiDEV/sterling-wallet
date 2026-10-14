@@ -6,6 +6,7 @@ use App\Enums\MidStatus;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\TariffProduct;
+use App\Mail\DailyReportMail;
 use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
@@ -113,6 +114,30 @@ class TransferReportApiTest extends TestCase
         $this->assertMoney('0.40', $task->conversion_fee);      // 0.15% × 265.41
         $this->assertMoney('265.01', $task->net_payout);
         $this->assertSame('transfer_unknown', array_key_first(array_filter($task->summary_data['by_scheme'], fn ($g) => $g['count'] > 0)));
+    }
+
+    public function test_a_day_that_is_still_running_is_reported_once_it_is_over()
+    {
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => ['transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0.15, 'settlement_fx_percent' => 0]]);
+        $this->mid($merchant, $this->lapkipay(), null, ['mid' => 'BASILDON LIMITED EUR']);
+
+        // 13 Oct, 09:00 UTC: the day is not over, so the report waits and nothing is mailed.
+        $this->sendBatch(['transactions' => [[
+            'id' => 'TR9', 'company' => 'BASILDON LIMITED', 'amount' => 100, 'currency' => 'EUR', 'status' => 'Completed', 'date' => '13/10/2026 08:00:00',
+        ]]])->assertOk();
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame(ReportStatus::Pending, $task->status);
+        Mail::assertNothingQueued();
+
+        // The day ends: the scheduler builds the report and sends it once.
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 00:30:00', 'UTC'));
+        $this->artisan('reports:release-due')->assertSuccessful();
+        $this->artisan('reports:release-due')->assertSuccessful();
+
+        $this->assertSame(ReportStatus::Completed, $task->fresh()->status);
+        Mail::assertQueued(DailyReportMail::class, 1);
     }
 
     public function test_a_transfer_report_is_blocked_while_the_merchant_has_no_c2b_tariff()

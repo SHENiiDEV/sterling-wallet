@@ -138,6 +138,16 @@ class ReportIngestionService
         $task->loadMissing('merchantMid');
 
         if ($task->missingProviderIds() === []) {
+            // A day that is still running is built once it is over (reports:release-due),
+            // so the merchant gets one report per finished day, not a half-day one.
+            if ($task->dayIsOpen()) {
+                if ($task->status !== ReportStatus::Completed) {
+                    $task->update(['status' => ReportStatus::Pending, 'error_log' => null]);
+                }
+
+                return;
+            }
+
             if ($task->status !== ReportStatus::Completed) {
                 $task->update(['status' => ReportStatus::Pending, 'error_log' => null]);
             }

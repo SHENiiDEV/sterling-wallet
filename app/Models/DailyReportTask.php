@@ -7,6 +7,7 @@ use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -94,6 +95,18 @@ class DailyReportTask extends Model
         $received = $this->sources()->pluck('provider_id')->all();
 
         return array_values(array_diff($this->merchantMid->requiredProviderIds(), $received));
+    }
+
+    /**
+     * The report's last day is not over yet in the bank's time zone: more
+     * operations may still come, so the report must not be built or sent.
+     */
+    public function dayIsOpen(): bool
+    {
+        $this->loadMissing('merchantMid.bankProvider');
+        $timezone = $this->merchantMid->bankProvider?->timezone ?: config('sterling.timezone');
+
+        return $this->period_to->toDateString() >= CarbonImmutable::now($timezone)->format('Y-m-d');
     }
 
     /**
