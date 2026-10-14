@@ -399,16 +399,118 @@ export default function Welcome() {
                 </main>
 
                 <footer className="border-t">
-                    <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:px-6">
-                        <Brand />
-                        <p>
-                            © {new Date().getFullYear()} Sterling Pay. All
-                            rights reserved.
-                        </p>
+                    <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-muted-foreground sm:px-6">
+                        <div className="grid max-w-4xl gap-3 text-xs leading-relaxed">
+                            <p>
+                                Sterling Path Pay Limited is registered with the
+                                Financial Transactions and Reports Analysis
+                                Centre of Canada (FINTRAC) as a Money Services
+                                Business (MSB) with number N300000200 and having
+                                its Business address: 3rd Floor, Ste Office 4,
+                                410 W Georgia Street, Vancouver, British
+                                Columbia, Canada, V6B 0S7.
+                            </p>
+                            <p>
+                                Sterling Path Pay Limited is registered to
+                                provide the activities of foreign exchange
+                                dealing, money transferring, dealing in virtual
+                                currencies, issuing and redeeming money orders
+                                and acting as a payment services provider. Our
+                                registration status and activities can be viewed
+                                on the FINTRAC at any time.
+                            </p>
+                        </div>
+
+                        <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr]">
+                            <div>
+                                <h3 className="mb-3 text-xs font-semibold tracking-wide text-foreground uppercase">
+                                    Company details
+                                </h3>
+                                <ul className="grid gap-1.5">
+                                    <li>Sterling Path Pay Limited</li>
+                                    <li>Incorporation No. BC1574225</li>
+                                    <li>Business No. 708535968BC0001</li>
+                                    <li>
+                                        <a
+                                            href="mailto:info@sterling-pay.com"
+                                            className="hover:text-foreground hover:underline"
+                                        >
+                                            info@sterling-pay.com
+                                        </a>
+                                    </li>
+                                    <li>
+                                        3rd Floor, Ste Office 4, 410 W Georgia
+                                        Street, Vancouver, British Columbia,
+                                        Canada, V6B 0S7
+                                    </li>
+                                </ul>
+                            </div>
+                            <FooterLinks title="Company" links={companyLinks} />
+                            <FooterLinks title="Legal" links={legalLinks} />
+                        </div>
+
+                        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t pt-6 sm:flex-row">
+                            <Brand />
+                            <p>
+                                © {new Date().getFullYear()} Sterling Pay. All
+                                rights reserved.
+                            </p>
+                        </div>
                     </div>
                 </footer>
             </div>
         </>
+    );
+}
+
+const companyLinks = [
+    { label: 'About', href: 'https://www.sterling-pay.com/about' },
+    { label: 'Contact', href: 'https://www.sterling-pay.com/contact' },
+    { label: 'Help', href: 'https://www.sterling-pay.com/faq' },
+];
+
+const legalLinks = [
+    {
+        label: 'Privacy',
+        href: 'https://www.sterling-pay.com/legal/privacy-policy',
+    },
+    { label: 'Terms', href: 'https://www.sterling-pay.com/legal/terms-of-use' },
+    { label: 'KYC', href: 'https://www.sterling-pay.com/legal/kyc-policy' },
+    {
+        label: 'Refund',
+        href: 'https://www.sterling-pay.com/legal/refund-policy',
+    },
+    {
+        label: 'Corporate governance',
+        href: 'https://www.sterling-pay.com/legal/corporate-governance-process',
+    },
+];
+
+function FooterLinks({
+    title,
+    links,
+}: {
+    title: string;
+    links: { label: string; href: string }[];
+}) {
+    return (
+        <div>
+            <h3 className="mb-3 text-xs font-semibold tracking-wide text-foreground uppercase">
+                {title}
+            </h3>
+            <ul className="grid gap-1.5">
+                {links.map((link) => (
+                    <li key={link.href}>
+                        <a
+                            href={link.href}
+                            className="hover:text-foreground hover:underline"
+                        >
+                            {link.label}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
 
@@ -555,7 +657,7 @@ function HeroStatement() {
                 </p>
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                     <Bot className="size-4 text-brand" />
-                    Cardaq · Corefy
+                    Bank ↔ Acquirer
                     <Check className="size-3.5 text-success" />
                 </p>
             </div>
