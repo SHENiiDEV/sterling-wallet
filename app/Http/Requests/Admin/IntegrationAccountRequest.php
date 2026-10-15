@@ -63,14 +63,14 @@ class IntegrationAccountRequest extends FormRequest
         $data = $this->validated();
         foreach (['username', 'password', 'totp_secret'] as $secret) {
             if (($data[$secret] ?? null) === null || $data[$secret] === '') {
-                if ($this->route('account') !== null && ! $this->boolean("clear_{$secret}")) {
+                if ($this->route('account') !== null && $this->boolean("clear_{$secret}") === false) {
                     unset($data[$secret]);
                 } else {
                     $data[$secret] = null;
                 }
             }
         }
-        $data['mid_ids'] = ! empty($data['mid_ids']) ? array_map('intval', $data['mid_ids']) : null;
+        $data['mid_ids'] = empty($data['mid_ids']) ? null : array_map('intval', $data['mid_ids']);
 
         return $data;
     }
