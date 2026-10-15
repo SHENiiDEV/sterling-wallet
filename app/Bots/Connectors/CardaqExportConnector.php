@@ -32,7 +32,7 @@ class CardaqExportConnector extends PlaywrightConnector
 
     public function label(): string
     {
-        return 'Cardaq e-mail reports (Hostinger / PrivateEmail webmail)';
+        return 'Cardaq e-mail reports';
     }
 
     protected function input(Target $target): array
