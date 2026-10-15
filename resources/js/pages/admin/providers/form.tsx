@@ -23,7 +23,7 @@ import type { MatchingRules, Option, Provider } from '@/types';
 type Props = {
     provider: Provider | null;
     types: Option[];
-    products: Option[];
+    products?: Option[];
     reportFormats: Option[];
     connectors: Option[];
     defaultMatching: MatchingRules;
@@ -38,7 +38,7 @@ const str = (value: string | number | null | undefined, fallback = '') =>
 export default function ProviderForm({
     provider,
     types,
-    products,
+    products = [],
     reportFormats,
     connectors,
     defaultMatching,

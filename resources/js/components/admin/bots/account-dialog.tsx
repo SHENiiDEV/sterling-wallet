@@ -145,7 +145,11 @@ export function AccountDialog({
                                 autoFocus={!account}
                             />
                         </Field>
-                        <Field label="Provider" error={errors.provider_id}>
+                        <Field
+                            label="Provider"
+                            error={errors.provider_id}
+                            className="min-w-0"
+                        >
                             <Select
                                 value={data.provider_id}
                                 onValueChange={(value) => {
@@ -177,7 +181,11 @@ export function AccountDialog({
                                 </SelectContent>
                             </Select>
                         </Field>
-                        <Field label="Bot" error={errors.connector}>
+                        <Field
+                            label="Bot"
+                            error={errors.connector}
+                            className="min-w-0"
+                        >
                             <Select
                                 value={data.connector}
                                 onValueChange={(value) =>

@@ -73,6 +73,7 @@ class ProviderController extends Controller
     {
         return [
             'types' => ProviderType::options(),
+            'products' => TariffProduct::options(),
             'reportFormats' => array_map(fn (string $f) => ['value' => $f, 'label' => ucfirst($f)], app(ParserRegistry::class)->formats()),
             'connectors' => app(ConnectorRegistry::class)->options(),
             'defaultMatching' => config('sterling.matching'),
