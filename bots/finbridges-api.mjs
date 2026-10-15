@@ -30,7 +30,10 @@ function emit(result) {
 
 async function signedGet(input, pathWithQuery) {
     const settings = input.settings || {};
-    const base = (settings.base_url || 'https://finbridges.eu').replace(/\/$/, '');
+    const base = (settings.base_url || 'https://finbridges.eu').replace(
+        /\/$/,
+        '',
+    );
     const ts = String(
         settings.ts_unit === 'ms' ? Date.now() : Math.floor(Date.now() / 1000),
     );
@@ -66,7 +69,9 @@ try {
     const walletId = settings.wallet_id;
 
     if (!input.username || !input.password) {
-        throw new Error('Login (apiKey) and Password (apiSecret) are required.');
+        throw new Error(
+            'Login (apiKey) and Password (apiSecret) are required.',
+        );
     }
     if (!clientId || !walletId) {
         throw new Error('Account settings need client_id and wallet_id.');

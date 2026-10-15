@@ -29,7 +29,11 @@
 Бот «FinBridges API (wallet polling)» ходит в API без браузера. Настройка аккаунта: Login = `apiKey`, Password = `apiSecret`, Settings:
 
 ```json
-{"client_id": "IES…", "wallet_id": "CJPU…", "list_path": "/api-public/transactions/{clientId}/{walletId}?from={from}&to={to}"}
+{
+    "client_id": "IES…",
+    "wallet_id": "CJPU…",
+    "list_path": "/api-public/transactions/{clientId}/{walletId}?from={from}&to={to}"
+}
 ```
 
 `list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Необязательно: `base_url`, `ts_unit` (`s` или `ms`).

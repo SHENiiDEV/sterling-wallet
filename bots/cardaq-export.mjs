@@ -166,7 +166,10 @@ function searchText(input, fallbackTemplate, withDate = true) {
         .replaceAll('{query}', input.search_query)
         .replaceAll('{date}', withDate ? ddmmyyyy(input.report_date) : '');
 
-    return text.replace(/\s+/g, ' ').replace(/[\s,;:-]+$/, '').trim();
+    return text
+        .replace(/\s+/g, ' ')
+        .replace(/[\s,;:-]+$/, '')
+        .trim();
 }
 
 async function fromHostinger(input, page) {
