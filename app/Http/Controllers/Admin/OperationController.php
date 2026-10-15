@@ -5,18 +5,24 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\Currency;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
+use App\Enums\ReportStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\OperationRequest;
 use App\Http\Resources\OperationResource;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Reports\Generation\Tariff;
+use App\Services\AuditLogger;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -69,6 +75,92 @@ class OperationController extends Controller
             'types' => OperationType::options(),
             'currencies' => Currency::options(),
         ]);
+    }
+
+    public function create(): Response
+    {
+        return Inertia::render('admin/operations/form', [
+            'mids' => MerchantMid::query()
+                ->with(['merchant:id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
+                ->orderBy('mid')
+                ->get()
+                ->map(fn (MerchantMid $m) => [
+                    'id' => $m->id,
+                    'mid' => $m->mid,
+                    'currency' => $m->currency->value,
+                    'merchant' => $m->merchant?->name,
+                    'providers' => array_values(array_filter([
+                        $m->bankProvider ? ['id' => $m->bankProvider->id, 'name' => $m->bankProvider->name, 'role' => 'bank'] : null,
+                        $m->gateProvider ? ['id' => $m->gateProvider->id, 'name' => $m->gateProvider->name, 'role' => 'gate'] : null,
+                    ])),
+                ]),
+            'types' => OperationType::options(),
+            'currencies' => Currency::options(),
+        ]);
+    }
+
+    public function store(OperationRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $mid = MerchantMid::query()->findOrFail($data['merchant_mid_id']);
+        $provider = Provider::query()->findOrFail($data['provider_id']);
+        $reason = $data['reason'];
+        unset($data['reason']);
+
+        $operation = MerchantOperation::query()->create([
+            ...array_filter($data, fn ($v) => $v !== null && $v !== ''),
+            'merchant_id' => $mid->merchant_id,
+            'role' => $provider->type,
+            'mid' => $mid->mid,
+            'raw' => ['manual' => true, 'added_by' => $request->user()->name, 'reason' => $reason, 'added_at' => now()->toIso8601String()],
+        ]);
+        AuditLogger::log('operation.created', $operation, ['reason' => $reason, 'payment_id' => $operation->payment_id, 'amount' => $operation->amount, 'currency' => $operation->currency]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation added.'.$this->staleReportNote($operation)]);
+
+        return to_route('admin.operations.show', $operation);
+    }
+
+    /**
+     * Deleting needs the payment ID (or the word DELETE) typed back and a reason.
+     */
+    public function destroy(Request $request, MerchantOperation $operation): RedirectResponse
+    {
+        $data = $request->validate([
+            'confirm' => ['required', 'string'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $expected = (string) ($operation->payment_id ?: 'DELETE');
+        if (trim($data['confirm']) !== $expected) {
+            throw ValidationException::withMessages(['confirm' => "Type \"{$expected}\" to confirm."]);
+        }
+
+        AuditLogger::log('operation.deleted', $operation, [
+            'reason' => $data['reason'],
+            'snapshot' => $operation->only(['provider_id', 'merchant_mid_id', 'payment_id', 'trn_type', 'operation_type', 'amount', 'currency', 'report_date', 'transaction_at']),
+        ]);
+        $note = $this->staleReportNote($operation);
+        $operation->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation deleted.'.$note]);
+
+        return to_route('admin.operations.index');
+    }
+
+    /**
+     * A report already built for that day does not change by itself.
+     */
+    private function staleReportNote(MerchantOperation $operation): string
+    {
+        $built = $operation->merchant_mid_id && $operation->report_date && DailyReportTask::query()
+            ->where('merchant_mid_id', $operation->merchant_mid_id)
+            ->where('period_from', '<=', $operation->report_date->toDateString())
+            ->where('period_to', '>=', $operation->report_date->toDateString())
+            ->where('status', ReportStatus::Completed)
+            ->exists();
+
+        return $built ? ' The daily report for that day is already built: regenerate it in Reports.' : '';
     }
 
     public function show(MerchantOperation $operation): Response
