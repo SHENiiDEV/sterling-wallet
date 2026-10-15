@@ -47,6 +47,8 @@ class CardaqExportConnector extends PlaywrightConnector
             'mail_base_url' => $account->setting('mail_base_url', $defaults['base_url']),
             // Hostinger: searched as is. PrivateEmail: "{query}, Processing period {dd.mm.yyyy}".
             'search_query' => $account->setting('search_query', 'EXORAPAY FINANCE LTD'),
+            // Optional: what exactly is searched, e.g. "{query}, Processing period {date}" ({date} = dd.mm.yyyy).
+            'search_template' => $account->setting('search_template'),
         ];
     }
 }

@@ -11,6 +11,8 @@
  *   - hostinger:    searches `search_query` and picks the message by the date in its subject.
  *   - privateemail: searches "{search_query}, Processing period {dd.mm.yyyy}", then the same
  *                   phrase without the date, and opens each result to read its date.
+ * `search_template` (optional) sets what is searched: {query} is `search_query`,
+ * {date} the report date as dd.mm.yyyy, e.g. "{query}, Processing period {date}".
  * Chargeback attachments are not clearing data: they are skipped here.
  */
 import path from 'node:path';
@@ -157,17 +159,27 @@ async function dismissPopups(page) {
     }
 }
 
+/** The search text from the account's template; `withDate: false` drops the date for a wider retry. */
+function searchText(input, fallbackTemplate, withDate = true) {
+    const template = input.search_template || fallbackTemplate;
+    const text = template
+        .replaceAll('{query}', input.search_query)
+        .replaceAll('{date}', withDate ? ddmmyyyy(input.report_date) : '');
+
+    return text.replace(/\s+/g, ' ').replace(/[\s,;:-]+$/, '').trim();
+}
+
 async function fromHostinger(input, page) {
     await hostingerLogin(page, input);
     await dismissPopups(page);
 
     log(
-        `Searching "${input.search_query}" for ${input.report_date} (${input.from} — ${input.to})`,
+        `Searching "${searchText(input, '{query}')}" for ${input.report_date} (${input.from} — ${input.to})`,
     );
     const search = page.locator(HOSTINGER.search).first();
     await search.waitFor({ state: 'visible', timeout: 20000 });
     await search.click({ force: true });
-    await search.fill(input.search_query);
+    await search.fill(searchText(input, '{query}'));
     await search.dispatchEvent('input').catch(() => {});
     await randomDelay(300, 600);
     await page.keyboard.press('Enter');
@@ -329,15 +341,15 @@ async function privateEmailSearch(page, query) {
 async function fromPrivateEmail(input, page) {
     await privateEmailLogin(page, input);
 
-    const phrase = `${input.search_query}, Processing period`;
-    let rows = await privateEmailSearch(
-        page,
-        `${phrase} ${ddmmyyyy(input.report_date)}`,
-    );
+    const template = '{query}, Processing period {date}';
+    let rows = await privateEmailSearch(page, searchText(input, template));
     let count = await rows.count();
     if (count === 0) {
         log('Nothing for the exact date, trying without it…');
-        rows = await privateEmailSearch(page, phrase);
+        rows = await privateEmailSearch(
+            page,
+            searchText(input, template, false),
+        );
         count = await rows.count();
     }
     log(`${count} message(s) found`);

@@ -93,6 +93,7 @@ abstract class PlaywrightConnector implements Connector
             'totp_secret' => $account->totp_secret,
             'headless' => (bool) config('sterling.bots.headless'),
             'proxy' => $account->setting('proxy', config('sterling.bots.proxy')),
+            'settings' => $account->settings ?? [],
             'download_dir' => $directory,
             'screenshot_dir' => $directory,
             'report_date' => $target->period->reportDate->toDateString(),

@@ -23,3 +23,15 @@
 2. метод списка транзакций кошелька за период: «Get transactions by external ID» ищет только по уже известному `externalTransactionId`.
 
 Креды (`apiKey`, `apiSecret`, `clientId`, `walletId`) хранить только в аккаунте бота в Admin → Bots (шифруются), в репозиторий и `.env` их не класть.
+
+## Бот-опрос (bots/finbridges-api.mjs)
+
+Бот «FinBridges API (wallet polling)» ходит в API без браузера. Настройка аккаунта: Login = `apiKey`, Password = `apiSecret`, Settings:
+
+```json
+{"client_id": "IES…", "wallet_id": "CJPU…", "list_path": "/api-public/transactions/{clientId}/{walletId}?from={from}&to={to}"}
+```
+
+`list_path` берётся из документации FinBridges (метод списка транзакций; `{clientId} {walletId} {from} {to}` подставляются). Необязательно: `base_url`, `ts_unit` (`s` или `ms`).
+
+Подпись пока предположительная: hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
