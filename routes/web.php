@@ -128,6 +128,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::delete('bots/accounts/{account}', [BotController::class, 'destroy'])->name('bots.accounts.destroy');
         Route::post('bots/accounts/{account}/run', [BotController::class, 'run'])->name('bots.accounts.run');
         Route::post('bots/runs/{run}/retry', [BotController::class, 'retry'])->name('bots.runs.retry');
+        Route::post('bots/runs/{run}/cancel', [BotController::class, 'cancel'])->name('bots.runs.cancel');
         Route::get('bots/runs/{run}/screenshot', [BotController::class, 'screenshot'])->name('bots.runs.screenshot');
     });
 

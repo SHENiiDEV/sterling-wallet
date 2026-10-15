@@ -290,6 +290,23 @@ function RunDialog({
                             Close
                         </Button>
                     </DialogClose>
+                    {ACTIVE.includes(run.status) && (
+                        <Button
+                            variant="destructive"
+                            onClick={() =>
+                                router.post(
+                                    admin.bots.runs.cancel.url(run.id),
+                                    {},
+                                    {
+                                        preserveScroll: true,
+                                        onSuccess: onClose,
+                                    },
+                                )
+                            }
+                        >
+                            Cancel run
+                        </Button>
+                    )}
                     {!ACTIVE.includes(run.status) && (
                         <Button
                             onClick={() =>

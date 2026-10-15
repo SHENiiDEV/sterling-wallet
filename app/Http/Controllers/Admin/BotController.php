@@ -134,6 +134,25 @@ class BotController extends Controller
         return back();
     }
 
+    /**
+     * Stop waiting for a run that hangs in the queue (or is being retried):
+     * it is marked failed, a queued job for it does nothing, and the target can be run again.
+     */
+    public function cancel(Request $request, BotRun $run): RedirectResponse
+    {
+        if ($run->status->isActive()) {
+            $run->update([
+                'status' => BotRunStatus::Failed,
+                'error' => 'Cancelled by '.$request->user()->name.'.',
+                'finished_at' => now(),
+            ]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Run cancelled.']);
+
+        return back();
+    }
+
     public function screenshot(Request $request, BotRun $run): BinaryFileResponse
     {
         $path = $request->boolean('live') ? $this->runFile($run, PlaywrightRunner::LIVE_FRAME) : $run->screenshot_path;

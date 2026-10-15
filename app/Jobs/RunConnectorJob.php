@@ -67,6 +67,10 @@ class RunConnectorJob implements ShouldQueue
         if ($run === null || $run->account === null) {
             return;
         }
+        // Cancelled (or finished) while waiting in the queue.
+        if (! $run->status->isActive()) {
+            return;
+        }
 
         $run->update(['status' => BotRunStatus::Running, 'attempts' => $run->attempts + 1, 'started_at' => now(), 'error' => null]);
         $started = hrtime(true);
