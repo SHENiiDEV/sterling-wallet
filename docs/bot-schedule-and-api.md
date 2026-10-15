@@ -20,7 +20,7 @@
 
 ## Почтовый ящик Cardaq (Hostinger / PrivateEmail)
 
-В Admin → Bots у аккаунта Cardaq поле **Mailbox**: Hostinger или PrivateEmail. На каждый ящик свой аккаунт со своим логином и паролем. Название компании для поиска письма: настройка `search_query` (например `WORKING AGENT LTD`).
+В Admin → Bots у аккаунта Cardaq поле **Mailbox**: Hostinger или PrivateEmail. На каждый ящик свой аккаунт со своим логином и паролем. Название компании для поиска письма: настройка `search_query` (например `WORKING AGENT LTD`). Что именно искать, задаётся шаблоном `search_template`: `{query}` это `search_query`, `{date}` дата отчёта в формате дд.мм.гггг, например `{query}, Processing period {date}` (по умолчанию для PrivateEmail) или `{query}` (по умолчанию для Hostinger).
 
 ## API для внешнего бота (старый Node-бот)
 

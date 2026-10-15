@@ -316,7 +316,7 @@ export function AccountDialog({
                             label="Settings (JSON)"
                             htmlFor="settings"
                             error={errors.settings}
-                            hint='Cardaq: {"mail_provider": "privateemail", "search_query": "WORKING AGENT LTD"}. Any bot: {"proxy": "http://…"}'
+                            hint='Cardaq: {"mail_provider": "privateemail", "search_query": "WORKING AGENT LTD", "search_template": "{query}, Processing period {date}"}. Any bot: {"proxy": "http://…"}'
                             className="sm:col-span-2"
                         >
                             <Textarea
