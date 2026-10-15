@@ -36,6 +36,24 @@ export type BotMid = {
     provider_ids: number[];
 };
 
+/** Mailboxes the Cardaq bot can read reports from (setting `mail_provider`). */
+const MAIL_PROVIDERS = [
+    { value: 'hostinger', label: 'Hostinger webmail' },
+    { value: 'privateemail', label: 'PrivateEmail (Namecheap) webmail' },
+];
+
+const readSettings = (text: string): Record<string, unknown> => {
+    try {
+        const parsed = text.trim() === '' ? {} : JSON.parse(text);
+
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : {};
+    } catch {
+        return {};
+    }
+};
+
 export function AccountDialog({
     account,
     providers,
@@ -70,6 +88,19 @@ export function AccountDialog({
         is_active: account?.is_active ?? true,
     });
     const { data, setData, errors } = form;
+    const isCardaq = data.connector === 'cardaq-export';
+    const mailProvider =
+        (readSettings(data.settings).mail_provider as string | undefined) ??
+        'hostinger';
+    const setMailProvider = (value: string) =>
+        setData(
+            'settings',
+            JSON.stringify(
+                { ...readSettings(data.settings), mail_provider: value },
+                null,
+                2,
+            ),
+        );
     const providerMids = mids.filter((mid) =>
         mid.provider_ids.includes(Number(data.provider_id)),
     );
@@ -247,11 +278,37 @@ export function AccountDialog({
                                 Remove stored 2FA secret
                             </label>
                         )}
+                        {isCardaq && (
+                            <Field
+                                label="Mailbox"
+                                hint="Where Cardaq's report e-mails arrive. Use the matching login and password above"
+                                className="sm:col-span-2"
+                            >
+                                <Select
+                                    value={mailProvider}
+                                    onValueChange={setMailProvider}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {MAIL_PROVIDERS.map((mail) => (
+                                            <SelectItem
+                                                key={mail.value}
+                                                value={mail.value}
+                                            >
+                                                {mail.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                        )}
                         <Field
                             label="Settings (JSON)"
                             htmlFor="settings"
                             error={errors.settings}
-                            hint='e.g. {"search_query": "EXORAPAY FINANCE LTD"} for Cardaq, {"proxy": "http://…"}'
+                            hint='Cardaq: {"mail_provider": "privateemail", "search_query": "WORKING AGENT LTD"}. Any bot: {"proxy": "http://…"}'
                             className="sm:col-span-2"
                         >
                             <Textarea

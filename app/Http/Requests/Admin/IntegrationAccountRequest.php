@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Bots\Connectors\CardaqExportConnector;
 use App\Bots\ConnectorRegistry;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -31,6 +32,7 @@ class IntegrationAccountRequest extends FormRequest
             'password' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'totp_secret' => ['nullable', 'string', 'max:128'],
             'settings' => ['nullable', 'array'],
+            'settings.mail_provider' => ['nullable', Rule::in(array_keys(CardaqExportConnector::MAIL_PROVIDERS))],
             'mid_ids' => ['nullable', 'array'],
             'mid_ids.*' => ['integer', Rule::exists('merchant_mids', 'id')],
             'is_active' => ['boolean'],

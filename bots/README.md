@@ -4,21 +4,24 @@ Playwright scripts that fetch provider reports. Laravel runs them — never run
 them by hand in production.
 
 ```
-bots:dispatch (every 30 min)  →  bot_runs (queued)  →  RunConnectorJob
+bots:dispatch (Cardaq hourly, Corefy hourly 06:00–12:00)  →  bot_runs (queued)  →  RunConnectorJob
     → node bots/{connector}.mjs  (JSON in on stdin, JSON result on the last stdout line)
     → ReportIngestionService     (files → operations → daily reports)
 ```
 
-| Script              | Provider                   | What it does                                                                                                                                                     |
-| ------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `corefy-export.mjs` | Corefy (Paycore dashboard) | Exports payment invoices of one commerce account for the report period, downloads the CSV. 0 rows → the day is marked as received with no operations.            |
-| `cardaq-export.mjs` | Cardaq (reports by e-mail) | Logs into Hostinger webmail, finds the report e-mail whose subject date range covers the report date, downloads XLSX/CSV attachments. No e-mail yet → `skipped`. |
-| `madfin-export.mjs` | Madfin                     | Placeholder until the portal steps are known.                                                                                                                    |
+| Script              | Provider                   | What it does                                                                                                                                                                                                                                                     |
+| ------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `corefy-export.mjs` | Corefy (Paycore dashboard) | Exports payment invoices of one commerce account for the report period, downloads the CSV. 0 rows → the day is marked as received with no operations.                                                                                                            |
+| `cardaq-export.mjs` | Cardaq (reports by e-mail) | Logs into the account's webmail (**Hostinger** or **PrivateEmail**, setting `mail_provider`), finds the report e-mail whose subject date range covers the report date, downloads XLSX/CSV attachments (chargeback files are skipped). No e-mail yet → `skipped`. |
+| `madfin-export.mjs` | Madfin                     | Placeholder until the portal steps are known.                                                                                                                                                                                                                    |
 
 Credentials, 2FA secrets and per-account settings live in **Admin → Bots**
 (`integration_accounts`, encrypted). Settings keys:
 
-- Cardaq: `search_query` (default `EXORAPAY FINANCE LTD`), `mail_base_url`, `proxy`.
+- Cardaq: `mail_provider` (`hostinger`, the default, or `privateemail`; chosen in the account dialog under **Mailbox**),
+  `search_query` (default `EXORAPAY FINANCE LTD`), `mail_base_url`, `proxy`. One account per mailbox: put that mailbox's login and
+  password on it. Hostinger searches `search_query` and reads the date from the subject; PrivateEmail searches
+  `{search_query}, Processing period {dd.mm.yyyy}` (then without the date) and opens each result to read its date.
   Hostinger announcement popups ("Try conversation view") are closed automatically.
 - Corefy: `dashboard_url`, `proxy`. The commerce account comes from each MID's **Gate MID** field.
   Two-step verification: put the base32 secret (the key behind the QR code) in the
