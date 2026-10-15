@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MerchantMid;
 use App\Models\Provider;
 use App\Reports\Ingestion\ReportIngestionService;
+use App\Reports\Parsers\FinBridgesParser;
 use App\Reports\Parsers\LapkiPayParser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,11 +22,25 @@ class TransferReportController extends Controller
 {
     public function upload(Request $request, Provider $provider, ReportIngestionService $ingestion): JsonResponse
     {
-        if ($provider->report_format !== LapkiPayParser::FORMAT) {
+        if (! in_array($provider->report_format, [LapkiPayParser::FORMAT, FinBridgesParser::FORMAT], true)) {
             return response()->json(['message' => "Provider {$provider->code} does not take transfer batches."], 422);
         }
 
-        $data = $request->validate([
+        $finBridges = $provider->report_format === FinBridgesParser::FORMAT;
+        $key = $finBridges ? 'list' : 'transactions';
+
+        $data = $request->validate($finBridges ? [
+            // The API response as is: {"count": n, "list": [Transaction …]}.
+            'list' => ['required', 'array', 'max:5000'],
+            'list.*' => ['array'],
+            'list.*.walletId' => ['required', 'string', 'max:128'],
+            'list.*.transactionNumber' => ['required', 'string', 'max:128'],
+            'list.*.transactionType' => ['required', 'string', 'max:40'],
+            'list.*.status' => ['required', 'string', 'max:40'],
+            'list.*.amountOrigCcy' => ['required', 'numeric'],
+            'list.*.origCcy' => ['required', 'string', 'size:3'],
+            'list.*.date' => ['required', 'numeric'],
+        ] : [
             'transactions' => ['required', 'array', 'max:5000'],
             'transactions.*' => ['array'],
             'transactions.*.id' => ['required', 'string', 'max:128'],
@@ -42,7 +57,7 @@ class TransferReportController extends Controller
         ]);
 
         $path = tempnam(sys_get_temp_dir(), 'transfers').'.json';
-        file_put_contents($path, json_encode(['transactions' => $data['transactions']]));
+        file_put_contents($path, json_encode([$key => $request->input($key)]));
 
         try {
             $result = $ingestion->ingest($provider, new SplFileInfo($path));

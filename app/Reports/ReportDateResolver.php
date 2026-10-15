@@ -47,11 +47,16 @@ class ReportDateResolver
     }
 
     /**
-     * First day the provider's file for this period can be fetched.
+     * First day the provider's file for this period can be fetched: the
+     * report date plus the provider's delay. Closed days are reported
+     * together (Fri–Sun) and their file comes the next day at the latest,
+     * so a Cardaq (T+2) weekend bundle is due on Monday, not on Tuesday.
      */
     public function readyOn(Provider $provider, ReportPeriod $period): CarbonImmutable
     {
-        return $this->day($period->to)->addDays($provider->report_delay_days);
+        $delay = $period->from->lessThan($period->to) ? min($provider->report_delay_days, 1) : $provider->report_delay_days;
+
+        return $this->day($period->to)->addDays($delay);
     }
 
     /**

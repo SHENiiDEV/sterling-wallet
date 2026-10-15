@@ -65,4 +65,15 @@ class ReportDateResolverTest extends TestCase
         $this->assertSame(['2026-09-13', '2026-09-14', '2026-09-15'], $dates($cardaq));
         $this->assertSame(['2026-09-13', '2026-09-14', '2026-09-15', '2026-09-16'], $dates($corefy));
     }
+
+    public function test_cardaq_gets_wednesday_on_friday_and_the_weekend_bundle_on_monday()
+    {
+        $resolver = app(ReportDateResolver::class);
+        $cardaq = $this->cardaq(); // T+2
+        $ready = fn ($day) => $resolver->readyOn($cardaq, $resolver->periodFor($day))->toDateString();
+
+        $this->assertSame('2026-09-18', $ready('2026-09-16')); // Wednesday's report, Friday
+        $this->assertSame('2026-09-14', $ready('2026-09-11')); // Fri + Sat + Sun, Monday
+        $this->assertSame('2026-09-16', $ready('2026-09-14')); // Monday's report, Wednesday
+    }
 }

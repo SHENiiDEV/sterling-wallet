@@ -3,8 +3,11 @@
 namespace App\Http\Requests\Admin;
 
 use App\Bots\ConnectorRegistry;
+use App\Bots\Connectors\CardaqExportConnector;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class IntegrationAccountRequest extends FormRequest
 {
@@ -46,6 +49,25 @@ class IntegrationAccountRequest extends FormRequest
     }
 
     /**
+     * A sub-rule on `settings` would make validated() drop every other
+     * setting, so the mailbox is checked here instead.
+     *
+     * @return list<Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator) {
+                $mail = $this->input('settings.mail_provider');
+
+                if ($mail !== null && array_key_exists($mail, CardaqExportConnector::MAIL_PROVIDERS) === false) {
+                    $validator->errors()->add('settings.mail_provider', 'The mailbox must be one of: '.implode(', ', array_keys(CardaqExportConnector::MAIL_PROVIDERS)).'.');
+                }
+            },
+        ];
+    }
+
+    /**
      * @return array<string, string>
      */
     public function messages(): array
@@ -61,14 +83,14 @@ class IntegrationAccountRequest extends FormRequest
         $data = $this->validated();
         foreach (['username', 'password', 'totp_secret'] as $secret) {
             if (($data[$secret] ?? null) === null || $data[$secret] === '') {
-                if ($this->route('account') !== null && ! $this->boolean("clear_{$secret}")) {
+                if ($this->route('account') !== null && $this->boolean("clear_{$secret}") === false) {
                     unset($data[$secret]);
                 } else {
                     $data[$secret] = null;
                 }
             }
         }
-        $data['mid_ids'] = ! empty($data['mid_ids']) ? array_map('intval', $data['mid_ids']) : null;
+        $data['mid_ids'] = empty($data['mid_ids']) ? null : array_map('intval', $data['mid_ids']);
 
         return $data;
     }

@@ -142,4 +142,17 @@ class BotReportApiTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Provider noformat has no report format set.');
     }
+
+    public function test_a_chargeback_file_is_stored_but_not_applied()
+    {
+        $file = $this->csvFile([['Merchant name', 'Amount'], ['SHOP LTD', '10.00']], 'cardaq_chargeback.csv');
+
+        $this->bot()->post('/api/v1/reports/upload/chargeback', ['report_date' => '2026-09-15', 'merchant_id' => 11, 'file' => $file], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('processed', false)
+            ->assertJsonPath('report_date', '2026-09-15');
+
+        $this->assertCount(1, Storage::disk('local')->allFiles('reports/raw/chargebacks/2026-09-15'));
+        $this->assertSame(0, MerchantOperation::query()->count());
+    }
 }

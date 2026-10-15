@@ -8,6 +8,7 @@ use App\Bots\Connectors\CorefyExportConnector;
 use App\Bots\Connectors\MadfinExportConnector;
 use App\Reports\Parsers\CardaqParser;
 use App\Reports\Parsers\CorefyParser;
+use App\Reports\Parsers\FinBridgesParser;
 use App\Reports\Parsers\LapkiPayParser;
 use App\Reports\Parsers\MadfinParser;
 use App\Reports\Parsers\ParserRegistry;
@@ -31,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
             $app->make(CorefyParser::class),
             $app->make(MadfinParser::class),
             $app->make(LapkiPayParser::class),
+            $app->make(FinBridgesParser::class),
         ]));
 
         $this->app->singleton(ConnectorRegistry::class, fn ($app) => new ConnectorRegistry([

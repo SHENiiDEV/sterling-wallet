@@ -12,6 +12,7 @@ use App\Reports\ReportPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class BotReportController extends Controller
@@ -82,6 +83,33 @@ class BotReportController extends Controller
         }
 
         return response()->json(['status' => 'ok', ...$result->toArray()]);
+    }
+
+    /**
+     * The legacy bot posts Cardaq chargeback files here. They are kept as
+     * received for now: chargebacks are not applied to reports until their
+     * file layout and transaction codes are known (STERLING_CHARGEBACK_TRN_TYPES).
+     */
+    public function chargeback(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:102400'],
+            'report_date' => ['nullable', 'date'],
+            'merchant_id' => ['nullable', 'integer'],
+        ]);
+
+        $date = isset($data['report_date']) ? CarbonImmutable::parse($data['report_date'])->toDateString() : 'undated';
+        $file = $request->file('file');
+        $name = now()->format('His').'_'.Str::limit(preg_replace('/[^A-Za-z0-9._-]+/', '_', $file->getClientOriginalName()) ?? 'chargeback', 100, '');
+        $path = $file->storeAs("reports/raw/chargebacks/{$date}", $name, config('sterling.reports.disk'));
+
+        return response()->json([
+            'status' => 'ok',
+            'file' => $path,
+            'report_date' => $date === 'undated' ? null : $date,
+            'processed' => false,
+            'message' => 'Chargeback file stored; it is not applied to reports yet.',
+        ]);
     }
 
     public function import(Request $request, ReportIngestionService $ingestion): JsonResponse
