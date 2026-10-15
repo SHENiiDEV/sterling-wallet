@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Bots\Connectors\CardaqExportConnector;
 use App\Bots\ConnectorRegistry;
+use App\Bots\Connectors\CardaqExportConnector;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
