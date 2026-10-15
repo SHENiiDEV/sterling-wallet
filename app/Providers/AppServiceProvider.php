@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Bots\ConnectorRegistry;
 use App\Bots\Connectors\CardaqExportConnector;
 use App\Bots\Connectors\CorefyExportConnector;
+use App\Bots\Connectors\FinBridgesApiConnector;
 use App\Bots\Connectors\MadfinExportConnector;
 use App\Reports\Parsers\CardaqParser;
 use App\Reports\Parsers\CorefyParser;
@@ -39,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
             $app->make(CardaqExportConnector::class),
             $app->make(CorefyExportConnector::class),
             $app->make(MadfinExportConnector::class),
+            $app->make(FinBridgesApiConnector::class),
         ]));
     }
 
