@@ -9,6 +9,9 @@
  *   list_path  REQUIRED, the transactions-list path from the FinBridges docs;
  *              {clientId} {walletId} {from} {to} are replaced, e.g.
  *              /api-public/transactions/{clientId}/{walletId}?from={from}&to={to}
+ *   external_ids  list of externalTransactionId values; with a list_path that has
+ *              {externalId} (the documented by-external-id endpoint) each one is
+ *              fetched and the results are collected. Handy to test the signature.
  *   ts_unit    's' (default) or 'ms' for x-app-access-ts
  *
  * Signature (assumed, see docs/finbridges.md): hex HMAC-SHA256(apiSecret,
@@ -74,14 +77,35 @@ try {
         );
     }
 
-    const pathWithQuery = settings.list_path
-        .replaceAll('{clientId}', encodeURIComponent(clientId))
-        .replaceAll('{walletId}', encodeURIComponent(walletId))
-        .replaceAll('{from}', input.from)
-        .replaceAll('{to}', input.to);
+    const fill = (template) =>
+        template
+            .replaceAll('{clientId}', encodeURIComponent(clientId))
+            .replaceAll('{walletId}', encodeURIComponent(walletId))
+            .replaceAll('{from}', input.from)
+            .replaceAll('{to}', input.to);
 
-    const body = await signedGet(input, pathWithQuery);
-    const list = Array.isArray(body) ? body : (body.list ?? []);
+    let list = [];
+    if (settings.list_path.includes('{externalId}')) {
+        const ids = settings.external_ids || [];
+        if (ids.length === 0) {
+            throw new Error(
+                'list_path uses {externalId}: add "external_ids": ["…"] to the account settings.',
+            );
+        }
+        for (const id of ids) {
+            const body = await signedGet(
+                input,
+                fill(settings.list_path).replaceAll(
+                    '{externalId}',
+                    encodeURIComponent(id),
+                ),
+            );
+            list.push(...(Array.isArray(body) ? body : [body]));
+        }
+    } else {
+        const body = await signedGet(input, fill(settings.list_path));
+        list = Array.isArray(body) ? body : (body.list ?? []);
+    }
     log(`Received ${list.length} transaction(s).`);
 
     if (list.length === 0) {
