@@ -57,6 +57,7 @@ export function MidDialog({
             ? String(mid.gate_provider_id)
             : '',
         gate_mid: mid?.gate_mid ?? '',
+        extra_gate_mids: (mid?.extra_gate_mids ?? []).join(', '),
         reports_start_date: mid?.reports_start_date ?? '',
         rolling_reserve_limit: mid
             ? String(Number(mid.rolling_reserve_limit))
@@ -213,6 +214,26 @@ export function MidDialog({
                                     value={data.gate_mid}
                                     onChange={(e) =>
                                         setData('gate_mid', e.target.value)
+                                    }
+                                    className="font-mono"
+                                />
+                            </Field>
+                        )}
+                        {data.gate_provider_id && (
+                            <Field
+                                label="Additional Gate MIDs"
+                                htmlFor="extra_gate_mids"
+                                error={errors.extra_gate_mids}
+                                hint="Other gateway accounts working under this same MID (e.g. more Corefy commerce accounts). Separate with commas."
+                            >
+                                <Input
+                                    id="extra_gate_mids"
+                                    value={data.extra_gate_mids}
+                                    onChange={(e) =>
+                                        setData(
+                                            'extra_gate_mids',
+                                            e.target.value,
+                                        )
                                     }
                                     className="font-mono"
                                 />

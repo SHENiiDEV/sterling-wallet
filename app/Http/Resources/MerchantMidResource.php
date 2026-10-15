@@ -27,6 +27,7 @@ class MerchantMidResource extends JsonResource
             'bank_provider_id' => $this->bank_provider_id,
             'gate_provider_id' => $this->gate_provider_id,
             'gate_mid' => $this->gate_mid,
+            'extra_gate_mids' => $this->extra_gate_mids ?? [],
             'bank_provider' => $this->whenLoaded('bankProvider', fn () => $this->bankProvider?->name),
             'gate_provider' => $this->whenLoaded('gateProvider', fn () => $this->gateProvider?->name),
             'reports_start_date' => $this->reports_start_date?->toDateString(),

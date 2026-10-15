@@ -189,7 +189,7 @@ class ReportIngestionService
         $candidates = MerchantMid::query()
             ->where($isGate ? 'gate_provider_id' : 'bank_provider_id', $provider->id)
             ->where(fn ($q) => $isGate
-                ? $q->where('gate_mid', $row->mid)->orWhere('mid', $row->mid)
+                ? $q->where('gate_mid', $row->mid)->orWhereJsonContains('extra_gate_mids', $row->mid)->orWhere('mid', $row->mid)
                 : $q->where('mid', $row->mid))
             ->get();
 

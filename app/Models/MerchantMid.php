@@ -25,12 +25,13 @@ use Illuminate\Support\Carbon;
  * @property int|null $bank_provider_id
  * @property int|null $gate_provider_id
  * @property string|null $gate_mid
+ * @property list<string>|null $extra_gate_mids
  * @property Carbon|null $reports_start_date
  * @property string $rolling_reserve_limit
  * @property-read Merchant $merchant
  */
 #[Fillable([
-    'mid', 'provider_login', 'currency', 'label', 'status', 'bank_provider_id', 'gate_provider_id', 'gate_mid',
+    'mid', 'provider_login', 'currency', 'label', 'status', 'bank_provider_id', 'gate_provider_id', 'gate_mid', 'extra_gate_mids',
     'reports_start_date', 'rolling_reserve_limit', 'processing_limit', 'notes',
     'reported_balance', 'reported_hold', 'balance_reported_at',
 ])]
@@ -43,6 +44,7 @@ class MerchantMid extends Model
     {
         return [
             'currency' => Currency::class,
+            'extra_gate_mids' => 'array',
             'status' => MidStatus::class,
             'reports_start_date' => DateOnly::class,
             'rolling_reserve_limit' => 'decimal:2',
@@ -51,6 +53,16 @@ class MerchantMid extends Model
             'reported_hold' => 'decimal:2',
             'balance_reported_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Every gateway account that processes under this MID, main one first.
+     *
+     * @return list<string>
+     */
+    public function gateAccounts(): array
+    {
+        return array_values(array_unique(array_filter([$this->gate_mid, ...($this->extra_gate_mids ?? [])])));
     }
 
     /**

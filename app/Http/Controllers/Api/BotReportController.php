@@ -28,15 +28,18 @@ class BotReportController extends Controller
         $request->validate(['provider' => ['required', 'string']]);
         $provider = Provider::query()->where('code', $request->string('provider'))->where('is_active', true)->firstOrFail();
 
-        $companies = $finder->find($provider)->map(function (array $entry) use ($provider) {
+        $companies = $finder->find($provider)->flatMap(function (array $entry) use ($provider) {
             /** @var MerchantMid $mid */
             $mid = $entry['mid'];
             $mid->loadMissing('merchant:id,name');
             $isGate = $mid->gate_provider_id === $provider->id;
 
-            return [
+            // A gateway MID may front several accounts (commerces): one entry each.
+            $ids = $isGate ? ($mid->gateAccounts() ?: [$mid->mid]) : [$mid->mid];
+
+            return array_map(fn (string $id) => [
                 'name' => $mid->merchant->name.' · '.$mid->mid,
-                'id' => $isGate ? ($mid->gate_mid ?? $mid->mid) : $mid->mid,
+                'id' => $id,
                 'mid' => $mid->mid,
                 'mid_id' => $mid->id,
                 'merchant_wallet_id' => $mid->id,
@@ -49,7 +52,7 @@ class BotReportController extends Controller
                     'to' => $p->to->toDateString(),
                     'date_range' => ['from' => $p->from->toDateString(), 'to' => $p->to->toDateString()],
                 ], $entry['periods']),
-            ];
+            ], $ids);
         });
 
         return response()->json([
