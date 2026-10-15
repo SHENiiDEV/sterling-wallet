@@ -4,8 +4,10 @@ namespace App\Http\Requests\Admin;
 
 use App\Bots\ConnectorRegistry;
 use App\Bots\Connectors\CardaqExportConnector;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class IntegrationAccountRequest extends FormRequest
 {
@@ -32,7 +34,6 @@ class IntegrationAccountRequest extends FormRequest
             'password' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'totp_secret' => ['nullable', 'string', 'max:128'],
             'settings' => ['nullable', 'array'],
-            'settings.mail_provider' => ['nullable', Rule::in(array_keys(CardaqExportConnector::MAIL_PROVIDERS))],
             'mid_ids' => ['nullable', 'array'],
             'mid_ids.*' => ['integer', Rule::exists('merchant_mids', 'id')],
             'is_active' => ['boolean'],
@@ -45,6 +46,25 @@ class IntegrationAccountRequest extends FormRequest
         if (is_string($settings)) {
             $this->merge(['settings' => trim($settings) === '' ? null : (json_decode($settings, true) ?? 'invalid')]);
         }
+    }
+
+    /**
+     * A sub-rule on `settings` would make validated() drop every other
+     * setting, so the mailbox is checked here instead.
+     *
+     * @return list<Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator) {
+                $mail = $this->input('settings.mail_provider');
+
+                if ($mail !== null && array_key_exists($mail, CardaqExportConnector::MAIL_PROVIDERS) === false) {
+                    $validator->errors()->add('settings.mail_provider', 'The mailbox must be one of: '.implode(', ', array_keys(CardaqExportConnector::MAIL_PROVIDERS)).'.');
+                }
+            },
+        ];
     }
 
     /**
