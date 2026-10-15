@@ -27,8 +27,16 @@ class CorefyExportConnector extends PlaywrightConnector
 
     public function targetsForPeriod(IntegrationAccount $account, ReportPeriod $period, Collection $mids): iterable
     {
-        foreach ($mids->groupBy(fn (MerchantMid $m) => $m->gate_mid ?? $m->mid) as $commerceAccount => $group) {
-            yield new Target($account, $period, $group->values(), [
+        // A MID may front several commerce accounts: each is exported on its own.
+        $byAccount = [];
+        foreach ($mids as $mid) {
+            foreach ($mid->gateAccounts() ?: [$mid->mid] as $commerceAccount) {
+                $byAccount[$commerceAccount][] = $mid;
+            }
+        }
+
+        foreach ($byAccount as $commerceAccount => $group) {
+            yield new Target($account, $period, collect($group)->values(), [
                 'key' => (string) $commerceAccount,
                 'commerce_account' => (string) $commerceAccount,
             ]);

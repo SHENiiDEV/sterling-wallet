@@ -151,4 +151,16 @@ class IngestionTest extends TestCase
         $this->ingest($corefy, $this->corefyCsv(), CarbonImmutable::parse('2026-09-15'));
         $this->assertSame(5, $mid->operations()->count());
     }
+
+    public function test_extra_gate_accounts_resolve_to_the_same_mid()
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $mid = $this->mid($this->merchantWithTariff(), $cardaq, $corefy);
+        $mid->update(['extra_gate_mids' => ['coma_SECOND']]);
+
+        $this->ingest($corefy, $this->corefyCsv('coma_SECOND'), CarbonImmutable::parse('2026-09-15'));
+
+        $this->assertSame(5, $mid->operations()->count());
+        $this->assertSame(['coma_TEST1', 'coma_SECOND'], $mid->fresh()->gateAccounts());
+    }
 }

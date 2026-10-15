@@ -32,11 +32,26 @@ class MerchantMidRequest extends FormRequest
             'bank_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value)],
             'gate_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Gate->value)],
             'gate_mid' => ['nullable', 'string', 'max:64'],
+            'extra_gate_mids' => ['nullable', 'array', 'max:50'],
+            'extra_gate_mids.*' => ['string', 'max:64'],
             'reports_start_date' => ['nullable', 'date'],
             'rolling_reserve_limit' => ['required', 'numeric', 'min:0', 'max:1000000000'],
             'processing_limit' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        // Typed as a comma / space / line separated list; the main account is not repeated.
+        $extra = $this->input('extra_gate_mids');
+        if (is_string($extra)) {
+            $extra = preg_split('/[\s,;]+/', $extra, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+        if (is_array($extra)) {
+            $extra = array_values(array_diff(array_unique($extra), [trim((string) $this->input('gate_mid'))]));
+            $this->merge(['extra_gate_mids' => $extra === [] ? null : $extra]);
+        }
     }
 
     /**
