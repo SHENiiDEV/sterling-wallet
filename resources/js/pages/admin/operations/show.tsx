@@ -1,12 +1,27 @@
-import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Link2, Link2Off } from 'lucide-react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { ArrowLeft, Link2, Link2Off, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
     CardLabel,
     OperationTypeBadge,
     RoleLabel,
 } from '@/components/admin/operation-badges';
+import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import admin from '@/routes/admin';
@@ -117,6 +132,101 @@ function OperationFacts({ op }: { op: Operation }) {
     );
 }
 
+/** Deleting asks for the payment ID typed back and a reason. */
+function DeleteOperation({ operation }: { operation: Operation }) {
+    const [open, setOpen] = useState(false);
+    const expected = operation.payment_id || 'DELETE';
+    const form = useForm({ confirm: '', reason: '' });
+    const { data, setData, errors, processing } = form;
+
+    return (
+        <>
+            <Button variant="outline" onClick={() => setOpen(true)}>
+                <Trash2 />
+                Delete
+            </Button>
+            <Dialog
+                open={open}
+                onOpenChange={(next) => {
+                    setOpen(next);
+                    if (!next) form.reset();
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete this operation?</DialogTitle>
+                        <DialogDescription>
+                            The operation is removed for good (the audit log
+                            keeps a copy). A report that is already built does
+                            not change: regenerate it afterwards. If the
+                            provider file is uploaded again, the operation comes
+                            back.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form
+                        className="grid gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            form.delete(
+                                admin.operations.destroy.url(operation.id),
+                            );
+                        }}
+                    >
+                        <Field
+                            label={`Type ${expected} to confirm`}
+                            htmlFor="confirm"
+                            error={errors.confirm}
+                        >
+                            <Input
+                                id="confirm"
+                                value={data.confirm}
+                                onChange={(e) =>
+                                    setData('confirm', e.target.value)
+                                }
+                                className="font-mono"
+                                autoComplete="off"
+                            />
+                        </Field>
+                        <Field
+                            label="Reason"
+                            htmlFor="reason"
+                            error={errors.reason}
+                        >
+                            <Textarea
+                                id="reason"
+                                value={data.reason}
+                                onChange={(e) =>
+                                    setData('reason', e.target.value)
+                                }
+                                rows={3}
+                            />
+                        </Field>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={
+                                    processing ||
+                                    data.confirm.trim() !== expected ||
+                                    data.reason.trim() === ''
+                                }
+                            >
+                                {processing && <Spinner />}
+                                Delete operation
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 export default function OperationShow({
     operation,
     raw,
@@ -141,6 +251,7 @@ export default function OperationShow({
                     Operations
                 </Link>
                 <PageHeader
+                    actions={<DeleteOperation operation={operation} />}
                     title={formatMoney(operation.amount, operation.currency)}
                     description={
                         <span className="inline-flex flex-wrap items-center gap-2">

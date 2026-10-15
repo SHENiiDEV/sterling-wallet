@@ -42,10 +42,11 @@ async function signedGet(input, pathWithQuery) {
         .update(ts + 'GET' + pathWithQuery)
         .digest('hex');
 
-    log(`GET ${pathWithQuery}`);
+    log(`GET ${base}${pathWithQuery}`);
     const response = await fetch(base + pathWithQuery, {
         headers: {
             accept: 'application/json',
+            'user-agent': 'SterlingPay-Wallet/1.0',
             'x-app-access-ts': ts,
             'x-app-access-sig': sig,
             'x-app-access-token': input.username,
@@ -54,9 +55,14 @@ async function signedGet(input, pathWithQuery) {
     });
     const text = await response.text();
     if (!response.ok) {
-        log(`HTTP ${response.status}: ${text.slice(0, 500)}`);
+        // An HTML answer is the marketing site, not the API: show its title, not the markup.
+        const summary =
+            /<title>([^<]*)<\/title>/i.exec(text)?.[1] ?? text.slice(0, 300);
+        log(
+            `HTTP ${response.status} ${response.url} content-type=${response.headers.get('content-type')} server=${response.headers.get('server')}`,
+        );
         throw new Error(
-            `FinBridges answered HTTP ${response.status}: ${text.slice(0, 300)}`,
+            `FinBridges answered HTTP ${response.status}: ${summary}`,
         );
     }
     return JSON.parse(text);

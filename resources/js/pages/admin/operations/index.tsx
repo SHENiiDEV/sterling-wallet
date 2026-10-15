@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeftRight, Link2Off, Search, X } from 'lucide-react';
+import { ArrowLeftRight, Link2Off, Plus, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/admin/empty-state';
 import {
@@ -147,15 +147,23 @@ export default function OperationsIndex({
                     title="Operations"
                     description="Every operation from every provider file. Acquirer and gateway rows are paired by reconciliation."
                     actions={
-                        <Button
-                            variant={unmatched ? 'default' : 'outline'}
-                            onClick={() =>
-                                apply({ unmatched: unmatched ? '' : '1' })
-                            }
-                        >
-                            <Link2Off />
-                            Without pair
-                        </Button>
+                        <>
+                            <Button
+                                variant={unmatched ? 'default' : 'outline'}
+                                onClick={() =>
+                                    apply({ unmatched: unmatched ? '' : '1' })
+                                }
+                            >
+                                <Link2Off />
+                                Without pair
+                            </Button>
+                            <Button asChild>
+                                <Link href={admin.operations.create()}>
+                                    <Plus />
+                                    Add operation
+                                </Link>
+                            </Button>
+                        </>
                     }
                 />
 

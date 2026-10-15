@@ -4,7 +4,6 @@ namespace App\Bots\Connectors;
 
 use App\Bots\Target;
 use App\Models\IntegrationAccount;
-use App\Models\MerchantMid;
 use App\Reports\ReportPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
