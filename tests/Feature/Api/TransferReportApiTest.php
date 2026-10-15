@@ -151,6 +151,40 @@ class TransferReportApiTest extends TestCase
         $this->assertStringContainsString('Bank transfers (C2B) tariff', (string) $task->error_log);
     }
 
+    public function test_finbridges_api_transactions_become_c2b_operations()
+    {
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => ['transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0.15, 'settlement_fx_percent' => 0]]);
+        $bank = Provider::factory()->create([
+            'name' => 'FinBridges', 'code' => 'finbridges', 'type' => ProviderType::Bank, 'product' => TariffProduct::C2b, 'report_format' => 'finbridges',
+            'timezone' => 'UTC', 'report_delay_days' => 0, 'cost_visa_eu_percent' => null, 'cost_visa_non_eu_percent' => null,
+            'cost_mastercard_eu_percent' => null, 'cost_mastercard_non_eu_percent' => null, 'cost_acq_eu_percent' => 0, 'cost_acq_non_eu_percent' => 0,
+        ]);
+        $this->mid($merchant, $bank, null, ['mid' => 'CJPU1K100']);
+
+        $ms = CarbonImmutable::parse('2026-10-12 17:21:00', 'UTC')->getTimestamp() * 1000;
+        $tx = fn (string $number, string $type, string $status, float $amount) => [
+            'clientId' => 'IES0114643', 'firstName' => 'Basildon', 'lastName' => 'Limited', 'walletId' => 'CJPU1K100',
+            'transactionNumber' => $number, 'transactionType' => $type, 'date' => $ms, 'amountOrigCcy' => $amount, 'origCcy' => 'EUR',
+            'status' => $status, 'remitterName' => 'Marina Levencova', 'remitterBIC' => 'REVOLT21XXX', 'details' => 'Invoice 1', 'externalTransactionId' => null,
+        ];
+
+        $this->sendBatch(['count' => 4, 'list' => [
+            $tx('FB1', 'DEPOSIT', 'COMPLETED', 100.0),
+            $tx('FB2', 'DEPOSIT', 'COMPLETED', 200.0),
+            $tx('FB3', 'DEPOSIT', 'PENDING', 50.0),
+            $tx('FB4', 'WITHDRAW', 'COMPLETED', 30.0),
+        ]], 'finbridges')->assertOk()->assertJsonPath('rows', 2);
+
+        $this->assertSame(2, MerchantOperation::query()->count());
+        $this->assertSame('2026-10-12', MerchantOperation::query()->first()->report_date->toDateString());
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame(ReportStatus::Completed, $task->status, (string) $task->error_log);
+        $this->assertMoney('300.00', $task->turnover);
+        $this->assertMoney('5.10', $task->total_merchant_fee); // 1.5% × 300 + 2 × 0.30
+    }
+
     public function test_balances_are_stored_on_the_matching_mid()
     {
         $merchant = $this->merchantWithTariff();
