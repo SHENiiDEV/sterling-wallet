@@ -6,9 +6,9 @@
  * settings client_id / wallet_id, from / to (report period), download_dir.
  * Optional account settings:
  *   base_url   default https://finbridges.eu
- *   list_path  REQUIRED, the transactions-list path from the FinBridges docs;
- *              {clientId} {walletId} {from} {to} are replaced, e.g.
- *              /api-public/transactions/{clientId}/{walletId}?from={from}&to={to}
+ *   list_path  default /api-public/transactions/wallet/{walletId}?from={from}&to={to}
+ *              ({clientId} {walletId} {from} {to} are replaced); pages of `take`
+ *              (default 100) are read with skip=0,1,2… until `count` is reached
  *   external_ids  list of externalTransactionId values; with a list_path that has
  *              {externalId} (the documented by-external-id endpoint) each one is
  *              fetched and the results are collected. Handy to test the signature.
@@ -71,11 +71,8 @@ try {
     if (!clientId || !walletId) {
         throw new Error('Account settings need client_id and wallet_id.');
     }
-    if (!settings.list_path) {
-        throw new Error(
-            'Account settings need list_path: the transactions-list path from the FinBridges docs, e.g. /api-public/transactions/{clientId}/{walletId}?from={from}&to={to}',
-        );
-    }
+    settings.list_path ||=
+        '/api-public/transactions/wallet/{walletId}?from={from}&to={to}';
 
     const fill = (template) =>
         template
@@ -103,8 +100,24 @@ try {
             list.push(...(Array.isArray(body) ? body : [body]));
         }
     } else {
-        const body = await signedGet(input, fill(settings.list_path));
-        list = Array.isArray(body) ? body : (body.list ?? []);
+        const base = fill(settings.list_path);
+        const take = Number(settings.take) || 100;
+        const glue = base.includes('?') ? '&' : '?';
+        for (let page = 0; page < 200; page++) {
+            const body = await signedGet(
+                input,
+                `${base}${glue}skip=${page}&take=${take}`,
+            );
+            const rows = Array.isArray(body) ? body : (body.list ?? []);
+            list.push(...rows);
+            const total = Array.isArray(body) ? null : Number(body.count);
+            if (
+                rows.length < take ||
+                (Number.isFinite(total) && list.length >= total)
+            ) {
+                break;
+            }
+        }
     }
     log(`Received ${list.length} transaction(s).`);
 

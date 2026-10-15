@@ -32,6 +32,6 @@
 {"client_id": "IES…", "wallet_id": "CJPU…", "list_path": "/api-public/transactions/{clientId}/{walletId}?from={from}&to={to}"}
 ```
 
-`list_path` берётся из документации FinBridges (метод списка транзакций; `{clientId} {walletId} {from} {to}` подставляются). Необязательно: `base_url`, `ts_unit` (`s` или `ms`).
+`list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Необязательно: `base_url`, `ts_unit` (`s` или `ms`).
 
 Подпись пока предположительная: hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
