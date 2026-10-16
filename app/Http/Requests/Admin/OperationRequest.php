@@ -41,6 +41,8 @@ class OperationRequest extends FormRequest
             'card_bin' => ['nullable', 'digits_between:6,8'],
             'card_last4' => ['nullable', 'digits:4'],
             'customer_email' => ['nullable', 'email', 'max:255'],
+            'customer_name' => $text(255),
+            'customer_account' => $text(64),
             'ips' => $text(16),
             'wallet' => $text(32),
             'region' => ['nullable', Rule::in(['eu', 'non_eu'])],

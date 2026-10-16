@@ -105,14 +105,15 @@ class OperationController extends Controller
         $mid = MerchantMid::query()->findOrFail($data['merchant_mid_id']);
         $provider = Provider::query()->findOrFail($data['provider_id']);
         $reason = $data['reason'];
-        unset($data['reason']);
+        $payer = array_filter(['remitterName' => $data['customer_name'] ?? null, 'remitterAccount' => $data['customer_account'] ?? null]);
+        unset($data['reason'], $data['customer_name'], $data['customer_account']);
 
         $operation = MerchantOperation::query()->create([
             ...array_filter($data, fn ($v) => $v !== null && $v !== ''),
             'merchant_id' => $mid->merchant_id,
             'role' => $provider->type,
             'mid' => $mid->mid,
-            'raw' => ['manual' => true, 'added_by' => $request->user()->name, 'reason' => $reason, 'added_at' => now()->toIso8601String()],
+            'raw' => [...$payer, 'manual' => true, 'added_by' => $request->user()->name, 'reason' => $reason, 'added_at' => now()->toIso8601String()],
         ]);
         AuditLogger::log('operation.created', $operation, ['reason' => $reason, 'payment_id' => $operation->payment_id, 'amount' => $operation->amount, 'currency' => $operation->currency]);
 

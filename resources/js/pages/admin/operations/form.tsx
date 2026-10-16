@@ -50,6 +50,8 @@ export default function OperationForm({ mids, types, currencies }: Props) {
         card_bin: '',
         card_last4: '',
         customer_email: '',
+        customer_name: '',
+        customer_account: '',
         ips: '',
         wallet: '',
         region: '',
@@ -269,6 +271,12 @@ export default function OperationForm({ mids, types, currencies }: Props) {
                         {text('card_bin', 'Card BIN', { mono: true })}
                         {text('card_last4', 'Card last 4', { mono: true })}
                         {text('card_mask', 'Card mask', { mono: true })}
+                        {text('customer_name', 'Customer name', {
+                            hint: 'Sender / cardholder, as the provider shows it',
+                        })}
+                        {text('customer_account', 'Customer account (IBAN)', {
+                            mono: true,
+                        })}
                         {text('customer_email', 'Customer e-mail', {
                             type: 'email',
                         })}
