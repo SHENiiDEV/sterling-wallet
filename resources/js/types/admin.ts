@@ -244,6 +244,8 @@ export type Operation = {
     card_bin: string | null;
     card_last4: string | null;
     customer_email: string | null;
+    customer_name: string | null;
+    customer_account: string | null;
     ips: string | null;
     region: 'eu' | 'non_eu' | null;
     issuer_country: string | null;

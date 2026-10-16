@@ -113,6 +113,14 @@ function OperationFacts({ op }: { op: Operation }) {
                     .filter(Boolean)
                     .join(' · ') || null}
             </Row>
+            <Row label="Customer">{op.customer_name}</Row>
+            <Row label="Customer account">
+                {op.customer_account && (
+                    <span className="font-mono text-xs">
+                        {op.customer_account}
+                    </span>
+                )}
+            </Row>
             <Row label="E-mail">{op.customer_email}</Row>
             <Row label="trn_type / status">
                 {[op.trn_type, op.processing_code, op.resolution]
