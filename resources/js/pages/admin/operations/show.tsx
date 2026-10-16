@@ -29,7 +29,7 @@ import type { Operation } from '@/types';
 
 type Props = {
     operation: Operation;
-    raw: Record<string, string | number | null>;
+    raw: Record<string, unknown>;
     fees: Record<string, string>;
     charges: {
         merchant_percent: string;
@@ -46,6 +46,31 @@ type Props = {
     } | null;
     report: { id: number; report_date: string; status: string } | null;
 };
+
+type Edit = { by?: string; at?: string; reason?: string };
+
+/** One readable line per value; the change history of an edited operation is listed, not dumped. */
+function rawText(key: string, value: unknown): ReactNode {
+    if (key === 'edits' && Array.isArray(value)) {
+        return (
+            <span className="flex flex-col items-end gap-1">
+                {(value as Edit[]).map((edit, index) => (
+                    <span key={index}>
+                        {[
+                            edit.at ? formatDateTime(edit.at) : null,
+                            edit.by,
+                            edit.reason,
+                        ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                    </span>
+                ))}
+            </span>
+        );
+    }
+
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
     return (
@@ -403,7 +428,7 @@ export default function OperationShow({
                                         {value === null ||
                                         value === '' ? null : (
                                             <span className="font-mono text-xs">
-                                                {String(value)}
+                                                {rawText(key, value)}
                                             </span>
                                         )}
                                     </Row>
