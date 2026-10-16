@@ -31,6 +31,8 @@ class OperationResource extends JsonResource
             'card_bin' => $this->card_bin,
             'card_last4' => $this->card_last4,
             'customer_email' => $this->customer_email,
+            'customer_name' => $this->customerName(),
+            'customer_account' => $this->customerAccount(),
             'ips' => $this->ips,
             'region' => $this->region,
             'issuer_country' => $this->getAttribute('issuer_country'),
