@@ -111,4 +111,21 @@ class OperationManagementTest extends TestCase
         $this->assertSame('Wrong terminal', $log->meta['reason']);
         $this->assertSame('MAN-1', $log->meta['snapshot']['payment_id']);
     }
+
+    public function test_a_missing_report_can_be_created_from_existing_operations()
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $mid = $this->mid($this->merchantWithTariff(), $cardaq, $corefy);
+        MerchantOperation::query()->create([
+            'merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id, 'provider_id' => $cardaq->id, 'role' => 'bank', 'mid' => $mid->mid,
+            'payment_id' => 'X1', 'operation_type' => 'sale', 'report_date' => '2026-09-15', 'amount' => '10.00', 'currency' => 'EUR',
+        ]);
+
+        $this->artisan('reports:ensure', ['mid' => $mid->mid, 'date' => '2026-09-15'])->assertSuccessful();
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame($mid->id, $task->merchant_mid_id);
+        $this->assertTrue($task->sources()->where('provider_id', $cardaq->id)->exists());
+        $this->artisan('reports:ensure', ['mid' => $mid->mid, 'date' => '2026-09-14'])->assertFailed();
+    }
 }
