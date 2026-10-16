@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\AdminAuditLog;
+use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,6 +67,11 @@ class OperationManagementTest extends TestCase
         $this->assertSame('Gregor Engel', $operation->raw['remitterName']);
         $this->assertSame('AT562050500001581487', $operation->raw['remitterAccount']);
         $this->assertSame(1, AdminAuditLog::query()->where('action', 'operation.created')->count());
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame($mid->id, $task->merchant_mid_id);
+        $this->assertSame('2026-09-15', $task->report_date->toDateString());
+        $this->assertTrue($task->sources()->where('provider_id', $cardaq->id)->exists());
     }
 
     public function test_a_provider_outside_the_mid_and_duplicates_are_refused()

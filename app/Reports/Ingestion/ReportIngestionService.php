@@ -288,6 +288,31 @@ class ReportIngestionService
         return $row->paymentId ?? $row->arn ?? $row->rrn ?? 'h:'.substr(sha1((string) json_encode($row->raw)), 0, 32);
     }
 
+    /**
+     * An operation entered by hand needs a daily report to land in. This only
+     * makes sure the day's report exists with this provider's source; it never
+     * regenerates or e-mails anything (a finished report is regenerated in Reports).
+     */
+    public function ensureReport(Provider $provider, MerchantMid $mid, CarbonImmutable $day): DailyReportTask
+    {
+        $period = $this->dates->periodFor($day);
+        $task = DailyReportTask::query()->where('merchant_mid_id', $mid->id)->where('report_date', $period->reportDate->toDateString())->first();
+
+        if ($task === null) {
+            $task = $this->recordSource($provider, $mid, $period, null, 0, null);
+        } elseif (! $task->sources()->where('provider_id', $provider->id)->exists()) {
+            DailyReportSource::query()->create([
+                'daily_report_task_id' => $task->id,
+                'provider_id' => $provider->id,
+                'role' => $mid->roleOf($provider) ?? $provider->type,
+                'received_at' => now(),
+                'rows_count' => 0,
+            ]);
+        }
+
+        return $task;
+    }
+
     private function recordSource(Provider $provider, MerchantMid $mid, ReportPeriod $period, ?string $path, int $rows, ?BotRun $run): DailyReportTask
     {
         /** @var DailyReportTask $task */
