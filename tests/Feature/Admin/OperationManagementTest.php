@@ -40,6 +40,8 @@ class OperationManagementTest extends TestCase
             'card_last4' => '1111',
             'ips' => 'visa',
             'region' => 'eu',
+            'customer_name' => 'Gregor Engel',
+            'customer_account' => 'AT562050500001581487',
             'reason' => 'Landed on another terminal',
             ...$overrides,
         ];
@@ -61,6 +63,8 @@ class OperationManagementTest extends TestCase
         $this->assertSame($mid->mid, $operation->mid);
         $this->assertTrue($operation->raw['manual']);
         $this->assertSame('Landed on another terminal', $operation->raw['reason']);
+        $this->assertSame('Gregor Engel', $operation->raw['remitterName']);
+        $this->assertSame('AT562050500001581487', $operation->raw['remitterAccount']);
         $this->assertSame(1, AdminAuditLog::query()->where('action', 'operation.created')->count());
     }
 
