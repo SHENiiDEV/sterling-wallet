@@ -69,7 +69,9 @@ function rawText(key: string, value: unknown): ReactNode {
         );
     }
 
-    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value as string | number | boolean);
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
