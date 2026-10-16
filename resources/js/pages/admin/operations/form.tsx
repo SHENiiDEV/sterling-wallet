@@ -24,7 +24,12 @@ type MidOption = {
     providers: { id: number; name: string; role: string }[];
 };
 
-type Props = { mids: MidOption[]; types: Option[]; currencies: Option[] };
+type Props = {
+    operation: Record<string, string | number | boolean> | null;
+    mids: MidOption[];
+    types: Option[];
+    currencies: Option[];
+};
 
 const FEES = [
     'eu_fee',
@@ -37,44 +42,54 @@ const FEES = [
     'refund_fee',
 ] as const;
 
-export default function OperationForm({ mids, types, currencies }: Props) {
+export default function OperationForm({
+    operation,
+    mids,
+    types,
+    currencies,
+}: Props) {
+    const editing = operation !== null;
+    const initial = (key: string, fallback = '') =>
+        operation && operation[key] !== undefined && operation[key] !== null
+            ? String(operation[key])
+            : fallback;
     const form = useForm({
-        merchant_mid_id: '',
-        provider_id: '',
-        payment_id: '',
-        sp_id: '',
-        arn: '',
-        rrn: '',
-        approval_code: '',
-        card_mask: '',
-        card_bin: '',
-        card_last4: '',
-        customer_email: '',
-        customer_name: '',
-        customer_account: '',
-        ips: '',
-        wallet: '',
-        region: '',
-        issuer_country: '',
-        issuer_name: '',
-        trn_type: '',
-        operation_type: 'sale',
-        processing_code: '',
-        resolution: '',
-        report_date: '',
-        transaction_at: '',
-        processing_at: '',
-        amount: '',
-        currency: 'EUR',
-        eu_fee: '',
-        non_eu_fee: '',
-        ic_fee: '',
-        ic_interchange: '',
-        ic_scheme_fee: '',
-        approve_fee: '',
-        decline_fee: '',
-        refund_fee: '',
-        reason: '',
+        merchant_mid_id: initial('merchant_mid_id', ''),
+        provider_id: initial('provider_id', ''),
+        payment_id: initial('payment_id', ''),
+        sp_id: initial('sp_id', ''),
+        arn: initial('arn', ''),
+        rrn: initial('rrn', ''),
+        approval_code: initial('approval_code', ''),
+        card_mask: initial('card_mask', ''),
+        card_bin: initial('card_bin', ''),
+        card_last4: initial('card_last4', ''),
+        customer_email: initial('customer_email', ''),
+        customer_name: initial('customer_name', ''),
+        customer_account: initial('customer_account', ''),
+        ips: initial('ips', ''),
+        wallet: initial('wallet', ''),
+        region: initial('region', ''),
+        issuer_country: initial('issuer_country', ''),
+        issuer_name: initial('issuer_name', ''),
+        trn_type: initial('trn_type', ''),
+        operation_type: initial('operation_type', 'sale'),
+        processing_code: initial('processing_code', ''),
+        resolution: initial('resolution', ''),
+        report_date: initial('report_date', ''),
+        transaction_at: initial('transaction_at', ''),
+        processing_at: initial('processing_at', ''),
+        amount: initial('amount', ''),
+        currency: initial('currency', 'EUR'),
+        eu_fee: initial('eu_fee', ''),
+        non_eu_fee: initial('non_eu_fee', ''),
+        ic_fee: initial('ic_fee', ''),
+        ic_interchange: initial('ic_interchange', ''),
+        ic_scheme_fee: initial('ic_scheme_fee', ''),
+        approve_fee: initial('approve_fee', ''),
+        decline_fee: initial('decline_fee', ''),
+        refund_fee: initial('refund_fee', ''),
+        reason: initial('reason', ''),
     });
     const { data, setData, errors, processing } = form;
     const mid = mids.find((m) => String(m.id) === data.merchant_mid_id);
@@ -102,12 +117,16 @@ export default function OperationForm({ mids, types, currencies }: Props) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        form.post(admin.operations.store.url());
+        if (editing) {
+            form.put(admin.operations.update.url(Number(operation.id)));
+        } else {
+            form.post(admin.operations.store.url());
+        }
     };
 
     return (
         <>
-            <Head title="Add operation" />
+            <Head title={editing ? 'Edit operation' : 'Add operation'} />
             <PageBody>
                 <Link
                     href={admin.operations.index()}
@@ -117,8 +136,14 @@ export default function OperationForm({ mids, types, currencies }: Props) {
                     Operations
                 </Link>
                 <PageHeader
-                    title="Add operation"
-                    description="Enter an operation by hand, e.g. one that was processed on another terminal. It is marked as manual and recorded in the audit log."
+                    title={editing ? 'Edit operation' : 'Add operation'}
+                    description={
+                        editing
+                            ? operation.from_file
+                                ? 'This row came from a provider file: uploading that file again overwrites your changes. Every change is recorded in the audit log.'
+                                : 'Every change is recorded in the audit log.'
+                            : 'Enter an operation by hand, e.g. one that was processed on another terminal. It is marked as manual and recorded in the audit log.'
+                    }
                 />
 
                 <form onSubmit={submit} className="flex flex-col gap-6">
@@ -325,7 +350,11 @@ export default function OperationForm({ mids, types, currencies }: Props) {
 
                     <FormSection title="Reason">
                         <Field
-                            label="Why is it added by hand?"
+                            label={
+                                editing
+                                    ? 'Why is it changed?'
+                                    : 'Why is it added by hand?'
+                            }
                             error={errors.reason}
                             className="sm:col-span-2"
                         >
@@ -345,7 +374,7 @@ export default function OperationForm({ mids, types, currencies }: Props) {
                         </Button>
                         <Button type="submit" disabled={processing}>
                             {processing && <Spinner />}
-                            Add operation
+                            {editing ? 'Save changes' : 'Add operation'}
                         </Button>
                     </div>
                 </form>
@@ -354,9 +383,14 @@ export default function OperationForm({ mids, types, currencies }: Props) {
     );
 }
 
-OperationForm.layout = {
+OperationForm.layout = (props: Props) => ({
     breadcrumbs: [
         { title: 'Operations', href: admin.operations.index() },
-        { title: 'Add operation', href: admin.operations.create() },
+        props.operation
+            ? {
+                  title: 'Edit operation',
+                  href: admin.operations.edit(Number(props.operation.id)),
+              }
+            : { title: 'Add operation', href: admin.operations.create() },
     ],
-};
+});

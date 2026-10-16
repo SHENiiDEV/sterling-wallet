@@ -17,9 +17,11 @@ use App\Models\Provider;
 use App\Reports\Generation\Tariff;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Services\AuditLogger;
+use BackedEnum;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -82,6 +84,43 @@ class OperationController extends Controller
     public function create(): Response
     {
         return Inertia::render('admin/operations/form', [
+            'operation' => null,
+            ...$this->formOptions(),
+        ]);
+    }
+
+    public function edit(MerchantOperation $operation): Response
+    {
+        $values = [];
+        foreach (array_keys((new OperationRequest)->rules()) as $field) {
+            if (! in_array($field, ['reason', 'customer_name', 'customer_account', 'merchant_mid_id', 'report_date', 'transaction_at', 'processing_at'], true)) {
+                $values[$field] = $operation->getAttribute($field);
+            }
+        }
+        $values = array_map(fn ($v) => $v instanceof BackedEnum ? $v->value : ($v === null ? '' : (string) $v), $values);
+
+        return Inertia::render('admin/operations/form', [
+            'operation' => [
+                ...$values,
+                'id' => $operation->id,
+                'merchant_mid_id' => (string) $operation->merchant_mid_id,
+                'report_date' => $operation->report_date?->toDateString() ?? '',
+                'transaction_at' => $operation->transaction_at?->utc()->format('Y-m-d\\TH:i') ?? '',
+                'processing_at' => $operation->processing_at?->utc()->format('Y-m-d\\TH:i') ?? '',
+                'customer_name' => (string) ($operation->raw['remitterName'] ?? ''),
+                'customer_account' => (string) ($operation->raw['remitterAccount'] ?? ''),
+                'from_file' => ! ($operation->raw['manual'] ?? false),
+            ],
+            ...$this->formOptions(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formOptions(): array
+    {
+        return [
             'mids' => MerchantMid::query()
                 ->with(['merchant:id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
                 ->orderBy('mid')
@@ -98,7 +137,7 @@ class OperationController extends Controller
                 ]),
             'types' => OperationType::options(),
             'currencies' => Currency::options(),
-        ]);
+        ];
     }
 
     public function store(OperationRequest $request, ReportIngestionService $ingestion): RedirectResponse
@@ -121,6 +160,54 @@ class OperationController extends Controller
         AuditLogger::log('operation.created', $operation, ['reason' => $reason, 'payment_id' => $operation->payment_id, 'amount' => $operation->amount, 'currency' => $operation->currency]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation added.'.($task->status === ReportStatus::Completed ? ' The report for that day is already built: open it in Reports and press Regenerate.' : ' It goes into that day\'s report when the day is over.')]);
+
+        return to_route('admin.operations.show', $operation);
+    }
+
+    /**
+     * Changing an operation needs a reason; the audit log keeps what changed.
+     * A row that came from a provider file is overwritten again if that file is uploaded again.
+     */
+    public function update(OperationRequest $request, MerchantOperation $operation, ReportIngestionService $ingestion): RedirectResponse
+    {
+        $data = $request->validated();
+        $mid = MerchantMid::query()->findOrFail($data['merchant_mid_id']);
+        $provider = Provider::query()->findOrFail($data['provider_id']);
+        $reason = $data['reason'];
+        $payer = ['remitterName' => $data['customer_name'] ?? null, 'remitterAccount' => $data['customer_account'] ?? null];
+        unset($data['reason'], $data['customer_name'], $data['customer_account']);
+
+        $oldReport = $operation->report_date;
+        $before = $operation->only(array_keys($data));
+
+        $raw = $operation->raw ?? [];
+        foreach ($payer as $key => $value) {
+            $value === null || $value === '' ? Arr::forget($raw, $key) : $raw[$key] = $value;
+        }
+        $raw['edits'] = [...($raw['edits'] ?? []), ['by' => $request->user()->name, 'at' => now()->toIso8601String(), 'reason' => $reason]];
+
+        $operation->update([
+            ...array_map(fn ($v) => $v === '' ? null : $v, $data),
+            'merchant_id' => $mid->merchant_id,
+            'role' => $provider->type,
+            'mid' => $mid->mid,
+            'raw' => $raw,
+        ]);
+
+        $changes = [];
+        foreach ($before as $field => $old) {
+            $new = $operation->getAttribute($field);
+            $old = $old instanceof BackedEnum ? $old->value : $old;
+            $new = $new instanceof BackedEnum ? $new->value : $new;
+            if ((string) ($old instanceof DateTimeInterface ? $old->format('c') : $old) !== (string) ($new instanceof DateTimeInterface ? $new->format('c') : $new)) {
+                $changes[$field] = ['from' => $old instanceof DateTimeInterface ? $old->format('c') : $old, 'to' => $new instanceof DateTimeInterface ? $new->format('c') : $new];
+            }
+        }
+        AuditLogger::log('operation.updated', $operation, ['reason' => $reason, 'changes' => $changes]);
+
+        $task = $ingestion->ensureReport($provider, $mid, CarbonImmutable::parse($operation->report_date));
+        $stale = $task->status === ReportStatus::Completed || ($oldReport !== null && $oldReport->toDateString() !== $operation->report_date->toDateString());
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation saved.'.($stale ? ' A report that is already built does not change by itself: regenerate it in Reports.' : '')]);
 
         return to_route('admin.operations.show', $operation);
     }
