@@ -170,6 +170,15 @@ class DailyStatement
      */
     private function schemes(array $groups, Tariff $tariff, string $currency): array
     {
+        // Bank transfers have no region: older reports stored one group per region, show one row.
+        $transfers = array_filter($groups, fn (string $key) => str_starts_with($key, 'transfer_'), ARRAY_FILTER_USE_KEY);
+        if (count($transfers) > 1) {
+            $groups = array_diff_key($groups, $transfers) + ['transfer_any' => [
+                'count' => array_sum(array_column($transfers, 'count')),
+                'amount' => (string) array_reduce($transfers, fn (BigDecimal $sum, array $g) => $sum->plus($g['amount']), BigDecimal::zero()),
+            ]];
+        }
+
         // The four main groups first (older reports only stored groups with sales).
         $extra = array_diff(array_keys($groups), self::MAIN_GROUPS);
         sort($extra);
