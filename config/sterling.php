@@ -21,7 +21,7 @@ return [
     */
     'trn_types' => [
         'refund' => ['25', '1', 'refund'],
-        'chargeback' => array_values(array_filter(array_map('strtolower', explode(',', (string) env('STERLING_CHARGEBACK_TRN_TYPES', ''))))),
+        'chargeback' => array_values(array_unique(['chargeback', ...array_filter(array_map('strtolower', explode(',', (string) env('STERLING_CHARGEBACK_TRN_TYPES', ''))))])),
     ],
 
     /*

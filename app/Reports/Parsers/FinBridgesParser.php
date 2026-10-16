@@ -8,9 +8,9 @@ use SplFileInfo;
 /**
  * FinBridges (C2B bank transfers): transactions as the public API returns
  * them, `{"count": n, "list": [Transaction …]}` (a bare list works too).
- * Only completed incoming transfers (DEPOSIT / COMPLETED) are operations;
- * pending ones arrive again once completed. Returns, withdrawals, fees and
- * the other transaction types are not clearing data and are skipped.
+ * Only COMPLETED transactions count (pending ones arrive again once completed):
+ * DEPOSIT is a sale, PAYMENT_RETURN a refund, CHARGEBACK a chargeback. Payments
+ * out, withdrawals, fees and the other wallet movements are skipped.
  *
  * The MID is the wallet id (one wallet per currency); `date` is a Unix
  * timestamp, in seconds or milliseconds.
@@ -53,11 +53,27 @@ class FinBridgesParser implements ReportParser
      */
     private function row(array $tx, string $timezone): ?OperationRow
     {
-        if (strtoupper((string) ($tx['transactionType'] ?? '')) !== 'DEPOSIT' || strtoupper((string) ($tx['status'] ?? '')) !== 'COMPLETED') {
+        if (strtoupper((string) ($tx['status'] ?? '')) !== 'COMPLETED') {
+            return null;
+        }
+
+        // Customer money only: payments in, returns and chargebacks. The wallet's own
+        // movements (payments out, withdrawals, fees, exchanges …) are not clearing data.
+        $trnType = match (strtoupper((string) ($tx['transactionType'] ?? ''))) {
+            'DEPOSIT' => 'incoming',
+            'PAYMENT_RETURN' => 'refund',
+            'CHARGEBACK' => 'chargeback',
+            default => null,
+        };
+        if ($trnType === null) {
             return null;
         }
 
         $amount = Values::decimal($tx['amountOrigCcy'] ?? null);
+        if ($amount !== null && $trnType !== 'incoming') {
+            $amount = ltrim($amount, '-');
+            $amount = '-'.$amount; // returns and chargebacks reduce the turnover
+        }
         $wallet = Values::text($tx['walletId'] ?? null);
         if ($amount === null || $wallet === null) {
             return null;
@@ -79,7 +95,7 @@ class FinBridgesParser implements ReportParser
             currency: Values::currency($tx['origCcy'] ?? null),
             ips: 'transfer',
             issuerName: Values::text($tx['remitterBIC'] ?? $tx['remitterBank'] ?? null),
-            trnType: 'incoming', // the operations column is 16 characters wide
+            trnType: $trnType, // the operations column is 16 characters wide
             resolution: 'completed',
             transactedAt: $at,
             transactedOn: $on,
