@@ -36,6 +36,6 @@
 }
 ```
 
-`list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Необязательно: `base_url`, `ts_unit` (`s` или `ms`).
+`list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Обязательно `base_url`: для теста `https://demo.finbridges.eu` (боевой адрес даст FinBridges). Необязательно: `take`, `ts_unit` (`s` или `ms`).
 
-Подпись пока предположительная: hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
+Подпись подтверждена на демо-среде (Postman, ответ 200): hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.

@@ -185,6 +185,33 @@ class TransferReportApiTest extends TestCase
         $this->assertMoney('5.10', $task->total_merchant_fee); // 1.5% × 300 + 2 × 0.30
     }
 
+    public function test_finbridges_demo_payload_keeps_only_the_completed_deposit()
+    {
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => ['transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0, 'settlement_fx_percent' => 0]]);
+        $bank = Provider::factory()->create([
+            'name' => 'FinBridges', 'code' => 'finbridges', 'type' => ProviderType::Bank, 'product' => TariffProduct::C2b, 'report_format' => 'finbridges',
+            'timezone' => 'UTC', 'report_delay_days' => 0, 'cost_visa_eu_percent' => null, 'cost_visa_non_eu_percent' => null,
+            'cost_mastercard_eu_percent' => null, 'cost_mastercard_non_eu_percent' => null, 'cost_acq_eu_percent' => 0, 'cost_acq_non_eu_percent' => 0,
+        ]);
+        $this->mid($merchant, $bank, null, ['mid' => 'CJPU1K100']);
+
+        $tx = fn (string $number, string $type, float $amount) => [
+            'clientId' => 'IES0114643', 'firstName' => 'FREYA', 'lastName' => 'KRAUSE', 'walletId' => 'CJPU1K100',
+            'transactionNumber' => $number, 'transactionType' => $type, 'date' => 1792061812603,
+            'amountOrigCcy' => $amount, 'amountOrigCcyString' => number_format($amount, 18, '.', ''), 'origCcy' => 'EUR',
+            'status' => 'COMPLETED', 'remitterName' => 'FREYA KRAUSE', 'remitterBank' => null, 'remitterBIC' => null,
+            'fees' => null, 'attachments' => [], 'externalTransactionId' => 'devdev-demo-'.$number,
+        ];
+
+        $this->sendBatch(['count' => 2, 'list' => [$tx('TRDEVDEMO420124', 'DEPOSIT', 25.0), $tx('TRDEVDEMO420125', 'PAYMENT', -5.0)]], 'finbridges')
+            ->assertOk()->assertJsonPath('rows', 1);
+
+        $operation = MerchantOperation::query()->sole();
+        $this->assertSame('TRDEVDEMO420124', $operation->payment_id);
+        $this->assertMoney('25.00', $operation->amount);
+    }
+
     public function test_balances_are_stored_on_the_matching_mid()
     {
         $merchant = $this->merchantWithTariff();

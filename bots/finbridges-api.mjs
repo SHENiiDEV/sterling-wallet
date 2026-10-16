@@ -5,7 +5,8 @@
  * Input (from Laravel): username = apiKey, password = apiSecret,
  * settings client_id / wallet_id, from / to (report period), download_dir.
  * Optional account settings:
- *   base_url   default https://finbridges.eu
+ *   base_url   REQUIRED, e.g. https://demo.finbridges.eu (test) — the live address
+ *              is given by FinBridges
  *   list_path  default /api-public/transactions/wallet/{walletId}?from={from}&to={to}
  *              ({clientId} {walletId} {from} {to} are replaced); pages of `take`
  *              (default 100) are read with skip=0,1,2… until `count` is reached
@@ -30,10 +31,12 @@ function emit(result) {
 
 async function signedGet(input, pathWithQuery) {
     const settings = input.settings || {};
-    const base = (settings.base_url || 'https://finbridges.eu').replace(
-        /\/$/,
-        '',
-    );
+    if (!settings.base_url) {
+        throw new Error(
+            'Account settings need base_url, e.g. "https://demo.finbridges.eu" (the live address comes from FinBridges).',
+        );
+    }
+    const base = settings.base_url.replace(/\/$/, '');
     const ts = String(
         settings.ts_unit === 'ms' ? Date.now() : Math.floor(Date.now() / 1000),
     );
@@ -65,7 +68,13 @@ async function signedGet(input, pathWithQuery) {
             `FinBridges answered HTTP ${response.status}: ${summary}`,
         );
     }
-    return JSON.parse(text);
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error(
+            `FinBridges answered HTTP ${response.status} but not JSON (${text.slice(0, 120)}). Check base_url.`,
+        );
+    }
 }
 
 try {

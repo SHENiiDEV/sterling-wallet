@@ -1,0 +1,303 @@
+{
+    "info": {
+        "name": "FinBridges public API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "description": "Signed GET requests, same signature as the Sterling bot. Import the environment too and fill in apiKey / apiSecret."
+    },
+    "item": [
+        {
+            "name": "1. First page (skip=0, take=10)",
+            "description": "Exactly the request from the FinBridges example.",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "// FinBridges signature: HMAC-SHA256(apiSecret, ts + METHOD + pathWithQuery + body), hex.",
+                            "const ts = Math.floor(Date.now() / 1000).toString();",
+                            "const method = pm.request.method.toUpperCase();",
+                            "// getPathWithQuery() keeps {{variables}} as text: resolve them, or the signature covers the wrong path.",
+                            "const path = pm.variables.replaceIn(pm.request.url.getPathWithQuery());",
+                            "const body = pm.request.body && pm.request.body.raw ? pm.request.body.raw : '';",
+                            "",
+                            "const secret = pm.environment.get('apiSecret');",
+                            "if (!secret || !pm.environment.get('apiKey')) {",
+                            "    throw new Error('Set apiKey and apiSecret in the FinBridges environment.');",
+                            "}",
+                            "",
+                            "pm.environment.set('ts', ts);",
+                            "pm.environment.set('sig', CryptoJS.HmacSHA256(ts + method + path + body, secret).toString(CryptoJS.enc.Hex));",
+                            "console.log('Signed:', ts + method + path);"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "const type = pm.response.headers.get('Content-Type') || '';",
+                            "",
+                            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                            "pm.test('Response is JSON (an HTML page with 200 is not a success)', () => pm.expect(type).to.include('application/json'));",
+                            "pm.test('Has count and list', () => {",
+                            "    const json = pm.response.json();",
+                            "    pm.expect(json.count).to.be.a('number');",
+                            "    pm.expect(json.list).to.be.an('array');",
+                            "});",
+                            "pm.test('Rows look like transactions', () => {",
+                            "    const list = pm.response.json().list;",
+                            "    if (list.length) {",
+                            "        ['transactionNumber', 'transactionType', 'status', 'amountOrigCcy', 'origCcy', 'date']",
+                            "            .forEach((field) => pm.expect(list[0]).to.have.property(field));",
+                            "    }",
+                            "});"
+                        ]
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "x-app-access-token",
+                        "value": "{{apiKey}}"
+                    },
+                    {
+                        "key": "x-app-access-ts",
+                        "value": "{{ts}}"
+                    },
+                    {
+                        "key": "x-app-access-sig",
+                        "value": "{{sig}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/api-public/transactions/wallet/{{walletId}}?skip=0&take=10",
+                    "host": ["{{baseUrl}}"],
+                    "path": [
+                        "api-public",
+                        "transactions",
+                        "wallet",
+                        "{{walletId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        },
+                        {
+                            "key": "take",
+                            "value": "10"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "2. One day (from / to)",
+            "description": "What the Sterling bot sends for a report day.",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "// FinBridges signature: HMAC-SHA256(apiSecret, ts + METHOD + pathWithQuery + body), hex.",
+                            "const ts = Math.floor(Date.now() / 1000).toString();",
+                            "const method = pm.request.method.toUpperCase();",
+                            "// getPathWithQuery() keeps {{variables}} as text: resolve them, or the signature covers the wrong path.",
+                            "const path = pm.variables.replaceIn(pm.request.url.getPathWithQuery());",
+                            "const body = pm.request.body && pm.request.body.raw ? pm.request.body.raw : '';",
+                            "",
+                            "const secret = pm.environment.get('apiSecret');",
+                            "if (!secret || !pm.environment.get('apiKey')) {",
+                            "    throw new Error('Set apiKey and apiSecret in the FinBridges environment.');",
+                            "}",
+                            "",
+                            "pm.environment.set('ts', ts);",
+                            "pm.environment.set('sig', CryptoJS.HmacSHA256(ts + method + path + body, secret).toString(CryptoJS.enc.Hex));",
+                            "console.log('Signed:', ts + method + path);"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "const type = pm.response.headers.get('Content-Type') || '';",
+                            "",
+                            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                            "pm.test('Response is JSON (an HTML page with 200 is not a success)', () => pm.expect(type).to.include('application/json'));",
+                            "pm.test('Has count and list', () => {",
+                            "    const json = pm.response.json();",
+                            "    pm.expect(json.count).to.be.a('number');",
+                            "    pm.expect(json.list).to.be.an('array');",
+                            "});",
+                            "pm.test('Rows look like transactions', () => {",
+                            "    const list = pm.response.json().list;",
+                            "    if (list.length) {",
+                            "        ['transactionNumber', 'transactionType', 'status', 'amountOrigCcy', 'origCcy', 'date']",
+                            "            .forEach((field) => pm.expect(list[0]).to.have.property(field));",
+                            "    }",
+                            "});"
+                        ]
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "x-app-access-token",
+                        "value": "{{apiKey}}"
+                    },
+                    {
+                        "key": "x-app-access-ts",
+                        "value": "{{ts}}"
+                    },
+                    {
+                        "key": "x-app-access-sig",
+                        "value": "{{sig}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/api-public/transactions/wallet/{{walletId}}?from=2026-10-14&to=2026-10-14&skip=0&take=100",
+                    "host": ["{{baseUrl}}"],
+                    "path": [
+                        "api-public",
+                        "transactions",
+                        "wallet",
+                        "{{walletId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "from",
+                            "value": "2026-10-14"
+                        },
+                        {
+                            "key": "to",
+                            "value": "2026-10-14"
+                        },
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        },
+                        {
+                            "key": "take",
+                            "value": "100"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "3. Only completed deposits",
+            "description": "Filter syntax is a guess from the docs: check the docs if the answer is 400.",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "// FinBridges signature: HMAC-SHA256(apiSecret, ts + METHOD + pathWithQuery + body), hex.",
+                            "const ts = Math.floor(Date.now() / 1000).toString();",
+                            "const method = pm.request.method.toUpperCase();",
+                            "// getPathWithQuery() keeps {{variables}} as text: resolve them, or the signature covers the wrong path.",
+                            "const path = pm.variables.replaceIn(pm.request.url.getPathWithQuery());",
+                            "const body = pm.request.body && pm.request.body.raw ? pm.request.body.raw : '';",
+                            "",
+                            "const secret = pm.environment.get('apiSecret');",
+                            "if (!secret || !pm.environment.get('apiKey')) {",
+                            "    throw new Error('Set apiKey and apiSecret in the FinBridges environment.');",
+                            "}",
+                            "",
+                            "pm.environment.set('ts', ts);",
+                            "pm.environment.set('sig', CryptoJS.HmacSHA256(ts + method + path + body, secret).toString(CryptoJS.enc.Hex));",
+                            "console.log('Signed:', ts + method + path);"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "const type = pm.response.headers.get('Content-Type') || '';",
+                            "",
+                            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                            "pm.test('Response is JSON (an HTML page with 200 is not a success)', () => pm.expect(type).to.include('application/json'));",
+                            "pm.test('Has count and list', () => {",
+                            "    const json = pm.response.json();",
+                            "    pm.expect(json.count).to.be.a('number');",
+                            "    pm.expect(json.list).to.be.an('array');",
+                            "});",
+                            "pm.test('Rows look like transactions', () => {",
+                            "    const list = pm.response.json().list;",
+                            "    if (list.length) {",
+                            "        ['transactionNumber', 'transactionType', 'status', 'amountOrigCcy', 'origCcy', 'date']",
+                            "            .forEach((field) => pm.expect(list[0]).to.have.property(field));",
+                            "    }",
+                            "});"
+                        ]
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "x-app-access-token",
+                        "value": "{{apiKey}}"
+                    },
+                    {
+                        "key": "x-app-access-ts",
+                        "value": "{{ts}}"
+                    },
+                    {
+                        "key": "x-app-access-sig",
+                        "value": "{{sig}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/api-public/transactions/wallet/{{walletId}}?filter=transactionType=DEPOSIT,status=COMPLETED&skip=0&take=100",
+                    "host": ["{{baseUrl}}"],
+                    "path": [
+                        "api-public",
+                        "transactions",
+                        "wallet",
+                        "{{walletId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "filter",
+                            "value": "transactionType=DEPOSIT,status=COMPLETED"
+                        },
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        },
+                        {
+                            "key": "take",
+                            "value": "100"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
