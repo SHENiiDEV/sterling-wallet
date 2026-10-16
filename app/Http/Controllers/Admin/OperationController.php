@@ -15,9 +15,11 @@ use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Reports\Generation\Tariff;
+use App\Reports\Ingestion\ReportIngestionService;
 use App\Services\AuditLogger;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -99,7 +101,7 @@ class OperationController extends Controller
         ]);
     }
 
-    public function store(OperationRequest $request): RedirectResponse
+    public function store(OperationRequest $request, ReportIngestionService $ingestion): RedirectResponse
     {
         $data = $request->validated();
         $mid = MerchantMid::query()->findOrFail($data['merchant_mid_id']);
@@ -115,9 +117,10 @@ class OperationController extends Controller
             'mid' => $mid->mid,
             'raw' => [...$payer, 'manual' => true, 'added_by' => $request->user()->name, 'reason' => $reason, 'added_at' => now()->toIso8601String()],
         ]);
+        $task = $ingestion->ensureReport($provider, $mid, CarbonImmutable::parse($operation->report_date));
         AuditLogger::log('operation.created', $operation, ['reason' => $reason, 'payment_id' => $operation->payment_id, 'amount' => $operation->amount, 'currency' => $operation->currency]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation added.'.$this->staleReportNote($operation)]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation added.'.($task->status === ReportStatus::Completed ? ' The report for that day is already built: open it in Reports and press Regenerate.' : ' It goes into that day\'s report when the day is over.')]);
 
         return to_route('admin.operations.show', $operation);
     }
