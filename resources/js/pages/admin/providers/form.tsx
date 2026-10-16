@@ -99,6 +99,8 @@ export default function ProviderForm({
         }
     };
 
+    const isC2b = data.product === 'c2b';
+
     const percent = (key: keyof typeof data, label: string, hint?: string) => (
         <Field label={label} htmlFor={key} error={errors[key]} hint={hint}>
             <AffixInput
@@ -428,48 +430,88 @@ export default function ProviderForm({
                         </FormSection>
                     ) : (
                         <>
-                            <FormSection
-                                title="Card costs"
-                                description="Leave a card rate empty if the provider does not price it. Unknown cards are costed at the highest rate of the region."
-                            >
-                                {percent('cost_visa_eu_percent', 'Visa EU')}
-                                {percent(
-                                    'cost_visa_non_eu_percent',
-                                    'Visa non-EU',
-                                )}
-                                {percent(
-                                    'cost_mastercard_eu_percent',
-                                    'Mastercard EU',
-                                )}
-                                {percent(
-                                    'cost_mastercard_non_eu_percent',
-                                    'Mastercard non-EU',
-                                )}
-                                {optionalPercent(
-                                    'cost_transfer_percent',
-                                    'Bank transfer (C2B)',
-                                    'Percent of each incoming transfer',
-                                )}
-                                {percent(
-                                    'cost_wallet_percent',
-                                    'Apple Pay / Google Pay',
-                                    'Added to the card rate on wallet payments',
-                                )}
-                                {percent(
-                                    'cost_settlement_fx_percent',
-                                    'Settlement FX markup',
-                                    'Charged when a MID is converted to the settlement currency (EUR)',
-                                )}
-                            </FormSection>
-                            <FormSection
-                                title="Per-operation costs"
-                                description="Flat amount per operation, in the MID currency."
-                            >
-                                {fixed('cost_success_fixed', 'Successful sale')}
-                                {fixed('cost_decline_fixed', 'Decline')}
-                                {fixed('cost_refund_fixed', 'Refund')}
-                                {fixed('cost_chargeback_fixed', 'Chargeback')}
-                            </FormSection>
+                            {isC2b ? (
+                                <>
+                                    <FormSection
+                                        title="C2B costs"
+                                        description="What this provider charges us on bank transfers. N/A: it does not charge a percent."
+                                    >
+                                        {optionalPercent(
+                                            'cost_transfer_percent',
+                                            'Bank transfer (C2B)',
+                                            'Percent of each incoming transfer',
+                                        )}
+                                        {percent(
+                                            'cost_settlement_fx_percent',
+                                            'Settlement FX markup',
+                                            'Charged when a MID is converted to the settlement currency (EUR)',
+                                        )}
+                                    </FormSection>
+                                    <FormSection
+                                        title="Per-operation costs"
+                                        description="Flat amount per operation, in the MID currency."
+                                    >
+                                        {fixed(
+                                            'cost_success_fixed',
+                                            'Successful transfer',
+                                        )}
+                                        {fixed('cost_refund_fixed', 'Refund')}
+                                        {fixed(
+                                            'cost_chargeback_fixed',
+                                            'Chargeback',
+                                        )}
+                                    </FormSection>
+                                </>
+                            ) : (
+                                <>
+                                    <FormSection
+                                        title="Card costs"
+                                        description="Leave a card rate empty if the provider does not price it. Unknown cards are costed at the highest rate of the region."
+                                    >
+                                        {percent(
+                                            'cost_visa_eu_percent',
+                                            'Visa EU',
+                                        )}
+                                        {percent(
+                                            'cost_visa_non_eu_percent',
+                                            'Visa non-EU',
+                                        )}
+                                        {percent(
+                                            'cost_mastercard_eu_percent',
+                                            'Mastercard EU',
+                                        )}
+                                        {percent(
+                                            'cost_mastercard_non_eu_percent',
+                                            'Mastercard non-EU',
+                                        )}
+                                        {percent(
+                                            'cost_wallet_percent',
+                                            'Apple Pay / Google Pay',
+                                            'Added to the card rate on wallet payments',
+                                        )}
+                                        {percent(
+                                            'cost_settlement_fx_percent',
+                                            'Settlement FX markup',
+                                            'Charged when a MID is converted to the settlement currency (EUR)',
+                                        )}
+                                    </FormSection>
+                                    <FormSection
+                                        title="Per-operation costs"
+                                        description="Flat amount per operation, in the MID currency."
+                                    >
+                                        {fixed(
+                                            'cost_success_fixed',
+                                            'Successful sale',
+                                        )}
+                                        {fixed('cost_decline_fixed', 'Decline')}
+                                        {fixed('cost_refund_fixed', 'Refund')}
+                                        {fixed(
+                                            'cost_chargeback_fixed',
+                                            'Chargeback',
+                                        )}
+                                    </FormSection>
+                                </>
+                            )}
                             <FormSection
                                 title="Settlement terms"
                                 description="What the provider holds back from us. For reference and reconciliation."

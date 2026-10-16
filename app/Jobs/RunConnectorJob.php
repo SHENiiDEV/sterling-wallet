@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Bots\BotAlerts;
 use App\Bots\BotResult;
 use App\Bots\ConnectorRegistry;
+use App\Bots\IngestsByRowDate;
 use App\Bots\Target;
 use App\Enums\BotRunStatus;
 use App\Models\BotRun;
@@ -94,7 +95,7 @@ class RunConnectorJob implements ShouldQueue
         }
 
         if ($result->status === BotRunStatus::Succeeded) {
-            $this->ingest($run, $target, $result, $ingestion);
+            $this->ingest($run, $target, $result, $ingestion, $connectors->get($run->connector) instanceof IngestsByRowDate);
         }
 
         $run->fill([
@@ -104,13 +105,15 @@ class RunConnectorJob implements ShouldQueue
         ])->save();
     }
 
-    private function ingest(BotRun $run, Target $target, BotResult $result, ReportIngestionService $ingestion): void
+    private function ingest(BotRun $run, Target $target, BotResult $result, ReportIngestionService $ingestion, bool $byRowDate = false): void
     {
         $provider = $run->account->provider;
-        $date = $result->reportDate ?? $target->period->reportDate;
+        $date = $byRowDate ? null : ($result->reportDate ?? $target->period->reportDate);
 
         if ($result->isEmptyReport()) {
-            $ingestion->markEmpty($provider, $date, $target->mids, $run);
+            if ($date !== null) {
+                $ingestion->markEmpty($provider, $date, $target->mids, $run);
+            }
 
             return;
         }

@@ -13,6 +13,8 @@ Schedule::command('bots:dispatch cardaq-export')->hourly()->withoutOverlapping()
 // Corefy (T+1): yesterday's export is ready in the morning; retry hourly until it is in.
 Schedule::command('bots:dispatch corefy-export')->hourly()->between('06:00', '12:00')->timezone(config('sterling.timezone'))->withoutOverlapping();
 Schedule::command('bots:dispatch madfin-export')->hourly()->withoutOverlapping();
+// FinBridges (C2B wallet API): pick up new transactions every 10 minutes.
+Schedule::command('bots:dispatch finbridges-api')->everyTenMinutes()->withoutOverlapping();
 Schedule::command('reports:release-due')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reports:reconcile')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reserve:release')->dailyAt('06:10')->withoutOverlapping();

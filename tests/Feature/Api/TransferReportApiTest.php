@@ -212,6 +212,36 @@ class TransferReportApiTest extends TestCase
         $this->assertMoney('25.00', $operation->amount);
     }
 
+    public function test_finbridges_returns_and_chargebacks_reduce_the_turnover()
+    {
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => ['transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0, 'settlement_fx_percent' => 0]]);
+        $bank = Provider::factory()->create([
+            'name' => 'FinBridges', 'code' => 'finbridges', 'type' => ProviderType::Bank, 'product' => TariffProduct::C2b, 'report_format' => 'finbridges',
+            'timezone' => 'UTC', 'report_delay_days' => 0, 'cost_visa_eu_percent' => null, 'cost_visa_non_eu_percent' => null,
+            'cost_mastercard_eu_percent' => null, 'cost_mastercard_non_eu_percent' => null, 'cost_acq_eu_percent' => 0, 'cost_acq_non_eu_percent' => 0,
+        ]);
+        $this->mid($merchant, $bank, null, ['mid' => 'CJPU1K100']);
+
+        $ms = CarbonImmutable::parse('2026-10-12 17:21:00', 'UTC')->getTimestamp() * 1000;
+        $tx = fn (string $number, string $type, string $status, float $amount) => [
+            'walletId' => 'CJPU1K100', 'transactionNumber' => $number, 'transactionType' => $type, 'date' => $ms,
+            'amountOrigCcy' => $amount, 'origCcy' => 'EUR', 'status' => $status,
+        ];
+
+        $this->sendBatch(['count' => 5, 'list' => [
+            $tx('A1', 'DEPOSIT', 'COMPLETED', 100.0),
+            $tx('A2', 'PAYMENT_RETURN', 'COMPLETED', 30.0),
+            $tx('A3', 'CHARGEBACK', 'COMPLETED', 20.0),
+            $tx('A4', 'PAYMENT_RETURN', 'PENDING', 10.0),
+            $tx('A5', 'WITHDRAW', 'COMPLETED', 40.0),
+        ]], 'finbridges')->assertOk()->assertJsonPath('rows', 3);
+
+        $types = MerchantOperation::query()->orderBy('payment_id')->pluck('operation_type')->map(fn ($t) => $t->value)->all();
+        $this->assertSame(['sale', 'refund', 'chargeback'], $types);
+        $this->assertMoney('-30.00', MerchantOperation::query()->where('payment_id', 'A2')->value('amount'));
+    }
+
     public function test_balances_are_stored_on_the_matching_mid()
     {
         $merchant = $this->merchantWithTariff();

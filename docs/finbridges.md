@@ -39,3 +39,11 @@
 `list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Обязательно `base_url`: для теста `https://demo.finbridges.eu` (боевой адрес даст FinBridges). Необязательно: `take`, `ts_unit` (`s` или `ms`).
 
 Подпись подтверждена на демо-среде (Postman, ответ 200): hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
+
+## Опрос раз в 10 минут
+
+Планировщик запускает бота FinBridges каждые 10 минут (`bots:dispatch finbridges-api`, нужен `schedule:run` в cron и включённый **Active** на аккаунте). Каждый запуск запрашивает окно «вчера и сегодня» (`lookback_days` в Settings, по умолчанию 1), отбрасывает транзакции, которые у нас уже есть (по `transactionNumber`), а новые записывает на день самой транзакции.
+
+Учитываются только `COMPLETED`: `DEPOSIT` это продажа, `PAYMENT_RETURN` возврат, `CHARGEBACK` чарджбэк (суммы возвратов и чарджбэков отрицательные). `PAYMENT`, `WITHDRAW`, комиссии и прочие движения кошелька пропускаются. Дневной отчёт строится после окончания дня; транзакция, ставшая `COMPLETED` позже, попадает в отчёт своего дня при следующем пересчёте.
+
+Журнал запусков (Admin → Bots) пополняется записью каждые 10 минут на аккаунт.
