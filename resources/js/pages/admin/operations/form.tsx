@@ -1,5 +1,5 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Field, FormSection } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Button } from '@/components/ui/button';
@@ -117,10 +117,18 @@ export default function OperationForm({
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+        const options = {
+            preserveScroll: true,
+            onError: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+        };
+
         if (editing) {
-            form.put(admin.operations.update.url(Number(operation.id)));
+            form.put(
+                admin.operations.update.url(Number(operation.id)),
+                options,
+            );
         } else {
-            form.post(admin.operations.store.url());
+            form.post(admin.operations.store.url(), options);
         }
     };
 
@@ -145,6 +153,20 @@ export default function OperationForm({
                             : 'Enter an operation by hand, e.g. one that was processed on another terminal. It is marked as manual and recorded in the audit log.'
                     }
                 />
+
+                {Object.keys(errors).length > 0 && (
+                    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive-foreground">
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                        <div className="grid gap-1">
+                            <p className="font-medium">
+                                Not saved: fix the fields below.
+                            </p>
+                            {Object.entries(errors).map(([field, message]) => (
+                                <p key={field}>{message}</p>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 <form onSubmit={submit} className="flex flex-col gap-6">
                     <FormSection
