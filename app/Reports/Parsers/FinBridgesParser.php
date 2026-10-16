@@ -73,7 +73,6 @@ class FinBridgesParser implements ReportParser
 
         return new OperationRow(
             mid: $wallet,
-            merchantName: Values::text(trim(($tx['firstName'] ?? '').' '.($tx['lastName'] ?? ''))),
             paymentId: Values::text($tx['transactionNumber'] ?? $tx['externalTransactionId'] ?? null),
             amount: $amount,
             currency: Values::currency($tx['origCcy'] ?? null),
