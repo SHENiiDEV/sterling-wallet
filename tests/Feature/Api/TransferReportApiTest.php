@@ -11,6 +11,8 @@ use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
+use App\Reports\Generation\DailyReportGenerator;
+use App\Reports\Ingestion\ReportIngestionService;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -113,7 +115,7 @@ class TransferReportApiTest extends TestCase
         $this->assertMoney('265.41', $task->net_volume);
         $this->assertMoney('0.40', $task->conversion_fee);      // 0.15% × 265.41
         $this->assertMoney('265.01', $task->net_payout);
-        $this->assertSame('transfer_unknown', array_key_first(array_filter($task->summary_data['by_scheme'], fn ($g) => $g['count'] > 0)));
+        $this->assertSame('transfer_any', array_key_first(array_filter($task->summary_data['by_scheme'], fn ($g) => $g['count'] > 0)));
     }
 
     public function test_a_day_that_is_still_running_is_reported_once_it_is_over()
@@ -240,6 +242,30 @@ class TransferReportApiTest extends TestCase
         $types = MerchantOperation::query()->orderBy('payment_id')->pluck('operation_type')->map(fn ($t) => $t->value)->all();
         $this->assertSame(['sale', 'refund', 'chargeback'], $types);
         $this->assertMoney('-30.00', MerchantOperation::query()->where('payment_id', 'A2')->value('amount'));
+    }
+
+    public function test_transfers_with_and_without_a_region_share_one_report_row()
+    {
+        $merchant = $this->merchantWithTariff();
+        $merchant->syncTariffs(['c2b' => ['transfer_percent' => 1.5, 'success_fixed' => 0.30, 'refund_fixed' => 0, 'fiat_to_crypto_percent' => 0, 'settlement_fx_percent' => 0]]);
+        $bank = Provider::factory()->create([
+            'name' => 'FinBridges', 'code' => 'finbridges', 'type' => ProviderType::Bank, 'product' => TariffProduct::C2b, 'report_format' => 'finbridges',
+            'timezone' => 'UTC', 'report_delay_days' => 0, 'cost_visa_eu_percent' => null, 'cost_visa_non_eu_percent' => null,
+            'cost_mastercard_eu_percent' => null, 'cost_mastercard_non_eu_percent' => null, 'cost_acq_eu_percent' => 0, 'cost_acq_non_eu_percent' => 0,
+        ]);
+        $mid = $this->mid($merchant, $bank, null, ['mid' => 'CJPU1K100']);
+        foreach ([['M1', 'eu', '73.00'], ['M2', null, '309.10']] as [$id, $region, $amount]) {
+            MerchantOperation::query()->create([
+                'merchant_id' => $merchant->id, 'merchant_mid_id' => $mid->id, 'provider_id' => $bank->id, 'role' => 'bank', 'mid' => 'CJPU1K100',
+                'payment_id' => $id, 'ips' => 'transfer', 'region' => $region, 'operation_type' => 'sale', 'report_date' => '2026-09-15', 'amount' => $amount, 'currency' => 'EUR',
+            ]);
+        }
+        $task = app(ReportIngestionService::class)->ensureReport($bank, $mid, CarbonImmutable::parse('2026-09-15'));
+        app(DailyReportGenerator::class)->generate($task, false);
+
+        $groups = array_filter($task->fresh()->summary_data['by_scheme'], fn ($g) => $g['count'] > 0);
+        $this->assertSame(['transfer_any'], array_keys($groups));
+        $this->assertSame(2, $groups['transfer_any']['count']);
     }
 
     public function test_balances_are_stored_on_the_matching_mid()
