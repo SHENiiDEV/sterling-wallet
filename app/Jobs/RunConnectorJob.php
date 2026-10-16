@@ -95,7 +95,14 @@ class RunConnectorJob implements ShouldQueue
         }
 
         if ($result->status === BotRunStatus::Succeeded) {
-            $this->ingest($run, $target, $result, $ingestion, $connectors->get($run->connector) instanceof IngestsByRowDate);
+            try {
+                $this->ingest($run, $target, $result, $ingestion, $connectors->get($run->connector) instanceof IngestsByRowDate);
+            } catch (Throwable $e) {
+                // The bot did its part: show why the import failed instead of "running" until the retry.
+                $run->fill(['status' => BotRunStatus::Queued, 'error' => 'Import failed: '.$e->getMessage()])->save();
+
+                throw $e;
+            }
         }
 
         $run->fill([
