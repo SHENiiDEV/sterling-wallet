@@ -90,7 +90,9 @@ class OperationRequest extends FormRequest
                     $validator->errors()->add('provider_id', 'The provider must be the MID\'s acquirer or gateway.');
                 }
 
+                $current = $this->route('operation');
                 $duplicate = MerchantOperation::query()
+                    ->when($current instanceof MerchantOperation, fn ($q) => $q->whereKeyNot($current->id))
                     ->where('provider_id', $this->integer('provider_id'))
                     ->where('payment_id', $this->input('payment_id'))
                     ->where('trn_type', $this->filled('trn_type') ? $this->input('trn_type') : null)

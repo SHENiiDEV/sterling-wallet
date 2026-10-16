@@ -1,5 +1,5 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, Link2, Link2Off, Trash2 } from 'lucide-react';
+import { ArrowLeft, Link2, Link2Off, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -251,7 +251,19 @@ export default function OperationShow({
                     Operations
                 </Link>
                 <PageHeader
-                    actions={<DeleteOperation operation={operation} />}
+                    actions={
+                        <>
+                            <Button variant="outline" asChild>
+                                <Link
+                                    href={admin.operations.edit(operation.id)}
+                                >
+                                    <Pencil />
+                                    Edit
+                                </Link>
+                            </Button>
+                            <DeleteOperation operation={operation} />
+                        </>
+                    }
                     title={formatMoney(operation.amount, operation.currency)}
                     description={
                         <span className="inline-flex flex-wrap items-center gap-2">

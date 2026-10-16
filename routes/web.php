@@ -76,6 +76,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::get('operations/create', [OperationController::class, 'create'])->name('operations.create');
         Route::post('operations', [OperationController::class, 'store'])->name('operations.store');
         Route::get('operations/{operation}', [OperationController::class, 'show'])->name('operations.show');
+        Route::get('operations/{operation}/edit', [OperationController::class, 'edit'])->name('operations.edit');
+        Route::put('operations/{operation}', [OperationController::class, 'update'])->name('operations.update');
         Route::delete('operations/{operation}', [OperationController::class, 'destroy'])->name('operations.destroy');
     });
 

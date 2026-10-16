@@ -128,4 +128,28 @@ class OperationManagementTest extends TestCase
         $this->assertTrue($task->sources()->where('provider_id', $cardaq->id)->exists());
         $this->artisan('reports:ensure', ['mid' => $mid->mid, 'date' => '2026-09-14'])->assertFailed();
     }
+
+    public function test_an_operation_can_be_edited_with_a_reason()
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $mid = $this->mid($this->merchantWithTariff(), $cardaq, $corefy);
+        $this->actingAs($this->admin)->post(route('admin.operations.store'), $this->payload($mid->id, $cardaq->id));
+        $operation = MerchantOperation::query()->firstOrFail();
+
+        $this->actingAs($this->admin)->get(route('admin.operations.edit', $operation))->assertOk();
+
+        $this->actingAs($this->admin)->put(route('admin.operations.update', $operation), $this->payload($mid->id, $cardaq->id, ['amount' => '99.00', 'customer_name' => '', 'reason' => '']))
+            ->assertSessionHasErrors('reason');
+
+        $this->actingAs($this->admin)->put(route('admin.operations.update', $operation), $this->payload($mid->id, $cardaq->id, ['amount' => '99.00', 'customer_name' => 'Anna Berg', 'reason' => 'Wrong amount']))
+            ->assertRedirect(route('admin.operations.show', $operation));
+
+        $operation->refresh();
+        $this->assertSame('99.0000', $operation->amount);
+        $this->assertSame('Anna Berg', $operation->raw['remitterName']);
+        $this->assertSame('Wrong amount', $operation->raw['edits'][0]['reason']);
+        $log = AdminAuditLog::query()->where('action', 'operation.updated')->firstOrFail();
+        $this->assertSame('Wrong amount', $log->meta['reason']);
+        $this->assertArrayHasKey('amount', $log->meta['changes']);
+    }
 }
