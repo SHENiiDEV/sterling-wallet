@@ -375,7 +375,7 @@ class DailyReportGenerator
      */
     private function breakdown(Collection $sales, Tariff $fee): array
     {
-        $groups = $sales->groupBy(fn (MerchantOperation $op) => ($op->ips ?? 'other').'_'.($op->region ?? 'unknown'));
+        $groups = $sales->groupBy(fn (MerchantOperation $op) => ($op->ips ?? 'other').'_'.($op->ips === 'transfer' ? 'any' : ($op->region ?? 'unknown')));
 
         $result = [];
         foreach (array_unique(['mastercard_eu', 'mastercard_non_eu', 'visa_eu', 'visa_non_eu', ...$groups->keys()->all()]) as $key) {
@@ -383,7 +383,7 @@ class DailyReportGenerator
             [$scheme, $region] = explode('_', $key, 2);
             $probe = (new MerchantOperation)->forceFill([
                 'ips' => $scheme === 'other' ? null : $scheme,
-                'region' => $region === 'unknown' ? null : $region,
+                'region' => in_array($region, ['unknown', 'any'], true) ? null : $region,
             ]);
 
             $result[$key] = [
