@@ -152,6 +152,9 @@ try {
     );
     fs.writeFileSync(file, JSON.stringify({ count: list.length, list }));
 
+    log(
+        `Saved ${list.length} transaction(s) to ${file}; handing over to the importer.`,
+    );
     emit({
         status: 'succeeded',
         files: [file],
