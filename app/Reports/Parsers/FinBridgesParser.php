@@ -73,6 +73,7 @@ class FinBridgesParser implements ReportParser
 
         return new OperationRow(
             mid: $wallet,
+            merchantName: null, // firstName / lastName are the sender's, not the merchant's
             paymentId: Values::text($tx['transactionNumber'] ?? $tx['externalTransactionId'] ?? null),
             amount: $amount,
             currency: Values::currency($tx['origCcy'] ?? null),
