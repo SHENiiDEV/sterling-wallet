@@ -20,6 +20,7 @@ class ReportDocuments
         'provider' => 'Provider', 'role' => 'Role', 'operation_type' => 'Type', 'payment_id' => 'Payment ID',
         'sp_id' => 'Pair ID', 'arn' => 'ARN', 'card_bin' => 'BIN', 'card_last4' => 'Last 4', 'ips' => 'Scheme',
         'region' => 'Region', 'amount' => 'Amount', 'currency' => 'Currency', 'transaction_at' => 'Time (UTC)',
+        'customer_name' => 'Customer', 'customer_account' => 'Customer account',
         'customer_email' => 'Email', 'resolution' => 'Resolution',
     ];
 
@@ -119,7 +120,7 @@ class ReportDocuments
                 $op->provider->name, $op->role->value, $op->operation_type->value, $op->payment_id,
                 $op->sp_id, $op->getAttribute('arn'), $op->card_bin, $op->card_last4, $op->ips,
                 $op->region, $op->amount, $op->currency, $op->transaction_at?->toDateTimeString(),
-                $op->customer_email, $op->getAttribute('resolution'),
+                $op->customerName(), $op->customerAccount(), $op->customer_email, $op->getAttribute('resolution'),
             ])
             ->all();
     }

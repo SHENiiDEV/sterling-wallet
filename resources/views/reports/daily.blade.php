@@ -194,6 +194,7 @@
                     <th>Time (UTC)</th>
                     <th>Type</th>
                     <th>Payment ID</th>
+                    <th>Customer</th>
                     <th>Card</th>
                     <th>Scheme</th>
                     <th class="num">Amount</th>
@@ -207,6 +208,7 @@
                         <td>{{ $op->transaction_at?->format('Y-m-d H:i') ?? $op->report_date?->toDateString() }}</td>
                         <td>{{ ucfirst($op->operation_type->value) }}</td>
                         <td>{{ \Illuminate\Support\Str::limit($op->payment_id, 28) }}</td>
+                        <td>{{ $op->customerName() ? \Illuminate\Support\Str::limit($op->customerName(), 26) : '—' }}</td>
                         <td>{{ $op->card_bin || $op->card_last4 ? ($op->card_bin ?? '').' •••• '.($op->card_last4 ?? '') : '—' }}</td>
                         <td>{{ $op->ips ? ucfirst($op->ips) : '—' }}{{ $op->region ? ' · '.($op->region === 'eu' ? 'EU' : 'Non-EU') : '' }}</td>
                         <td @class(['num', 'neg' => ! $isSale])>{{ $money($isSale ? $op->amount : '-'.ltrim((string) $op->amount, '-')) }}</td>

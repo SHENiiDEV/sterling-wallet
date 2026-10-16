@@ -83,6 +83,24 @@ class MerchantOperation extends Model
     }
 
     /**
+     * Who paid, as the provider file or the admin entered it (bank transfers:
+     * the sender; kept in the source row).
+     */
+    public function customerName(): ?string
+    {
+        $name = $this->raw['remitterName'] ?? $this->raw['customer_name'] ?? $this->raw['cardholder'] ?? null;
+
+        return is_string($name) && trim($name) !== '' ? trim($name) : null;
+    }
+
+    public function customerAccount(): ?string
+    {
+        $account = $this->raw['remitterAccount'] ?? null;
+
+        return is_string($account) && trim($account) !== '' ? trim($account) : null;
+    }
+
+    /**
      * @return BelongsTo<Merchant, $this>
      */
     public function merchant(): BelongsTo

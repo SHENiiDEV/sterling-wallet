@@ -147,6 +147,7 @@ class OperationManagementTest extends TestCase
         $operation->refresh();
         $this->assertSame('99.0000', $operation->amount);
         $this->assertSame('Anna Berg', $operation->raw['remitterName']);
+        $this->assertSame('Anna Berg', $operation->customerName());
         $this->assertSame('Wrong amount', $operation->raw['edits'][0]['reason']);
         $log = AdminAuditLog::query()->where('action', 'operation.updated')->firstOrFail();
         $this->assertSame('Wrong amount', $log->meta['reason']);
