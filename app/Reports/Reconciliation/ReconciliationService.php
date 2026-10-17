@@ -43,8 +43,9 @@ class ReconciliationService
 
         // Clearing lags the payment by a few days, so the gateway side is
         // searched in a wider range than the acquirer's report period.
-        $bank = $this->unmatched($mid, ProviderType::Bank, $from->toDateString(), $to->toDateString());
-        $gate = $this->unmatched($mid, ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString());
+        $declines = (bool) $rules['include_declines'];
+        $bank = $this->unmatched($mid, ProviderType::Bank, $from->toDateString(), $to->toDateString(), $declines);
+        $gate = $this->unmatched($mid, ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString(), $declines);
         if ($bank->isEmpty() || $gate->isEmpty()) {
             return 0;
         }
@@ -85,7 +86,7 @@ class ReconciliationService
     }
 
     /**
-     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>}
+     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool}
      */
     public function rulesFor(?Provider $bank, ?Provider $gate): array
     {
@@ -99,14 +100,14 @@ class ReconciliationService
     /**
      * @return Collection<int, MerchantOperation>
      */
-    private function unmatched(MerchantMid $mid, ProviderType $role, string $from, string $to): Collection
+    private function unmatched(MerchantMid $mid, ProviderType $role, string $from, string $to, bool $withDeclines = false): Collection
     {
         return MerchantOperation::query()
             ->where('merchant_mid_id', $mid->id)
             ->where('role', $role)
             ->whereNull('matched_operation_id')
-            // Declines never reach clearing, so they have nothing to pair with.
-            ->where('operation_type', '!=', OperationType::Decline)
+            // Declines never reach clearing, so by default they have nothing to pair with.
+            ->when(! $withDeclines, fn ($q) => $q->where('operation_type', '!=', OperationType::Decline))
             ->whereBetween('report_date', [$from, $to])
             ->orderBy('transaction_at')
             ->orderBy('id')

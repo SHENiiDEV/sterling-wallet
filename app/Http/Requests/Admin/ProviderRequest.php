@@ -60,6 +60,7 @@ class ProviderRequest extends FormRequest
             'matching.keys.*.*' => ['string', Rule::in(self::MATCH_FIELDS)],
             'matching.window_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
             'matching.try_timezone_shift' => ['sometimes', 'boolean'],
+            'matching.include_declines' => ['sometimes', 'boolean'],
             'matching.tie_breakers' => ['sometimes', 'array'],
             'matching.tie_breakers.*' => ['string', Rule::in(['email', 'closest_time'])],
         ];

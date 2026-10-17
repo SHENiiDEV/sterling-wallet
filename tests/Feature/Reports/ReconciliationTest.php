@@ -161,4 +161,19 @@ class ReconciliationTest extends TestCase
 
         $this->artisan('reports:reconcile')->expectsOutputToContain('1 new pair(s)')->assertSuccessful();
     }
+
+    public function test_declines_are_paired_only_when_the_rules_ask_for_it()
+    {
+        $decline = ['operation_type' => OperationType::Decline];
+        $bank = $this->op(ProviderType::Bank, 'MADFIN-1', '2026-09-15 10:38:00', $decline);
+        $gate = $this->op(ProviderType::Gate, 'cpi_AAA', '2026-09-15 10:38:41', $decline);
+
+        $this->assertSame(0, $this->reconcile());
+
+        $this->bank->update(['matching' => ['include_declines' => true]]);
+
+        $this->assertSame(1, $this->reconcile());
+        $this->assertSame('cpi_AAA', $bank->fresh()->sp_id);
+        $this->assertSame('MADFIN-1', $gate->fresh()->sp_id);
+    }
 }
