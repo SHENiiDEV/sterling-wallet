@@ -49,6 +49,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::middleware('module:merchants')->group(function () {
         Route::get('merchants/folders', [MerchantController::class, 'folders'])->name('merchants.folders');
+        Route::get('merchants/banks', [MerchantController::class, 'banks'])->name('merchants.banks');
         Route::resource('merchants', MerchantController::class);
         Route::scopeBindings()->group(function () {
             Route::post('merchants/{merchant}/mids', [MerchantMidController::class, 'store'])->name('merchants.mids.store');

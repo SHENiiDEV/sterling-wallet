@@ -15,6 +15,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
+use App\Merchants\BankFolders;
 use App\Merchants\MerchantFolders;
 use App\Merchants\MerchantOverview;
 use App\Merchants\MerchantPurger;
@@ -45,6 +46,20 @@ class MerchantController extends Controller
 
         return Inertia::render('admin/merchants/folders', [
             'folders' => $open === null ? $folders->clients() : [],
+            'open' => $open,
+        ]);
+    }
+
+    /**
+     * Banks as folders: who is onboarded where.
+     */
+    public function banks(Request $request, BankFolders $banks): Response
+    {
+        $id = $request->query('bank');
+        $open = is_numeric($id) ? $banks->bank((int) $id) : null;
+
+        return Inertia::render('admin/merchants/banks', [
+            'banks' => $open === null ? $banks->banks() : [],
             'open' => $open,
         ]);
     }

@@ -5,11 +5,11 @@ import {
     ChevronRight,
     Folder,
     FolderOpen,
-    List,
     Plus,
     Store,
 } from 'lucide-react';
 import { EmptyState } from '@/components/admin/empty-state';
+import { ViewSwitch } from '@/components/admin/merchants/view-switch';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import {
     CurrencyBadge,
@@ -169,12 +169,7 @@ function MerchantCard({ merchant }: { merchant: FolderMerchant }) {
 export default function MerchantFolders({ folders, open }: Props) {
     const switcher = (
         <>
-            <Button variant="outline" asChild>
-                <Link href={admin.merchants.index()}>
-                    <List />
-                    List
-                </Link>
-            </Button>
+            <ViewSwitch view="clients" />
             <Button asChild>
                 <Link href={admin.merchants.create()}>
                     <Plus />

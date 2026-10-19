@@ -51,14 +51,21 @@ export type Acquirer = {
     notes: string | null;
 };
 
-const statusColors: Record<string, StatusColor> = {
+export const acquirerStatusColors: Record<string, StatusColor> = {
     prepare_kyb: 'amber',
+    update_kyb: 'amber',
     kyb_submitted: 'blue',
+    start_onboarding: 'cyan',
+    onboarding_in_process: 'blue',
     approved: 'cyan',
     active_mids: 'emerald',
     rejected: 'rose',
+    rebrand: 'orange',
     closed: 'slate',
 };
+
+export const acquirerColor = (status: string): StatusColor =>
+    acquirerStatusColors[status] ?? 'slate';
 
 function AcquirerDialog({
     merchantId,
@@ -325,9 +332,7 @@ export function AcquirersSection({
                                 <TableCell>
                                     <StatusBadge
                                         name={a.status_label}
-                                        color={
-                                            statusColors[a.status] ?? 'slate'
-                                        }
+                                        color={acquirerColor(a.status)}
                                     />
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
