@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Plus, Wallet } from 'lucide-react';
+import { Building2, Plus, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { EmptyState } from '@/components/admin/empty-state';
 import { Field } from '@/components/admin/form';
@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/table';
 import { formatDate } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
+import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 import { settlementColors } from '@/components/admin/settlements';
 import type { SettlementItem } from '@/components/admin/settlements';
@@ -49,23 +50,57 @@ type Props = {
         reports: number;
         payout: number;
     }[];
+    pendingClients: {
+        id: number;
+        name: string;
+        currency: string;
+        reports: number;
+        companies: number;
+        payout: number;
+    }[];
+    clients: { id: number; name: string }[];
+    payoutCurrencies: Option[];
     filters: { status?: string; merchant?: string };
     statuses: Option[];
     merchants: { public_id: string; name: string }[];
 };
 
+type Target = { client: number } | { merchant: string };
+
 const ALL = 'all';
 
 function NewSettlementDialog({
     merchants,
+    clients,
+    payoutCurrencies,
     preset,
     onClose,
 }: {
     merchants: Props['merchants'];
-    preset: string | null;
+    clients: Props['clients'];
+    payoutCurrencies: Props['payoutCurrencies'];
+    preset: Target | null;
     onClose: () => void;
 }) {
-    const form = useForm({ merchant: preset ?? merchants[0]?.public_id ?? '' });
+    const [kind, setKind] = useState<'client' | 'merchant'>(
+        preset && 'merchant' in preset
+            ? 'merchant'
+            : clients.length > 0
+              ? 'client'
+              : 'merchant',
+    );
+    const form = useForm({
+        client: String(
+            preset && 'client' in preset
+                ? preset.client
+                : (clients[0]?.id ?? ''),
+        ),
+        merchant:
+            preset && 'merchant' in preset
+                ? preset.merchant
+                : (merchants[0]?.public_id ?? ''),
+        payout_currency: payoutCurrencies[0]?.value ?? 'USDC',
+    });
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -74,6 +109,12 @@ function NewSettlementDialog({
                     className="grid gap-5"
                     onSubmit={(e) => {
                         e.preventDefault();
+                        form.transform((data) => ({
+                            payout_currency: data.payout_currency,
+                            ...(kind === 'client'
+                                ? { client: data.client }
+                                : { merchant: data.merchant }),
+                        }));
                         form.post(admin.settlements.store.url());
                     }}
                 >
@@ -81,26 +122,90 @@ function NewSettlementDialog({
                         <DialogTitle>New settlement</DialogTitle>
                         <DialogDescription>
                             The draft picks up every completed report and
-                            released reserve of the merchant that is not paid
-                            yet. You can remove lines and add adjustments before
-                            approving.
+                            released reserve that is not paid yet: of all the
+                            client's companies, or of one merchant. You can
+                            remove lines and add adjustments before approving.
                         </DialogDescription>
                     </DialogHeader>
-                    <Field label="Merchant" error={form.errors.merchant}>
+                    <div className="inline-flex w-fit rounded-lg border p-0.5">
+                        {(['client', 'merchant'] as const).map((k) => (
+                            <button
+                                key={k}
+                                type="button"
+                                onClick={() => setKind(k)}
+                                className={cn(
+                                    'rounded-md px-3 py-1 text-sm font-medium',
+                                    kind === k
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'text-muted-foreground',
+                                )}
+                            >
+                                {k === 'client' ? 'Client' : 'Merchant'}
+                            </button>
+                        ))}
+                    </div>
+                    {kind === 'client' ? (
+                        <Field label="Client" error={form.errors.client}>
+                            <Select
+                                value={form.data.client}
+                                onValueChange={(v) => form.setData('client', v)}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Choose…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {clients.map((c) => (
+                                        <SelectItem
+                                            key={c.id}
+                                            value={String(c.id)}
+                                        >
+                                            {c.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                    ) : (
+                        <Field label="Merchant" error={form.errors.merchant}>
+                            <Select
+                                value={form.data.merchant}
+                                onValueChange={(v) =>
+                                    form.setData('merchant', v)
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Choose…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {merchants.map((m) => (
+                                        <SelectItem
+                                            key={m.public_id}
+                                            value={m.public_id}
+                                        >
+                                            {m.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                    )}
+                    <Field
+                        label="Pay out in"
+                        error={form.errors.payout_currency}
+                    >
                         <Select
-                            value={form.data.merchant}
-                            onValueChange={(v) => form.setData('merchant', v)}
+                            value={form.data.payout_currency}
+                            onValueChange={(v) =>
+                                form.setData('payout_currency', v)
+                            }
                         >
                             <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Choose…" />
+                                <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {merchants.map((m) => (
-                                    <SelectItem
-                                        key={m.public_id}
-                                        value={m.public_id}
-                                    >
-                                        {m.name}
+                                {payoutCurrencies.map((c) => (
+                                    <SelectItem key={c.value} value={c.value}>
+                                        {c.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -114,7 +219,12 @@ function NewSettlementDialog({
                         </DialogClose>
                         <Button
                             type="submit"
-                            disabled={form.processing || !form.data.merchant}
+                            disabled={
+                                form.processing ||
+                                !(kind === 'client'
+                                    ? form.data.client
+                                    : form.data.merchant)
+                            }
                         >
                             {form.processing && <Spinner />}
                             Create draft
@@ -129,11 +239,14 @@ function NewSettlementDialog({
 export default function SettlementsIndex({
     settlements,
     pending,
+    pendingClients,
+    clients,
+    payoutCurrencies,
     filters,
     statuses,
     merchants,
 }: Props) {
-    const [creating, setCreating] = useState<string | null | false>(false);
+    const [creating, setCreating] = useState<Target | null | false>(false);
     const apply = (next: Props['filters']) =>
         router.get(
             admin.settlements.index.url(),
@@ -149,7 +262,7 @@ export default function SettlementsIndex({
             <PageBody>
                 <PageHeader
                     title="Settlements"
-                    description="Payouts to merchants in USDC. One settlement can cover several days and currencies; draft → approved → settled."
+                    description="Payouts to clients and merchants in USDC, USDT and other currencies. One settlement can cover several days, companies and currencies; draft → approved → settled."
                     actions={
                         <Button onClick={() => setCreating(null)}>
                             <Plus />
@@ -158,7 +271,7 @@ export default function SettlementsIndex({
                     }
                 />
 
-                {pending.length > 0 && (
+                {pending.length + pendingClients.length > 0 && (
                     <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
                         <header className="border-b px-5 py-3.5">
                             <h2 className="text-sm font-semibold">
@@ -171,6 +284,51 @@ export default function SettlementsIndex({
                         </header>
                         <Table>
                             <TableBody>
+                                {pendingClients.map((row) => (
+                                    <TableRow
+                                        key={`c${row.id}-${row.currency}`}
+                                    >
+                                        <TableCell className="font-medium">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Building2 className="size-4 text-muted-foreground" />
+                                                {row.name}
+                                                <span className="text-xs font-normal text-muted-foreground">
+                                                    client · {row.companies}{' '}
+                                                    {row.companies === 1
+                                                        ? 'company'
+                                                        : 'companies'}
+                                                </span>
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <CurrencyBadge
+                                                currency={row.currency}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {row.reports} report(s)
+                                        </TableCell>
+                                        <TableCell className="text-right font-medium tabular-nums">
+                                            {formatMoney(
+                                                row.payout,
+                                                row.currency,
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="w-0 text-right">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() =>
+                                                    setCreating({
+                                                        client: row.id,
+                                                    })
+                                                }
+                                            >
+                                                Settle client
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
                                 {pending.map((row) => (
                                     <TableRow
                                         key={`${row.public_id}-${row.currency}`}
@@ -197,7 +355,9 @@ export default function SettlementsIndex({
                                                 size="sm"
                                                 variant="outline"
                                                 onClick={() =>
-                                                    setCreating(row.public_id)
+                                                    setCreating({
+                                                        merchant: row.public_id,
+                                                    })
                                                 }
                                             >
                                                 Settle
@@ -297,7 +457,16 @@ export default function SettlementsIndex({
                                                 {s.number}
                                             </Link>
                                         </TableCell>
-                                        <TableCell>{s.merchant.name}</TableCell>
+                                        <TableCell>
+                                            {s.client ? (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <Building2 className="size-3.5 text-muted-foreground" />
+                                                    {s.client.name}
+                                                </span>
+                                            ) : (
+                                                s.merchant.name
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             <StatusBadge
                                                 name={s.status_label}
@@ -329,6 +498,8 @@ export default function SettlementsIndex({
             {creating !== false && (
                 <NewSettlementDialog
                     merchants={merchants}
+                    clients={clients}
+                    payoutCurrencies={payoutCurrencies}
                     preset={creating}
                     onClose={() => setCreating(false)}
                 />

@@ -27,15 +27,15 @@ class SettlementStatementPdf
     public function data(Settlement $settlement): array
     {
         $settlement->load([
-            'merchant.company', 'wallet', 'approver:id,name', 'settler:id,name', 'creator:id,name',
-            'lines.dailyReport.merchantMid:id,mid', 'lines.reserveEntry.merchantMid:id,mid',
+            'merchant.company', 'client', 'wallet', 'approver:id,name', 'settler:id,name', 'creator:id,name',
+            'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant.company:id,name', 'lines.reserveEntry.merchantMid:id,mid',
         ]);
         $lines = $settlement->lines->sortBy('id')->values();
 
         $reports = $lines->where('type', SettlementLineType::Report)
             ->sortBy(fn (SettlementLine $l) => [$l->currency, $l->dailyReport?->report_date?->toDateString(), $l->id])
             ->groupBy('currency')
-            ->map(fn (Collection $group, string $currency) => $this->reportGroup($group, $currency));
+            ->map(fn (Collection $group, string $currency) => $this->reportGroup($group, $currency, $settlement->client_id !== null));
 
         $releases = $lines->where('type', SettlementLineType::ReserveRelease)->values();
         $adjustments = $lines->whereIn('type', [SettlementLineType::Adjustment, SettlementLineType::Fee])->values();
@@ -57,7 +57,7 @@ class SettlementStatementPdf
 
         return [
             'settlement' => $settlement,
-            'company' => $settlement->merchant->company->name ?? $settlement->merchant->name,
+            'company' => $settlement->client?->invoiceName() ?? $settlement->merchant->company->name ?? $settlement->merchant->name,
             'periodFrom' => $dates->min(),
             'periodTo' => $dates->max(),
             'reportGroups' => $reports->values()->all(),
@@ -100,7 +100,7 @@ class SettlementStatementPdf
      * @param  Collection<int, SettlementLine>  $lines
      * @return array{currency: string, rows: list<array<string, mixed>>, totals: array<string, BigDecimal|int>}
      */
-    private function reportGroup(Collection $lines, string $currency): array
+    private function reportGroup(Collection $lines, string $currency, bool $withOwner): array
     {
         $rows = [];
         $totals = array_fill_keys(['turnover', 'refunds', 'fees', 'reserve', 'payout'], BigDecimal::zero());
@@ -111,6 +111,7 @@ class SettlementStatementPdf
             $row = [
                 'date' => $report?->report_date?->toDateString() ?? '—',
                 'mid' => $report?->merchantMid?->mid ?? '—',
+                'owner' => $withOwner && $report?->merchant ? trim(($report->merchant->company?->name ?? '').' · '.$report->merchant->name, ' ·') : null,
                 'sales' => (int) ($report?->sales_count ?? 0),
                 'turnover' => $this->dec($report?->turnover),
                 'refunds' => $this->dec($report?->refunds_amount)->plus($this->dec($report?->chargebacks_amount)),

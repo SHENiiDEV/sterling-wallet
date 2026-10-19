@@ -6,6 +6,7 @@ export type SettlementItem = {
     status: string;
     status_label: string;
     merchant: { public_id: string; name: string };
+    client: { id: number; name: string } | null;
     payout_currency: string;
     total_payout: string;
     lines_count: number;

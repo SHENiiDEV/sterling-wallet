@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $number
  * @property int $merchant_id
+ * @property int|null $client_id
  * @property SettlementStatus $status
  * @property string $payout_currency
  * @property array<string, string>|null $rates
@@ -29,9 +30,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $cancel_reason
  * @property Carbon|null $created_at
  * @property-read Merchant $merchant
+ * @property-read Client|null $client
  */
 #[Fillable([
-    'number', 'merchant_id', 'status', 'payout_currency', 'rates', 'total_payout', 'wallet_id', 'notes',
+    'number', 'merchant_id', 'client_id', 'status', 'payout_currency', 'rates', 'total_payout', 'wallet_id', 'notes',
     'created_by', 'approved_by', 'approved_at', 'settled_by', 'settled_at', 'tx_hash', 'proof_path',
     'cancelled_by', 'cancelled_at', 'cancel_reason',
 ])]
@@ -55,6 +57,29 @@ class Settlement extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class);
+    }
+
+    /**
+     * @return BelongsTo<Client, $this>
+     */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    /**
+     * Merchants whose reports and reserve releases this settlement may pay:
+     * every merchant of the client, or just its own merchant.
+     *
+     * @return list<int>
+     */
+    public function merchantIds(): array
+    {
+        if ($this->client_id === null) {
+            return [$this->merchant_id];
+        }
+
+        return Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $this->client_id))->pluck('id')->all();
     }
 
     /**

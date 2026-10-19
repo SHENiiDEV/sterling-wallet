@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Enums\SettlementStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantCryptoWallet;
 use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
@@ -35,7 +37,7 @@ class SettlementController extends Controller
         ]);
 
         $list = Settlement::query()
-            ->with(['merchant:id,public_id,name'])
+            ->with(['merchant:id,public_id,name', 'client:id,name'])
             ->withCount('lines')
             ->when($filters['status'] ?? null, fn (Builder $q, string $s) => $q->where('status', $s))
             ->when($filters['merchant'] ?? null, fn (Builder $q, string $m) => $q->whereHas('merchant', fn (Builder $q) => $q->where('public_id', $m)))
@@ -57,9 +59,27 @@ class SettlementController extends Controller
             ->get()
             ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]);
 
+        // The same money by client: what one payout to the client would cover.
+        $pendingClients = DailyReportTask::query()->toBase()
+            ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
+            ->join('companies', 'companies.id', '=', 'merchants.company_id')
+            ->join('clients', 'clients.id', '=', 'companies.client_id')
+            ->where('daily_report_tasks.status', 'completed')
+            ->whereNotIn('daily_report_tasks.id', SettlementLine::query()->select('daily_report_task_id')
+                ->where('type', 'report')->whereNotNull('daily_report_task_id')
+                ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
+            ->selectRaw('clients.id, clients.name, daily_report_tasks.currency, count(*) as reports, count(distinct companies.id) as companies, sum(daily_report_tasks.net_payout) as payout')
+            ->groupBy('clients.id', 'clients.name', 'daily_report_tasks.currency')
+            ->orderBy('clients.name')
+            ->get()
+            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $r->name, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'companies' => (int) $r->companies, 'payout' => round((float) $r->payout, 2)]);
+
         return Inertia::render('admin/settlements/index', [
             'settlements' => $list,
             'pending' => $pending,
+            'pendingClients' => $pendingClients,
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'payoutCurrencies' => $this->payoutCurrencies(),
             'filters' => (object) $filters,
             'statuses' => SettlementStatus::options(),
             'merchants' => Merchant::query()->orderBy('name')->get(['public_id', 'name']),
@@ -68,10 +88,18 @@ class SettlementController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate(['merchant' => ['required', 'string', 'exists:merchants,public_id']]);
-        $merchant = Merchant::query()->where('public_id', $data['merchant'])->firstOrFail();
+        $data = $request->validate([
+            'merchant' => ['nullable', 'required_without:client', 'string', 'exists:merchants,public_id'],
+            'client' => ['nullable', 'required_without:merchant', 'integer', 'exists:clients,id'],
+            'payout_currency' => ['nullable', Rule::in(array_keys(config('sterling.payout_currencies')))],
+        ]);
 
-        $settlement = $this->settlements->createDraft($merchant, $request->user());
+        if (! empty($data['client'])) {
+            $settlement = $this->settlements->createClientDraft(Client::query()->findOrFail($data['client']), $request->user(), $data['payout_currency'] ?? null);
+        } else {
+            $merchant = Merchant::query()->where('public_id', $data['merchant'])->firstOrFail();
+            $settlement = $this->settlements->createDraft($merchant, $request->user(), payoutCurrency: $data['payout_currency'] ?? null);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Draft {$settlement->number} created with {$settlement->lines()->count()} line(s)."]);
 
@@ -80,7 +108,7 @@ class SettlementController extends Controller
 
     public function show(Settlement $settlement): Response
     {
-        $settlement->load(['merchant.wallets', 'lines.dailyReport.merchantMid:id,mid', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
+        $settlement->load(['merchant', 'client:id,name', 'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant:id,name,company_id', 'lines.dailyReport.merchant.company:id,name', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
         $editable = $settlement->isEditable();
 
         return Inertia::render('admin/settlements/show', [
@@ -99,39 +127,44 @@ class SettlementController extends Controller
                 'cancelled_at' => $settlement->cancelled_at?->toIso8601String(),
                 'cancel_reason' => $settlement->cancel_reason,
                 'missing_rates' => $this->settlements->missingRates($settlement),
+                'locked_scope' => $settlement->client_id !== null,
             ],
+            'payoutCurrencies' => $this->payoutCurrencies(),
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
                 'id' => $l->id,
                 'type' => $l->type->value,
                 'type_label' => $l->type->label(),
                 'description' => $l->description,
                 'report_id' => $l->daily_report_task_id,
+                'owner' => $l->dailyReport ? trim(($l->dailyReport->merchant->company?->name ?? '').' · '.$l->dailyReport->merchant->name, ' ·') : null,
                 'currency' => $l->currency,
                 'amount' => $l->amount,
                 'rate' => $l->rate,
                 'amount_payout' => $l->amount_payout,
             ]),
-            'wallets' => $settlement->merchant->wallets->where('is_active', true)->values()->map(fn ($w) => [
+            'wallets' => $this->settlements->wallets($settlement)->map(fn (MerchantCryptoWallet $w) => [
                 'id' => $w->id,
                 'label' => $w->label ?: $w->type->label(),
                 'currency' => $w->currency,
                 'network' => $w->network,
                 'address' => $w->address,
-            ]),
-            'availableReports' => $editable ? $this->settlements->availableReports($settlement->merchant)->map(fn (DailyReportTask $t) => [
+                'merchant' => $w->merchant->name,
+            ])->values(),
+            'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->map(fn (DailyReportTask $t) => [
                 'id' => $t->id,
                 'report_date' => $t->report_date->toDateString(),
                 'mid' => $t->merchantMid->mid,
+                'owner' => trim(($t->merchant->company?->name ?? '').' · '.$t->merchant->name, ' ·'),
                 'currency' => $t->currency,
                 'net_payout' => $t->getRawOriginal('net_payout'),
-            ]) : [],
-            'availableReleases' => $editable ? $this->settlements->availableReleases($settlement->merchant)->map(fn (ReserveLedgerEntry $e) => [
+            ])->values() : [],
+            'availableReleases' => $editable ? $this->settlements->availableReleasesIn($settlement)->map(fn (ReserveLedgerEntry $e) => [
                 'id' => $e->id,
                 'mid' => $e->merchantMid?->mid,
                 'currency' => $e->currency,
                 'amount' => (string) abs((float) $e->amount),
                 'note' => $e->note,
-            ]) : [],
+            ])->values() : [],
         ]);
     }
 
@@ -143,13 +176,20 @@ class SettlementController extends Controller
         $data = $request->validate([
             'rates' => ['array'],
             'rates.*' => ['nullable', 'numeric', 'gt:0', 'max:1000000'],
-            'wallet_id' => ['nullable', Rule::exists('merchant_crypto_wallets', 'id')->where('merchant_id', $settlement->merchant_id)->where('is_active', true)],
+            'payout_currency' => ['nullable', Rule::in(array_keys(config('sterling.payout_currencies')))],
+            'wallet_id' => ['nullable', Rule::exists('merchant_crypto_wallets', 'id')->whereIn('merchant_id', $settlement->merchantIds())->where('is_active', true)],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
         $this->assertDraft($settlement);
 
         $settlement->update(['wallet_id' => $data['wallet_id'] ?? null, 'notes' => $data['notes'] ?? null]);
-        $this->settlements->setRates($settlement, array_filter($data['rates'] ?? [], fn ($r) => $r !== null && $r !== ''));
+
+        if (! empty($data['payout_currency']) && $data['payout_currency'] !== $settlement->payout_currency) {
+            // The posted rates belong to the old currency.
+            $this->settlements->setPayoutCurrency($settlement, $data['payout_currency']);
+        } else {
+            $this->settlements->setRates($settlement, array_filter($data['rates'] ?? [], fn ($r) => $r !== null && $r !== ''));
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Settlement updated.']);
 
@@ -167,7 +207,7 @@ class SettlementController extends Controller
         $this->assertDraft($settlement);
 
         $this->settlements->addReports($settlement, DailyReportTask::query()->whereIn('id', $data['report_ids'] ?? [])->get());
-        $releases = $this->settlements->availableReleases($settlement->merchant)->whereIn('id', $data['release_ids'] ?? []);
+        $releases = $this->settlements->availableReleasesIn($settlement)->whereIn('id', $data['release_ids'] ?? []);
         foreach ($releases as $release) {
             $this->settlements->addRelease($settlement, $release);
         }
@@ -258,6 +298,7 @@ class SettlementController extends Controller
             'status' => $s->status->value,
             'status_label' => $s->status->label(),
             'merchant' => ['public_id' => $s->merchant->public_id, 'name' => $s->merchant->name],
+            'client' => $s->client ? ['id' => $s->client->id, 'name' => $s->client->name] : null,
             'payout_currency' => $s->payout_currency,
             'total_payout' => $s->total_payout,
             'lines_count' => $s->lines_count ?? $s->lines()->count(),
@@ -265,6 +306,14 @@ class SettlementController extends Controller
             'settled_at' => $s->settled_at?->toIso8601String(),
             'tx_hash' => $s->tx_hash,
         ];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    private function payoutCurrencies(): array
+    {
+        return collect(config('sterling.payout_currencies'))->map(fn (string $label, string $code) => ['value' => $code, 'label' => $label])->values()->all();
     }
 
     private function assertDraft(Settlement $settlement): void

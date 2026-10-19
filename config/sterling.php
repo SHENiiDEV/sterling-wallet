@@ -15,6 +15,23 @@ return [
     'settlement_currency' => env('STERLING_SETTLEMENT_CURRENCY', 'EUR'),
 
     /*
+    | What a settlement can be paid in. A stablecoin without a stored rate is
+    | priced through the currency it is pegged to (USDT → USD, EURC → EUR);
+    | the network (TRC20, ERC20, …) is a property of the merchant wallet.
+    */
+    'payout_currencies' => [
+        'USDC' => 'USDC',
+        'USDT' => 'USDT',
+        'EURC' => 'EURC',
+        'DAI' => 'DAI',
+        'BTC' => 'BTC',
+        'ETH' => 'ETH',
+        'EUR' => 'EUR (bank transfer)',
+        'USD' => 'USD (bank transfer)',
+    ],
+    'payout_pegs' => ['USDC' => 'USD', 'USDT' => 'USD', 'DAI' => 'USD', 'EURC' => 'EUR'],
+
+    /*
     | Clearing trn_type codes, compared case-insensitively (write them in
     | lower case). Chargebacks are not classified yet: only Cardaq logic
     | exists and its chargeback codes are still to be confirmed.

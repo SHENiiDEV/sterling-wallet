@@ -20,10 +20,14 @@
                 <div class="label">Paid to</div>
                 <div class="value">{{ $company }}</div>
                 <table class="kv" style="margin-top: 4px">
-                    @if ($company !== $settlement->merchant->name)
-                        <tr><td class="k">Merchant</td><td>{{ $settlement->merchant->name }}</td></tr>
+                    @if ($settlement->client_id === null)
+                        @if ($company !== $settlement->merchant->name)
+                            <tr><td class="k">Merchant</td><td>{{ $settlement->merchant->name }}</td></tr>
+                        @endif
+                        <tr><td class="k">Merchant ID</td><td>{{ $settlement->merchant->public_id }}</td></tr>
+                    @else
+                        <tr><td class="k">Covers</td><td>all companies of the client</td></tr>
                     @endif
-                    <tr><td class="k">Merchant ID</td><td>{{ $settlement->merchant->public_id }}</td></tr>
                     @if ($settlement->wallet)
                         <tr><td class="k">Wallet</td><td>{{ trim($settlement->wallet->currency.' '.$settlement->wallet->network) }}</td></tr>
                         <tr><td class="k">Address</td><td style="font-size: 7.5px; word-break: break-all">{{ $settlement->wallet->address }}</td></tr>
@@ -78,7 +82,7 @@
                 @foreach ($group['rows'] as $row)
                     <tr>
                         <td>{{ $row['date'] }}</td>
-                        <td>{{ $row['mid'] }}</td>
+                        <td>{{ $row['mid'] }}@if ($row['owner'])<br><span class="hint">{{ $row['owner'] }}</span>@endif</td>
                         <td class="num">{{ $row['sales'] }}</td>
                         <td class="num">{{ $money($row['turnover']) }}</td>
                         <td @class(['num', 'neg' => ! $row['refunds']->isZero()])>{{ $row['refunds']->isZero() ? '0.00' : $money($row['refunds']->negated()) }}</td>

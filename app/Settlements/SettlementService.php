@@ -6,8 +6,10 @@ use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use App\Models\Client;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantCryptoWallet;
 use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
@@ -38,9 +40,28 @@ class SettlementService
      */
     public function availableReports(Merchant $merchant): Collection
     {
+        return $this->availableReportsFor([$merchant->id]);
+    }
+
+    /**
+     * Reports the settlement could still pay: those of every merchant in its scope.
+     *
+     * @return Collection<int, DailyReportTask>
+     */
+    public function availableReportsIn(Settlement $settlement): Collection
+    {
+        return $this->availableReportsFor($settlement->merchantIds());
+    }
+
+    /**
+     * @param  list<int>  $merchantIds
+     * @return Collection<int, DailyReportTask>
+     */
+    private function availableReportsFor(array $merchantIds): Collection
+    {
         return DailyReportTask::query()
-            ->with('merchantMid:id,mid,currency')
-            ->where('merchant_id', $merchant->id)
+            ->with(['merchantMid:id,mid,currency', 'merchant:id,name,company_id', 'merchant.company:id,name'])
+            ->whereIn('merchant_id', $merchantIds)
             ->where('status', ReportStatus::Completed)
             ->whereNotIn('id', $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id'))
             ->orderBy('report_date')
@@ -54,9 +75,26 @@ class SettlementService
      */
     public function availableReleases(Merchant $merchant): Collection
     {
+        return $this->availableReleasesFor([$merchant->id]);
+    }
+
+    /**
+     * @return Collection<int, ReserveLedgerEntry>
+     */
+    public function availableReleasesIn(Settlement $settlement): Collection
+    {
+        return $this->availableReleasesFor($settlement->merchantIds());
+    }
+
+    /**
+     * @param  list<int>  $merchantIds
+     * @return Collection<int, ReserveLedgerEntry>
+     */
+    private function availableReleasesFor(array $merchantIds): Collection
+    {
         return ReserveLedgerEntry::query()
-            ->with('merchantMid:id,mid')
-            ->where('merchant_id', $merchant->id)
+            ->with('merchantMid:id,mid,merchant_id')
+            ->whereIn('merchant_id', $merchantIds)
             ->where('type', ReserveEntryType::Release)
             ->whereNotIn('id', $this->activeLineRefs(SettlementLineType::ReserveRelease, 'reserve_ledger_entry_id'))
             ->orderBy('id')
@@ -64,29 +102,55 @@ class SettlementService
     }
 
     /**
+     * One draft for a whole client: every company's reports, paid in one go.
+     * The settlement charge follows the terms of the first merchant that has
+     * something to pay (or the first merchant at all).
+     */
+    public function createClientDraft(Client $client, ?User $by, ?string $payoutCurrency = null, bool $withReleases = true): Settlement
+    {
+        $merchants = Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->orderBy('id')->get();
+        if ($merchants->isEmpty()) {
+            throw ValidationException::withMessages(['client' => 'This client has no merchants yet.']);
+        }
+
+        $pending = DailyReportTask::query()
+            ->whereIn('merchant_id', $merchants->pluck('id'))
+            ->where('status', ReportStatus::Completed)
+            ->whereNotIn('id', $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id'))
+            ->pluck('merchant_id');
+        $primary = $merchants->first(fn (Merchant $m) => $pending->contains($m->id)) ?? $merchants->first();
+
+        return $this->createDraft($primary, $by, null, $withReleases, $client, $payoutCurrency);
+    }
+
+    /**
      * @param  list<int>|null  $reportIds  null = every available report
      */
-    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true): Settlement
+    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true, ?Client $client = null, ?string $payoutCurrency = null): Settlement
     {
-        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases) {
+        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases, $client, $payoutCurrency) {
             $settlement = Settlement::query()->create([
                 'number' => 'SET-TMP-'.uniqid(),
                 'merchant_id' => $merchant->id,
+                'client_id' => $client?->id,
                 'status' => SettlementStatus::Draft,
+                'payout_currency' => $this->payoutCurrency($payoutCurrency),
                 'rates' => [],
-                'wallet_id' => $merchant->wallets()->where('is_active', true)->value('id'),
                 'created_by' => $by?->id,
             ]);
-            $settlement->update(['number' => sprintf('SET-%s-%06d', now()->format('Y'), $settlement->id)]);
+            $settlement->update([
+                'number' => sprintf('SET-%s-%06d', now()->format('Y'), $settlement->id),
+                'wallet_id' => $this->defaultWallet($settlement)?->id,
+            ]);
 
-            $reports = $this->availableReports($merchant);
+            $reports = $this->availableReportsIn($settlement);
             if ($reportIds !== null) {
                 $reports = $reports->whereIn('id', $reportIds);
             }
             $this->addReports($settlement, $reports);
 
             if ($withReleases) {
-                foreach ($this->availableReleases($merchant) as $release) {
+                foreach ($this->availableReleasesIn($settlement) as $release) {
                     $this->addRelease($settlement, $release);
                 }
             }
@@ -104,9 +168,10 @@ class SettlementService
     {
         $this->assertEditable($settlement);
         $taken = $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id')->pluck('daily_report_task_id')->all();
+        $scope = $settlement->merchantIds();
 
         foreach ($reports as $report) {
-            if ($report->merchant_id !== $settlement->merchant_id || $report->status !== ReportStatus::Completed || in_array($report->id, $taken, true)) {
+            if (! in_array($report->merchant_id, $scope, true) || $report->status !== ReportStatus::Completed || in_array($report->id, $taken, true)) {
                 continue;
             }
             $report->loadMissing('merchantMid');
@@ -166,6 +231,59 @@ class SettlementService
     }
 
     /**
+     * Change what the settlement is paid in. Rates are for the old currency, so they start over.
+     */
+    public function setPayoutCurrency(Settlement $settlement, string $currency): Settlement
+    {
+        $this->assertEditable($settlement);
+        $currency = $this->payoutCurrency($currency);
+        if ($currency === $settlement->payout_currency) {
+            return $settlement;
+        }
+
+        $settlement->update(['payout_currency' => $currency, 'rates' => []]);
+        $wallet = $settlement->wallet;
+        if ($wallet === null || strtoupper((string) $wallet->currency) !== $currency) {
+            $settlement->update(['wallet_id' => $this->defaultWallet($settlement)?->id ?? $settlement->wallet_id]);
+        }
+
+        return $this->recalculate($settlement);
+    }
+
+    /**
+     * Wallets the settlement can be paid to: active wallets of every merchant in its scope.
+     *
+     * @return Collection<int, MerchantCryptoWallet>
+     */
+    public function wallets(Settlement $settlement): Collection
+    {
+        return MerchantCryptoWallet::query()
+            ->with('merchant:id,name')
+            ->whereIn('merchant_id', $settlement->merchantIds())
+            ->where('is_active', true)
+            ->orderByRaw('merchant_id = ? desc', [$settlement->merchant_id])
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * The wallet in the payout currency if there is one, else the first active wallet.
+     */
+    private function defaultWallet(Settlement $settlement): ?MerchantCryptoWallet
+    {
+        $wallets = $this->wallets($settlement);
+
+        return $wallets->first(fn (MerchantCryptoWallet $w) => strtoupper((string) $w->currency) === $settlement->payout_currency) ?? $wallets->first();
+    }
+
+    private function payoutCurrency(?string $currency): string
+    {
+        $currency = strtoupper((string) $currency);
+
+        return array_key_exists($currency, config('sterling.payout_currencies')) ? $currency : 'USDC';
+    }
+
+    /**
      * @param  array<string, string|float|int>  $rates  currency => payout units per 1 currency unit
      */
     public function setRates(Settlement $settlement, array $rates): Settlement
@@ -189,9 +307,7 @@ class SettlementService
 
         foreach ($settlement->lines()->distinct()->pluck('currency') as $currency) {
             if (! isset($rates[$currency])) {
-                $rate = $this->fx->rate($currency, $settlement->payout_currency, $today)
-                    // USDC is a USD stablecoin: 1:1 unless a rate says otherwise.
-                    ?? ($currency === 'USD' && $settlement->payout_currency === 'USDC' ? BigDecimal::one() : null);
+                $rate = $this->fx->rate($currency, $settlement->payout_currency, $today) ?? $this->pegRate($currency, $settlement->payout_currency, $today);
                 if ($rate !== null) {
                     $rates[$currency] = (string) $rate->toScale(8, RoundingMode::HalfUp)->strippedOfTrailingZeros();
                 }
@@ -209,6 +325,20 @@ class SettlementService
         $settlement->update(['rates' => $rates, 'total_payout' => (string) $total]);
 
         return $settlement->refresh();
+    }
+
+    /**
+     * A stablecoin is worth the currency it is pegged to: 1:1 with it, and
+     * any other currency goes through that one (EUR → USDT = EUR → USD).
+     */
+    private function pegRate(string $from, string $payout, CarbonImmutable $date): ?BigDecimal
+    {
+        $peg = config('sterling.payout_pegs')[$payout] ?? null;
+        if ($peg === null) {
+            return null;
+        }
+
+        return $from === $peg ? BigDecimal::one() : $this->fx->rate($from, $peg, $date);
     }
 
     /**
@@ -338,8 +468,10 @@ class SettlementService
      */
     public function openDraft(Merchant $merchant): Settlement
     {
+        $clientId = $merchant->company?->client_id;
+
         $draft = Settlement::query()
-            ->where('merchant_id', $merchant->id)
+            ->where(fn (Builder $q) => $q->where('merchant_id', $merchant->id)->when($clientId, fn (Builder $q) => $q->orWhere('client_id', $clientId)))
             ->where('status', SettlementStatus::Draft)
             ->latest('id')
             ->first();

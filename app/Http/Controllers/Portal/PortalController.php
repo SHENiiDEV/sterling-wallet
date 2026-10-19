@@ -50,7 +50,7 @@ class PortalController extends Controller
                 ? $selected->map(fn (Merchant $m) => $this->pricing($m))->values()
                 : [],
             'recentReports' => $this->reportsQuery($selected)->limit(8)->get()->map(fn (DailyReportTask $r) => $this->report($r)),
-            'recentSettlements' => $this->settlementsQuery($selected)->limit(5)->get()->map(fn (Settlement $s) => $this->settlement($s)),
+            'recentSettlements' => $this->settlementsQuery($selected, $request->user()->client_id)->limit(5)->get()->map(fn (Settlement $s) => $this->settlement($s)),
         ]);
     }
 
@@ -108,7 +108,7 @@ class PortalController extends Controller
 
         return Inertia::render('portal/settlements', [
             ...$this->shared($request, $merchants, $selected),
-            'settlements' => $this->settlementsQuery($selected)
+            'settlements' => $this->settlementsQuery($selected, $request->user()->client_id)
                 ->paginate(25)
                 ->withQueryString()
                 ->through(fn (Settlement $s) => $this->settlement($s)),
@@ -133,7 +133,12 @@ class PortalController extends Controller
 
     public function settlementPdf(Request $request, Settlement $settlement, SettlementStatementPdf $pdf): HttpResponse
     {
-        abort_unless(in_array($settlement->status, [SettlementStatus::Approved, SettlementStatus::Settled], true) && $this->owns($request, $settlement->merchant), 404);
+        abort_unless(
+            in_array($settlement->status, [SettlementStatus::Approved, SettlementStatus::Settled], true)
+                && $this->owns($request, $settlement->merchant)
+                && ($settlement->client_id === null || $settlement->client_id === $request->user()->client_id),
+            404,
+        );
 
         return response($pdf->render($settlement), 200, [
             'Content-Type' => 'application/pdf',
@@ -293,13 +298,16 @@ class PortalController extends Controller
     /**
      * Drafts are internal; the merchant sees approved and paid settlements.
      *
+     * A client-wide settlement covers several companies, so only the client's own logins see it.
+     *
      * @param  Collection<int, Merchant>  $merchants
      */
-    private function settlementsQuery(Collection $merchants)
+    private function settlementsQuery(Collection $merchants, ?int $clientId)
     {
         return Settlement::query()
-            ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'wallet:id,currency,network'])
+            ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'client:id,name,invoice_name', 'wallet:id,currency,network'])
             ->whereIn('merchant_id', $merchants->pluck('id'))
+            ->where(fn ($q) => $q->whereNull('client_id')->when($clientId, fn ($q) => $q->orWhere('client_id', $clientId)))
             ->whereIn('status', [SettlementStatus::Approved, SettlementStatus::Settled])
             ->latest('id');
     }
@@ -342,7 +350,7 @@ class PortalController extends Controller
             'id' => $s->id,
             'number' => $s->number,
             'merchant' => $s->merchant->name,
-            'company' => $s->merchant->company?->name,
+            'company' => $s->client?->invoiceName() ?? $s->merchant->company?->name,
             'status' => $s->status->value,
             'status_label' => $s->status === SettlementStatus::Settled ? 'Paid' : 'Approved',
             'total_payout' => $s->total_payout,
