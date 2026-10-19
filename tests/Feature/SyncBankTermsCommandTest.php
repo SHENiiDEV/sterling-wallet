@@ -28,6 +28,8 @@ class SyncBankTermsCommandTest extends TestCase
         $this->assertSame('0.2000', $cardaq->cost_success_fixed);
         $this->assertNull($cardaq->cost_visa_eu_percent);
         $this->assertSame('3.800', $cardaq->cost_mastercard_eu_percent);
+        $this->assertSame('0.0000', $cardaq->settlement_fee);
+        $this->assertSame('50000.0000', Provider::query()->where('code', 'madfin')->sole()->rolling_reserve_cap);
 
         $link = $merchant->acquirers()->sole();
         $this->assertSame('1800000.00', $link->limit);
