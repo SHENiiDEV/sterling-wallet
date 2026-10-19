@@ -75,7 +75,14 @@ export default function ClientsIndex({ clients, defaultDate }: Props) {
                                     <div className="flex flex-wrap items-start gap-3">
                                         <div className="min-w-0 flex-1">
                                             <h2 className="font-semibold">
-                                                {client.name}
+                                                <Link
+                                                    href={admin.clients.show(
+                                                        client.id,
+                                                    )}
+                                                    className="hover:underline"
+                                                >
+                                                    {client.name}
+                                                </Link>
                                             </h2>
                                             <p className="text-xs text-muted-foreground">
                                                 {client.invoice_email ??

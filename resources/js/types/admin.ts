@@ -157,6 +157,8 @@ export type Mid = {
     gate_provider_id: number | null;
     gate_mid: string | null;
     extra_gate_mids?: string[];
+    operations_count?: number;
+    daily_reports_count?: number;
     bank_provider?: string | null;
     gate_provider?: string | null;
     reports_start_date: string | null;

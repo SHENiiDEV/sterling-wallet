@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Enums\UserRole;
 use App\Mail\ClientDailyReportMail;
 use App\Models\Client;
 use App\Models\Company;
@@ -113,5 +114,81 @@ class ClientTest extends TestCase
 
         $this->assertCount(1, $data['pending']);
         $this->assertSame(3, $data['totals']['EUR']['sales']);
+    }
+
+    public function test_the_report_can_be_limited_to_one_company()
+    {
+        $client = $this->clientWithTwoCompanies();
+        $company = $client->companies()->where('name', 'LUNEHOLM LTD')->firstOrFail();
+
+        $data = app(ClientDailyStatement::class)->data($client, CarbonImmutable::parse('2026-09-15'), $company->id);
+
+        $this->assertSame(['LUNEHOLM LTD'], array_keys($data['companies']));
+        $this->assertSame(3, $data['totals']['EUR']['sales']);
+
+        $pdf = $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'company' => $company->id]));
+        $pdf->assertOk();
+        $this->assertStringContainsString('LUNEHOLM_LTD', (string) $pdf->headers->get('Content-Disposition'));
+
+        // A company of another client is not available.
+        $stranger = Company::factory()->create();
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'company' => $stranger->id]))->assertNotFound();
+    }
+
+    public function test_the_client_page_lists_days_with_each_company()
+    {
+        $client = $this->clientWithTwoCompanies();
+
+        $this->actingAs($this->admin)->get(route('admin.clients.show', ['client' => $client, 'month' => '2026-09']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('admin/clients/show')
+                ->has('companies', 2)
+                ->where('month', '2026-09')
+                ->has('days', 1)
+                ->where('days.0.date', '2026-09-15')
+                ->where('days.0.completed', 2)
+                ->has('days.0.companies', 2));
+    }
+
+    public function test_a_client_login_sees_all_companies_and_downloads_the_statement()
+    {
+        $client = $this->clientWithTwoCompanies();
+
+        $this->actingAs($this->admin)->post(route('admin.clients.portal-users.store', $client), [
+            'name' => 'Client Owner', 'email' => 'owner@luneholm.test', 'password' => 'a-long-password-1',
+        ])->assertSessionHasNoErrors();
+        $owner = User::query()->where('email', 'owner@luneholm.test')->firstOrFail();
+        $this->assertSame([$client->id, null, UserRole::Merchant], [$owner->client_id, $owner->company_id, $owner->role]);
+
+        $this->actingAs($owner)->get(route('portal.reports', ['month' => '2026-09']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('portal/reports')
+                ->where('portal.root', 'Luneholm group')
+                ->has('portal.companies', 2)
+                ->where('clientDays.month', '2026-09')
+                ->has('clientDays.days', 1)
+                ->has('clientDays.days.0.companies', 2));
+
+        $all = $this->actingAs($owner)->get(route('portal.reports.client', ['date' => '2026-09-15']));
+        $all->assertOk()->assertHeader('Content-Type', 'application/pdf');
+
+        $company = $client->companies()->where('name', 'LUNEHOLM LTD')->firstOrFail();
+        $this->actingAs($owner)->get(route('portal.reports.client', ['date' => '2026-09-15', 'format' => 'xlsx', 'company' => $company->id]))->assertOk();
+
+        // Another client's company is not reachable.
+        $stranger = Company::factory()->create();
+        $this->actingAs($owner)->get(route('portal.reports.client', ['date' => '2026-09-15', 'company' => $stranger->id]))->assertNotFound();
+    }
+
+    public function test_a_company_login_gets_no_client_statement()
+    {
+        $client = $this->clientWithTwoCompanies();
+        $company = $client->companies()->firstOrFail();
+        $user = User::factory()->create(['role' => UserRole::Merchant, 'company_id' => $company->id]);
+
+        $this->actingAs($user)->get(route('portal.reports'))->assertOk()->assertInertia(fn ($page) => $page->where('clientDays', null));
+        $this->actingAs($user)->get(route('portal.reports.client', ['date' => '2026-09-15']))->assertNotFound();
     }
 }

@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantMidRequest;
+use App\Merchants\MidPurger;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
+use Closure;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -49,6 +52,32 @@ class MerchantMidController extends Controller
         $mid->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'MID removed.']);
+
+        return back();
+    }
+
+    /**
+     * Deletes a MID with its operations, reports and reserve. The MID number
+     * must be typed to confirm; the dialog shows what goes with it first.
+     */
+    public function purge(Request $request, Merchant $merchant, MerchantMid $mid, MidPurger $purger): RedirectResponse
+    {
+        abort_unless($mid->merchant_id === $merchant->id, 404);
+
+        $request->validate([
+            'confirm' => ['required', 'string', function (string $attribute, mixed $value, Closure $fail) use ($mid) {
+                if (trim((string) $value) !== trim($mid->mid)) {
+                    $fail('Type the MID number exactly to confirm.');
+                }
+            }],
+        ]);
+
+        $deleted = $purger->purge($mid, $request->user());
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'MID %s deleted with %d operations and %d reports.',
+            $mid->mid, $deleted['operations'], $deleted['daily_reports'],
+        )]);
 
         return back();
     }

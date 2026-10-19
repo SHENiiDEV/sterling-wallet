@@ -7,12 +7,16 @@ use App\Enums\SettlementStatus;
 use App\Http\Controllers\Controller;
 use App\Merchants\MerchantOverview;
 use App\Merchants\PortalAnalytics;
+use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
 use App\Models\MerchantTariff;
 use App\Models\Settlement;
+use App\Reports\Generation\ClientDailyStatement;
+use App\Reports\Generation\ClientDays;
 use App\Settlements\SettlementStatementPdf;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
@@ -50,19 +54,51 @@ class PortalController extends Controller
         ]);
     }
 
-    public function reports(Request $request): Response
+    public function reports(Request $request, ClientDays $clientDays): Response
     {
         [$merchants, $selected] = $this->scope($request);
         $month = preg_match('/^\d{4}-\d{2}$/', (string) $request->query('month')) ? (string) $request->query('month') : null;
+        $client = $request->user()->client;
 
         return Inertia::render('portal/reports', [
             ...$this->shared($request, $merchants, $selected),
             'month' => $month,
+            // A login of a whole client also gets the consolidated daily statements.
+            'clientDays' => $client === null ? null : [
+                'name' => $client->name,
+                'month' => $clientMonth = $month ?? $clientDays->latestMonth($client) ?? now()->format('Y-m'),
+                'days' => $clientDays->forMonth($client, $clientMonth),
+            ],
             'reports' => $this->reportsQuery($selected)
                 ->when($month, fn ($q, $m) => $q->where('report_date', 'like', "{$m}-%"))
                 ->paginate(31)
                 ->withQueryString()
                 ->through(fn (DailyReportTask $r) => $this->report($r)),
+        ]);
+    }
+
+    /**
+     * The consolidated daily report of the client: all its companies, or one.
+     */
+    public function clientReport(Request $request, ClientDailyStatement $statement): HttpResponse
+    {
+        $client = $request->user()->client;
+        abort_unless($client instanceof Client, 404);
+
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'format' => ['sometimes', 'in:pdf,xlsx'],
+            'company' => ['nullable', 'integer'],
+        ]);
+        $date = CarbonImmutable::parse($data['date']);
+        $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
+        $companyId = isset($data['company']) ? (int) $data['company'] : null;
+        $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name.($company ? '_'.$company->name : '')).'_'.$data['date'];
+
+        return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
+            'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
         ]);
     }
 
@@ -140,7 +176,16 @@ class PortalController extends Controller
     {
         $user = $request->user();
 
-        return $this->companyIds[$user->id] ??= Company::query()->find($user->company_id)?->descendantIdsWithSelf() ?? [];
+        if ($this->companyIds[$user->id] ?? null) {
+            return $this->companyIds[$user->id];
+        }
+
+        // A login of a whole client sees all its companies (and the ones below them).
+        $roots = $user->client_id !== null
+            ? Company::query()->where('client_id', $user->client_id)->get()
+            : Company::query()->whereKey($user->company_id)->get();
+
+        return $this->companyIds[$user->id] = $roots->flatMap(fn (Company $c) => $c->descendantIdsWithSelf())->unique()->values()->all();
     }
 
     private function selectedCompany(Request $request): ?Company
@@ -167,7 +212,9 @@ class PortalController extends Controller
 
         return [
             'portal' => [
-                'root' => Company::query()->whereKey($request->user()->company_id)->value('name'),
+                'root' => $request->user()->client_id !== null
+                    ? $request->user()->client?->name
+                    : Company::query()->whereKey($request->user()->company_id)->value('name'),
                 'companies' => $companies->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name])->all(),
                 'company' => $company ? ['id' => $company->id, 'name' => $company->name] : null,
                 'merchants' => $inCompany->map(fn (Merchant $m) => ['public_id' => $m->public_id, 'name' => $m->name])->values()->all(),

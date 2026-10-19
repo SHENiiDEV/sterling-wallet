@@ -6,7 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClientRequest;
 use App\Mail\ClientDailyReportMail;
 use App\Models\Client;
+use App\Models\Company;
+use App\Models\Merchant;
+use App\Models\User;
 use App\Reports\Generation\ClientDailyStatement;
+use App\Reports\Generation\ClientDays;
 use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -67,6 +71,47 @@ class ClientController extends Controller
     }
 
     /**
+     * Inside a client: its companies and, day by day, what each of them did.
+     */
+    public function show(Request $request, Client $client, ClientDays $days): Response
+    {
+        $client->load('companies:id,client_id,name,parent_id');
+        $merchants = Merchant::query()->whereIn('company_id', $client->companies->pluck('id'))->with('mids:id,merchant_id,mid,currency,status')->orderBy('name')->get();
+
+        // The month asked for, else the latest one with reports.
+        $month = preg_match('/^\d{4}-\d{2}$/', (string) $request->query('month'))
+            ? (string) $request->query('month')
+            : ($days->latestMonth($client) ?? now()->format('Y-m'));
+
+        return Inertia::render('admin/clients/show', [
+            'client' => [
+                'id' => $client->id,
+                'name' => $client->name,
+                'invoice_email' => $client->invoice_email,
+                'notes' => $client->notes,
+            ],
+            'companies' => $client->companies->map(fn (Company $company) => [
+                'id' => $company->id,
+                'name' => $company->name,
+                'merchants' => $merchants->where('company_id', $company->id)->map(fn (Merchant $m) => [
+                    'public_id' => $m->public_id,
+                    'name' => $m->name,
+                    'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->value])->values()->all(),
+                ])->values()->all(),
+            ])->values()->all(),
+            'month' => $month,
+            'days' => $days->forMonth($client, $month),
+            'portalUsers' => User::query()->where('client_id', $client->id)->orderBy('name')->get()->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'is_active' => $u->is_active,
+                'last_login_at' => $u->last_login_at?->toIso8601String(),
+            ])->all(),
+        ]);
+    }
+
+    /**
      * Consolidated daily report as PDF or XLSX.
      */
     public function report(Request $request, Client $client, ClientDailyStatement $statement): HttpResponse
@@ -74,12 +119,15 @@ class ClientController extends Controller
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
             'format' => ['sometimes', 'in:pdf,xlsx'],
+            'company' => ['nullable', 'integer'],
         ]);
         $date = CarbonImmutable::parse($data['date']);
         $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name).'_'.$data['date'];
+        $companyId = isset($data['company']) ? (int) $data['company'] : null;
+        $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name.($company ? '_'.$company->name : '')).'_'.$data['date'];
 
-        return response($xlsx ? $statement->xlsx($client, $date) : $statement->render($client, $date), 200, [
+        return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
         ]);
