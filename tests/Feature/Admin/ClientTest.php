@@ -191,4 +191,24 @@ class ClientTest extends TestCase
         $this->actingAs($user)->get(route('portal.reports'))->assertOk()->assertInertia(fn ($page) => $page->where('clientDays', null));
         $this->actingAs($user)->get(route('portal.reports.client', ['date' => '2026-09-15']))->assertNotFound();
     }
+
+    public function test_the_report_shows_the_invoice_details_and_the_payout_calculation()
+    {
+        $client = $this->clientWithTwoCompanies();
+        $client->update(['invoice_name' => 'Luneholm Group Ltd', 'invoice_address' => "1 High Street\nRiga, LV-1010"]);
+        $this->assertSame('Luneholm Group Ltd', $client->invoiceName());
+
+        $data = app(ClientDailyStatement::class)->data($client->fresh(), CarbonImmutable::parse('2026-09-15'));
+
+        // The calculation ends in the same payout as the table.
+        $steps = $data['calc']['total']['EUR'];
+        $payout = collect($steps)->firstWhere('kind', 'total')['amount'];
+        $this->assertTrue($payout->isEqualTo($data['totals']['EUR']['payout']));
+        $this->assertSame('Gross sales', $steps[0]['label']);
+        $this->assertSame(['DOMESTIC DREAMS LTD', 'LUNEHOLM LTD'], array_keys($data['calc']['companies']));
+
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15']))->assertOk();
+        $this->actingAs($this->admin)->put(route('admin.clients.update', $client), ['name' => 'Internal', 'invoice_name' => 'Legal Name', 'invoice_address' => 'Somewhere 1'])->assertSessionHasNoErrors();
+        $this->assertSame(['Internal', 'Legal Name'], [$client->fresh()->name, $client->fresh()->invoiceName()]);
+    }
 }

@@ -65,7 +65,7 @@ class PortalController extends Controller
             'month' => $month,
             // A login of a whole client also gets the consolidated daily statements.
             'clientDays' => $client === null ? null : [
-                'name' => $client->name,
+                'name' => $client->invoiceName(),
                 'month' => $clientMonth = $month ?? $clientDays->latestMonth($client) ?? now()->format('Y-m'),
                 'days' => $clientDays->forMonth($client, $clientMonth),
             ],
@@ -94,7 +94,7 @@ class PortalController extends Controller
         $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
         $companyId = isset($data['company']) ? (int) $data['company'] : null;
         $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name.($company ? '_'.$company->name : '')).'_'.$data['date'];
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'];
 
         return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
@@ -213,7 +213,7 @@ class PortalController extends Controller
         return [
             'portal' => [
                 'root' => $request->user()->client_id !== null
-                    ? $request->user()->client?->name
+                    ? $request->user()->client?->invoiceName()
                     : Company::query()->whereKey($request->user()->company_id)->value('name'),
                 'companies' => $companies->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name])->all(),
                 'company' => $company ? ['id' => $company->id, 'name' => $company->name] : null,

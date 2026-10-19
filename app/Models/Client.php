@@ -13,12 +13,22 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
  *
  * @property int $id
  * @property string $name
+ * @property string|null $invoice_name
+ * @property string|null $invoice_address
  * @property string|null $invoice_email
  * @property string|null $notes
  */
-#[Fillable(['name', 'invoice_email', 'notes'])]
+#[Fillable(['name', 'invoice_name', 'invoice_address', 'invoice_email', 'notes'])]
 class Client extends Model
 {
+    /**
+     * The legal name printed on reports and e-mails; `name` is for the admin only.
+     */
+    public function invoiceName(): string
+    {
+        return filled($this->invoice_name) ? (string) $this->invoice_name : $this->name;
+    }
+
     /**
      * @return HasMany<Company, $this>
      */
