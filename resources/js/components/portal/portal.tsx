@@ -30,6 +30,7 @@ export type PortalReport = {
     period_from: string;
     period_to: string;
     merchant: string;
+    website?: string | null;
     company: string | null;
     mid: string;
     currency: string;
