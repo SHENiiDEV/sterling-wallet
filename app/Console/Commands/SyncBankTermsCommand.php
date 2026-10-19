@@ -20,11 +20,11 @@ class SyncBankTermsCommand extends Command
         'madfin' => [
             'visa' => 3.6, 'mastercard' => 4, 'success' => 0.25,
             'settlement_fee' => 60, 'cycle' => 'T+2', 'min_settlement' => 10000,
-            'rr_percent' => 10, 'rr_days' => 180, 'cap' => 60000, 'refund' => 6, 'chargeback' => 80,
+            'rr_percent' => 10, 'rr_days' => 180, 'cap' => 50000, 'refund' => 6, 'chargeback' => 80,
         ],
         'cardaq' => [
             'visa' => null, 'mastercard' => 3.8, 'success' => 0.20,
-            'settlement_fee' => 10, 'cycle' => 'T+2', 'min_settlement' => 5,
+            'settlement_fee' => 0, 'cycle' => 'T+2', 'min_settlement' => 5,
             'rr_percent' => 10, 'rr_days' => 180, 'cap' => 50000, 'refund' => 6, 'chargeback' => 69,
         ],
     ];
