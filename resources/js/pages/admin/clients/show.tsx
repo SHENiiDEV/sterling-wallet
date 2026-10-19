@@ -8,6 +8,8 @@ import {
     Download,
     Mail,
 } from 'lucide-react';
+import { ClientPortalAccess } from '@/components/admin/clients/client-portal-access';
+import type { ClientPortalUser } from '@/components/admin/clients/client-portal-access';
 import { EmptyState } from '@/components/admin/empty-state';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Button } from '@/components/ui/button';
@@ -34,6 +36,7 @@ type Props = {
         }[];
     }[];
     month: string;
+    portalUsers: ClientPortalUser[];
     days: {
         date: string;
         completed: number;
@@ -71,7 +74,13 @@ function Payout({ payout }: { payout: Money }) {
     );
 }
 
-export default function ClientShow({ client, companies, month, days }: Props) {
+export default function ClientShow({
+    client,
+    companies,
+    month,
+    days,
+    portalUsers,
+}: Props) {
     const reportUrl = (
         date: string,
         format: 'pdf' | 'xlsx',
@@ -322,6 +331,8 @@ export default function ClientShow({ client, companies, month, days }: Props) {
                         </div>
                     )}
                 </section>
+
+                <ClientPortalAccess clientId={client.id} users={portalUsers} />
             </PageBody>
         </>
     );

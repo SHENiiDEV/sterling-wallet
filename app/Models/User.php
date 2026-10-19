@@ -25,6 +25,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property UserRole $role
  * @property list<string>|null $permissions
  * @property int|null $company_id
+ * @property int|null $client_id
  * @property bool $is_active
  * @property Carbon|null $last_login_at
  * @property string|null $two_factor_secret
@@ -34,7 +35,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'role', 'permissions', 'is_active', 'company_id', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'role', 'permissions', 'is_active', 'company_id', 'client_id', 'created_by'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -67,17 +68,25 @@ class User extends Authenticatable implements PasskeyUser
         return $this->belongsTo(Company::class);
     }
 
+    /**
+     * @return BelongsTo<Client, $this>
+     */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function isStaff(): bool
     {
         return $this->is_active && $this->role->isStaff();
     }
 
     /**
-     * A merchant portal user: active and linked to a company.
+     * A merchant portal user: active and linked to a company or to a whole client.
      */
     public function isMerchantUser(): bool
     {
-        return $this->is_active && $this->role === UserRole::Merchant && $this->company_id !== null;
+        return $this->is_active && $this->role === UserRole::Merchant && ($this->company_id !== null || $this->client_id !== null);
     }
 
     public function isSuperAdmin(): bool

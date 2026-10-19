@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BankHolidayController;
 use App\Http\Controllers\Admin\BotController;
 use App\Http\Controllers\Admin\ClientController;
+use App\Http\Controllers\Admin\ClientPortalUserController;
 use App\Http\Controllers\Admin\CommercialOfferController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -37,6 +38,7 @@ Route::get('dashboard', fn () => auth()->user()?->isStaff() ? redirect()->route(
 Route::middleware(['auth', 'merchant'])->prefix('merchant')->name('portal.')->group(function () {
     Route::get('/', [PortalController::class, 'dashboard'])->name('dashboard');
     Route::get('reports', [PortalController::class, 'reports'])->name('reports');
+    Route::get('reports/client', [PortalController::class, 'clientReport'])->name('reports.client');
     Route::get('reports/{report}/download/{file}', [PortalController::class, 'downloadReport'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
     Route::get('settlements', [PortalController::class, 'settlements'])->name('settlements');
     Route::get('settlements/{settlement}/pdf', [PortalController::class, 'settlementPdf'])->name('settlements.pdf');
@@ -67,6 +69,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::resource('clients', ClientController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
         Route::get('clients/{client}/report', [ClientController::class, 'report'])->name('clients.report');
         Route::post('clients/{client}/send-report', [ClientController::class, 'send'])->name('clients.send-report');
+        Route::post('clients/{client}/portal-users', [ClientPortalUserController::class, 'store'])->name('clients.portal-users.store');
+        Route::put('clients/{client}/portal-users/{user}', [ClientPortalUserController::class, 'update'])->name('clients.portal-users.update');
+        Route::delete('clients/{client}/portal-users/{user}', [ClientPortalUserController::class, 'destroy'])->name('clients.portal-users.destroy');
         Route::post('companies/{company}/portal-users', [PortalUserController::class, 'store'])->name('companies.portal-users.store');
         Route::put('companies/{company}/portal-users/{user}', [PortalUserController::class, 'update'])->name('companies.portal-users.update');
         Route::delete('companies/{company}/portal-users/{user}', [PortalUserController::class, 'destroy'])->name('companies.portal-users.destroy');

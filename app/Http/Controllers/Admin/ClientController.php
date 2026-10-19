@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Enums\ReportStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClientRequest;
 use App\Mail\ClientDailyReportMail;
 use App\Models\Client;
 use App\Models\Company;
-use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\User;
 use App\Reports\Generation\ClientDailyStatement;
+use App\Reports\Generation\ClientDays;
 use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -73,47 +73,15 @@ class ClientController extends Controller
     /**
      * Inside a client: its companies and, day by day, what each of them did.
      */
-    public function show(Request $request, Client $client): Response
+    public function show(Request $request, Client $client, ClientDays $days): Response
     {
         $client->load('companies:id,client_id,name,parent_id');
-        $companyIds = $client->companies->pluck('id');
-        $merchants = Merchant::query()->whereIn('company_id', $companyIds)->with('mids:id,merchant_id,mid,currency,status')->orderBy('name')->get();
+        $merchants = Merchant::query()->whereIn('company_id', $client->companies->pluck('id'))->with('mids:id,merchant_id,mid,currency,status')->orderBy('name')->get();
 
         // The month asked for, else the latest one with reports.
-        $latest = DailyReportTask::query()->whereIn('merchant_id', $merchants->pluck('id'))->max('report_date');
         $month = preg_match('/^\d{4}-\d{2}$/', (string) $request->query('month'))
             ? (string) $request->query('month')
-            : CarbonImmutable::parse((string) ($latest ?? now()))->format('Y-m');
-
-        $tasks = DailyReportTask::query()
-            ->with('merchant:id,name,company_id')
-            ->whereIn('merchant_id', $merchants->pluck('id'))
-            ->where('report_date', 'like', "{$month}-%")
-            ->get();
-
-        $days = $tasks->groupBy(fn (DailyReportTask $t) => $t->report_date->toDateString())
-            ->sortKeysDesc()
-            ->map(function ($group, string $date) use ($client) {
-                $done = $group->where('status', ReportStatus::Completed);
-
-                return [
-                    'date' => $date,
-                    'completed' => $done->count(),
-                    'waiting' => $group->count() - $done->count(),
-                    // Net payout per currency, all companies.
-                    'payout' => $done->groupBy('currency')->map(fn ($g) => number_format((float) $g->sum('net_payout'), 2, '.', ''))->all(),
-                    'companies' => $client->companies->map(function (Company $company) use ($done) {
-                        $own = $done->filter(fn (DailyReportTask $t) => $t->merchant?->company_id === $company->id);
-
-                        return [
-                            'id' => $company->id,
-                            'name' => $company->name,
-                            'reports' => $own->count(),
-                            'payout' => $own->groupBy('currency')->map(fn ($g) => number_format((float) $g->sum('net_payout'), 2, '.', ''))->all(),
-                        ];
-                    })->filter(fn (array $c) => $c['reports'] > 0)->values()->all(),
-                ];
-            })->values()->all();
+            : ($days->latestMonth($client) ?? now()->format('Y-m'));
 
         return Inertia::render('admin/clients/show', [
             'client' => [
@@ -132,7 +100,14 @@ class ClientController extends Controller
                 ])->values()->all(),
             ])->values()->all(),
             'month' => $month,
-            'days' => $days,
+            'days' => $days->forMonth($client, $month),
+            'portalUsers' => User::query()->where('client_id', $client->id)->orderBy('name')->get()->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'is_active' => $u->is_active,
+                'last_login_at' => $u->last_login_at?->toIso8601String(),
+            ])->all(),
         ]);
     }
 

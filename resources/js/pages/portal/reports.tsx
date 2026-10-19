@@ -1,7 +1,9 @@
 import { Head, router } from '@inertiajs/react';
+import { Download } from 'lucide-react';
 import { Pagination } from '@/components/admin/pagination';
 import { PortalFilters, ReportFiles } from '@/components/portal/portal';
 import type { PortalReport, PortalShared } from '@/components/portal/portal';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
     Table,
@@ -16,10 +18,32 @@ import { formatMoney } from '@/lib/money';
 import portal from '@/routes/portal';
 import type { Paginated } from '@/types';
 
+type Money = Record<string, string>;
+
+type ClientDay = {
+    date: string;
+    completed: number;
+    waiting: number;
+    payout: Money;
+    companies: { id: number; name: string; reports: number; payout: Money }[];
+};
+
 type Props = PortalShared & {
     month: string | null;
     reports: Paginated<PortalReport>;
+    /** Only for a login of a whole client: the consolidated daily statements. */
+    clientDays: { name: string; month: string; days: ClientDay[] } | null;
 };
+
+function payoutText(payout: Money): string {
+    const entries = Object.entries(payout);
+
+    return entries.length === 0
+        ? '—'
+        : entries
+              .map(([currency, amount]) => formatMoney(amount, currency))
+              .join(' · ');
+}
 
 export default function PortalReports(props: Props) {
     const { reports, month } = props;
@@ -69,6 +93,99 @@ export default function PortalReports(props: Props) {
                     />
                 </div>
             </div>
+
+            {props.clientDays && (
+                <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                    <header className="border-b px-5 py-3">
+                        <h2 className="text-sm font-semibold">
+                            Daily statements · {props.clientDays.name}
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                            One statement per day for all companies, or for one
+                            company. Month: {props.clientDays.month}.
+                        </p>
+                    </header>
+                    {props.clientDays.days.length === 0 ? (
+                        <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                            No completed days in this month.
+                        </p>
+                    ) : (
+                        <ul className="divide-y">
+                            {props.clientDays.days.map((day) => (
+                                <li key={day.date} className="px-5 py-3">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-medium">
+                                                {formatDate(day.date)}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground tabular-nums">
+                                                Net payout{' '}
+                                                {payoutText(day.payout)}
+                                                {day.waiting > 0 &&
+                                                    ` · ${day.waiting} still waiting for data`}
+                                            </div>
+                                        </div>
+                                        {(['pdf', 'xlsx'] as const).map(
+                                            (format) => (
+                                                <Button
+                                                    key={format}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    asChild
+                                                >
+                                                    <a
+                                                        href={`${portal.reports.client.url()}?date=${day.date}&format=${format}`}
+                                                    >
+                                                        <Download />
+                                                        All companies{' '}
+                                                        {format.toUpperCase()}
+                                                    </a>
+                                                </Button>
+                                            ),
+                                        )}
+                                    </div>
+                                    {day.companies.length > 1 && (
+                                        <ul className="mt-2 grid gap-1 text-sm">
+                                            {day.companies.map((company) => (
+                                                <li
+                                                    key={company.id}
+                                                    className="flex flex-wrap items-center gap-3"
+                                                >
+                                                    <span className="min-w-0 flex-1 text-muted-foreground">
+                                                        {company.name}
+                                                    </span>
+                                                    <span className="tabular-nums">
+                                                        {payoutText(
+                                                            company.payout,
+                                                        )}
+                                                    </span>
+                                                    {(
+                                                        ['pdf', 'xlsx'] as const
+                                                    ).map((format) => (
+                                                        <Button
+                                                            key={format}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            asChild
+                                                        >
+                                                            <a
+                                                                href={`${portal.reports.client.url()}?date=${day.date}&format=${format}&company=${company.id}`}
+                                                            >
+                                                                <Download />
+                                                                {format.toUpperCase()}
+                                                            </a>
+                                                        </Button>
+                                                    ))}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+            )}
 
             <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
                 {reports.data.length === 0 ? (
