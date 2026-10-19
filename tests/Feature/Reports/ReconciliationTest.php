@@ -171,6 +171,7 @@ class ReconciliationTest extends TestCase
         $this->assertSame(0, $this->reconcile());
 
         $this->bank->update(['matching' => ['include_declines' => true]]);
+        $this->mid->unsetRelation('bankProvider');
 
         $this->assertSame(1, $this->reconcile());
         $this->assertSame('cpi_AAA', $bank->fresh()->sp_id);
