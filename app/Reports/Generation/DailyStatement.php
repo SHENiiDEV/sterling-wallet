@@ -133,6 +133,8 @@ class DailyStatement
                 : null,
             'averageTicket' => $count('sales') > 0 ? $turnover->dividedBy($count('sales'), 2, RoundingMode::HalfUp) : null,
             'operations' => $operations,
+            // Bank transfers: the payer's reference tells the merchant which payment it was.
+            'hasReference' => collect($operations)->contains(fn (MerchantOperation $op) => filled($op->reference)),
             'operationsTotal' => $operationsTotal,
         ];
     }

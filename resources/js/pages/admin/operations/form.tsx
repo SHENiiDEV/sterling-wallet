@@ -57,6 +57,7 @@ export default function OperationForm({
         merchant_mid_id: initial('merchant_mid_id', ''),
         provider_id: initial('provider_id', ''),
         payment_id: initial('payment_id', ''),
+        reference: initial('reference', ''),
         sp_id: initial('sp_id', ''),
         arn: initial('arn', ''),
         rrn: initial('rrn', ''),
@@ -304,6 +305,10 @@ export default function OperationForm({
                         {text('payment_id', 'Payment ID', {
                             mono: true,
                             hint: 'Required: it also prevents entering the same operation twice.',
+                        })}
+                        {text('reference', 'Reference', {
+                            mono: true,
+                            hint: 'The number in the payment description, e.g. 891153. Shown in reports instead of the payment ID.',
                         })}
                         {text('sp_id', 'Pair ID (sp_id)', { mono: true })}
                         {text('arn', 'ARN', { mono: true })}

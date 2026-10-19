@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property ProviderType $role
  * @property string|null $mid
  * @property string|null $payment_id
+ * @property string|null $reference
  * @property string|null $sp_id
  * @property int|null $matched_operation_id
  * @property string|null $card_bin
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'merchant_id', 'merchant_mid_id', 'provider_id', 'role', 'mid', 'merchant_name',
-    'payment_id', 'sp_id', 'matched_operation_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'card_bin', 'card_last4', 'customer_email',
+    'payment_id', 'reference', 'sp_id', 'matched_operation_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'card_bin', 'card_last4', 'customer_email',
     'ips', 'wallet', 'region', 'issuer_country', 'issuer_name',
     'trn_type', 'operation_type', 'processing_code', 'resolution',
     'report_date', 'transaction_at', 'processing_at', 'amount', 'currency',

@@ -23,6 +23,7 @@ class OperationResource extends JsonResource
             'mid' => $this->mid,
             'merchant' => $this->whenLoaded('merchant', fn () => $this->merchant ? ['public_id' => $this->merchant->public_id, 'name' => $this->merchant->name] : null),
             'payment_id' => $this->payment_id,
+            'reference' => $this->reference,
             'sp_id' => $this->sp_id,
             'matched_operation_id' => $this->matched_operation_id,
             'arn' => $this->getAttribute('arn'),

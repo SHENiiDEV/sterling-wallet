@@ -44,5 +44,6 @@ final readonly class OperationRow
         public ?CarbonImmutable $processedAt = null,
         public array $fees = [],
         public array $raw = [],
+        public ?string $reference = null,
     ) {}
 }

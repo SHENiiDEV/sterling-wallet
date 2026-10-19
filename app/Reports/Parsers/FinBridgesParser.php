@@ -100,6 +100,25 @@ class FinBridgesParser implements ReportParser
             transactedAt: $at,
             transactedOn: $on,
             raw: $tx,
+            reference: $this->reference(Values::text($tx['details'] ?? null)),
         );
+    }
+
+    /**
+     * The number the payer put in the payment description ("Referenznummer: 890661" or just "891153").
+     */
+    private function reference(?string $details): ?string
+    {
+        if ($details === null) {
+            return null;
+        }
+
+        if (preg_match('/(?:referenz\w*|reference|ref\.?)\D{0,6}(\d{3,})/i', $details, $match) === 1
+            || preg_match('/^\D{0,3}(\d{3,20})\D{0,3}$/', $details, $match) === 1
+            || preg_match('/\b(\d{5,})\b/', $details, $match) === 1) {
+            return $match[1];
+        }
+
+        return $details;
     }
 }

@@ -349,6 +349,11 @@ export default function OperationsIndex({
                                             </div>
                                         </TableCell>
                                         <TableCell className="max-w-44 truncate font-mono text-xs">
+                                            {op.reference && (
+                                                <span className="block font-semibold">
+                                                    {op.reference}
+                                                </span>
+                                            )}
                                             {op.payment_id}
                                         </TableCell>
                                         <TableCell>
