@@ -22,6 +22,7 @@ import {
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { DeleteMerchantDialog } from '@/components/admin/merchants/delete-merchant-dialog';
+import { PurgeMidDialog } from '@/components/admin/merchants/purge-mid-dialog';
 import type { MerchantDeletion } from '@/components/admin/merchants/delete-merchant-dialog';
 import { AcquirersSection } from '@/components/admin/merchants/acquirers-section';
 import type { Acquirer } from '@/components/admin/merchants/acquirers-section';
@@ -118,6 +119,7 @@ export default function MerchantShow(props: Props) {
     const mids = merchant.mids ?? [];
     const [editingMid, setEditingMid] = useState<Mid | 'new' | null>(null);
     const [deletingMid, setDeletingMid] = useState<Mid | null>(null);
+    const [purgingMid, setPurgingMid] = useState<Mid | null>(null);
     const [editingWallet, setEditingWallet] = useState<Wallet | 'new' | null>(
         null,
     );
@@ -495,7 +497,12 @@ export default function MerchantShow(props: Props) {
                                                     setEditingMid(mid)
                                                 }
                                                 onDelete={() =>
-                                                    setDeletingMid(mid)
+                                                    (mid.operations_count ??
+                                                        0) > 0 ||
+                                                    (mid.daily_reports_count ??
+                                                        0) > 0
+                                                        ? setPurgingMid(mid)
+                                                        : setDeletingMid(mid)
                                                 }
                                             />
                                         ))}
@@ -720,6 +727,11 @@ export default function MerchantShow(props: Props) {
                     onClose={() => setRevealing(null)}
                 />
             )}
+            <PurgeMidDialog
+                merchantId={merchant.public_id}
+                mid={purgingMid}
+                onClose={() => setPurgingMid(null)}
+            />
             <ConfirmDialog
                 open={deletingMid !== null}
                 onOpenChange={(open) => !open && setDeletingMid(null)}

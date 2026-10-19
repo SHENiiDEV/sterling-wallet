@@ -35,6 +35,8 @@ class MerchantMidResource extends JsonResource
             'processing_limit' => $this->processing_limit,
             'reserve_balance' => $this->when(isset($this->reserve_balance), fn () => (string) ($this->reserve_balance ?? '0')),
             'notes' => $this->notes,
+            'operations_count' => $this->when(isset($this->operations_count), fn () => (int) $this->operations_count),
+            'daily_reports_count' => $this->when(isset($this->daily_reports_count), fn () => (int) $this->daily_reports_count),
         ];
     }
 }

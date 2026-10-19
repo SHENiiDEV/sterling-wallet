@@ -94,6 +94,7 @@ class MerchantController extends Controller
             'cryptoProvider:id,name',
             'mids' => fn ($q) => $q->with(['bankProvider:id,name', 'gateProvider:id,name'])
                 ->withSum('reserveEntries as reserve_balance', 'amount')
+                ->withCount(['operations', 'dailyReports'])
                 ->orderBy('currency'),
         ]);
 

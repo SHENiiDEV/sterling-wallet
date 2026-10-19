@@ -51,6 +51,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
             Route::post('merchants/{merchant}/mids', [MerchantMidController::class, 'store'])->name('merchants.mids.store');
             Route::put('merchants/{merchant}/mids/{mid}', [MerchantMidController::class, 'update'])->name('merchants.mids.update');
             Route::delete('merchants/{merchant}/mids/{mid}', [MerchantMidController::class, 'destroy'])->name('merchants.mids.destroy');
+            Route::delete('merchants/{merchant}/mids/{mid}/purge', [MerchantMidController::class, 'purge'])->name('merchants.mids.purge');
 
             Route::post('merchants/{merchant}/wallets', [MerchantWalletController::class, 'store'])->name('merchants.wallets.store');
             Route::put('merchants/{merchant}/wallets/{wallet}', [MerchantWalletController::class, 'update'])->name('merchants.wallets.update');

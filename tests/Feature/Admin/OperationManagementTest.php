@@ -153,4 +153,32 @@ class OperationManagementTest extends TestCase
         $this->assertSame('Wrong amount', $log->meta['reason']);
         $this->assertArrayHasKey('amount', $log->meta['changes']);
     }
+
+    public function test_a_mid_with_history_can_be_deleted_with_everything_on_it()
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $merchant = $this->merchantWithTariff();
+        $keep = $this->mid($merchant, $cardaq, $corefy, ['mid' => 'KEEP-1']);
+        $drop = $this->mid($merchant, $cardaq, $corefy, ['mid' => '6741425_1']);
+
+        foreach ([$keep, $drop] as $mid) {
+            $this->actingAs($this->admin)->post(route('admin.operations.store'), $this->payload($mid->id, $cardaq->id, ['payment_id' => 'P-'.$mid->mid]));
+        }
+        $this->assertSame(2, MerchantOperation::query()->count());
+        $this->assertSame(2, DailyReportTask::query()->count());
+
+        // Wrong confirmation: nothing happens.
+        $this->actingAs($this->admin)->delete(route('admin.merchants.mids.purge', [$merchant, $drop]), ['confirm' => 'nope'])
+            ->assertSessionHasErrors('confirm');
+        $this->assertDatabaseHas('merchant_mids', ['id' => $drop->id]);
+
+        $this->actingAs($this->admin)->delete(route('admin.merchants.mids.purge', [$merchant, $drop]), ['confirm' => '6741425_1'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('merchant_mids', ['id' => $drop->id]);
+        $this->assertDatabaseHas('merchant_mids', ['id' => $keep->id]);
+        $this->assertSame(['P-KEEP-1'], MerchantOperation::query()->pluck('payment_id')->all());
+        $this->assertSame([$keep->id], DailyReportTask::query()->pluck('merchant_mid_id')->all());
+        $this->assertSame(1, AdminAuditLog::query()->where('action', 'mid.purged')->count());
+    }
 }
