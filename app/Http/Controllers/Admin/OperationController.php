@@ -317,6 +317,7 @@ class OperationController extends Controller
                 $q->where(fn (Builder $q) => $q
                     ->where('arn', $search)
                     ->orWhere('payment_id', $search)
+                    ->orWhere('reference', $search)
                     ->orWhere('sp_id', $search)
                     ->orWhere('mid', $search)
                     ->orWhere('rrn', $search)

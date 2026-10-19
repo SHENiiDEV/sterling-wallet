@@ -33,6 +33,7 @@ class OperationRequest extends FormRequest
             'merchant_mid_id' => ['required', Rule::exists('merchant_mids', 'id')],
             'provider_id' => ['required', Rule::exists('providers', 'id')],
             'payment_id' => ['required', 'string', 'max:128'],
+            'reference' => $text(128),
             'sp_id' => $text(128),
             'arn' => $text(64),
             'rrn' => $text(64),

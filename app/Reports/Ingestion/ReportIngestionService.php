@@ -243,6 +243,7 @@ class ReportIngestionService
             'role' => $provider->type,
             'mid' => $row->mid ?? $mid->mid,
             'merchant_name' => $row->merchantName,
+            'reference' => $row->reference !== null ? Str::limit($row->reference, 128, '') : null,
             'arn' => $row->arn,
             'rrn' => $row->rrn,
             'approval_code' => $row->approvalCode,

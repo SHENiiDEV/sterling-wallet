@@ -238,6 +238,7 @@ export type Operation = {
     mid: string | null;
     merchant?: { public_id: string; name: string } | null;
     payment_id: string | null;
+    reference: string | null;
     sp_id: string | null;
     matched_operation_id: number | null;
     arn: string | null;

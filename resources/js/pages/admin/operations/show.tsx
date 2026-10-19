@@ -111,6 +111,11 @@ function OperationFacts({ op }: { op: Operation }) {
             <Row label="Provider">
                 {op.provider?.name} · <RoleLabel role={op.role} />
             </Row>
+            <Row label="Reference">
+                {op.reference && (
+                    <span className="font-mono text-xs">{op.reference}</span>
+                )}
+            </Row>
             <Row label="Payment ID">
                 <span className="font-mono text-xs">{op.payment_id}</span>
             </Row>
