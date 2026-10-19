@@ -63,6 +63,7 @@ class MerchantAcquirerController extends Controller
             'limit_currency' => ['required', 'string', 'size:3'],
             'integration_status' => ['required', Rule::enum(IntegrationStatus::class)],
             'psp' => ['nullable', 'string', 'max:255'],
+            'mcc' => ['nullable', 'string', 'regex:/^\d{4}$/'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], ['provider_id.unique' => 'This bank is already listed for the merchant.']);
     }

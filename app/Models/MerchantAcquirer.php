@@ -17,11 +17,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $limit_currency
  * @property IntegrationStatus $integration_status
  * @property string|null $psp
+ * @property string|null $mcc
  * @property string|null $notes
  * @property-read Provider $provider
  * @property-read Merchant $merchant
  */
-#[Fillable(['merchant_id', 'provider_id', 'status', 'limit', 'limit_currency', 'integration_status', 'psp', 'notes'])]
+#[Fillable(['merchant_id', 'provider_id', 'status', 'limit', 'limit_currency', 'integration_status', 'psp', 'mcc', 'notes'])]
 class MerchantAcquirer extends Model
 {
     protected function casts(): array
