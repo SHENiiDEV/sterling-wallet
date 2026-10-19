@@ -297,7 +297,7 @@ final class BankSheetImporter
     private function createMerchant(string $company, string $site, ?string $mcc): Merchant
     {
         $owner = Company::query()->firstOrCreate(['name' => $company]);
-        $taken = Merchant::query()->where('company_id', $owner->id)->exists();
+        $taken = Merchant::query()->where('company_id', $owner->id)->orWhereRaw('lower(name) = ?', [Str::lower($company)])->exists();
 
         return Merchant::query()->create([
             'company_id' => $owner->id,
