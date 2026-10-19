@@ -127,6 +127,7 @@ class MerchantController extends Controller
                     'integration_status' => $a->integration_status->value,
                     'integration_label' => $a->integration_status->label(),
                     'psp' => $a->psp,
+                    'mcc' => $a->mcc,
                     'notes' => $a->notes,
                 ]),
             'acquirerStatuses' => AcquirerStatus::options(),

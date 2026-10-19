@@ -47,6 +47,7 @@ export type Acquirer = {
     integration_status: string;
     integration_label: string;
     psp: string | null;
+    mcc: string | null;
     notes: string | null;
 };
 
@@ -81,6 +82,7 @@ function AcquirerDialog({
         limit_currency: acquirer?.limit_currency ?? 'EUR',
         integration_status: acquirer?.integration_status ?? 'need_to_do',
         psp: acquirer?.psp ?? '',
+        mcc: acquirer?.mcc ?? '',
         notes: acquirer?.notes ?? '',
     });
     const { data, setData, errors } = form;
@@ -208,6 +210,15 @@ function AcquirerDialog({
                                 onChange={(e) => setData('psp', e.target.value)}
                             />
                         </Field>
+                        <Field label="MCC" htmlFor="a-mcc" error={errors.mcc}>
+                            <Input
+                                id="a-mcc"
+                                inputMode="numeric"
+                                maxLength={4}
+                                value={data.mcc}
+                                onChange={(e) => setData('mcc', e.target.value)}
+                            />
+                        </Field>
                         <Field
                             label="Notes"
                             htmlFor="a-notes"
@@ -297,6 +308,9 @@ export function AcquirersSection({
                                 Integration
                             </TableHead>
                             <TableHead className="hidden md:table-cell">
+                                MCC
+                            </TableHead>
+                            <TableHead className="hidden md:table-cell">
                                 PSP
                             </TableHead>
                             <TableHead className="w-24 pr-5" />
@@ -327,6 +341,13 @@ export function AcquirersSection({
                                 </TableCell>
                                 <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
                                     {a.integration_label}
+                                </TableCell>
+                                <TableCell className="hidden text-sm tabular-nums md:table-cell">
+                                    {a.mcc ?? (
+                                        <span className="text-muted-foreground">
+                                            —
+                                        </span>
+                                    )}
                                 </TableCell>
                                 <TableCell className="hidden text-sm md:table-cell">
                                     {a.psp ?? (
