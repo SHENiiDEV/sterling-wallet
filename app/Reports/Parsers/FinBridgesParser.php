@@ -4,6 +4,7 @@ namespace App\Reports\Parsers;
 
 use Carbon\CarbonImmutable;
 use SplFileInfo;
+use Throwable;
 
 /**
  * FinBridges (C2B bank transfers): transactions as the public API returns
@@ -11,6 +12,8 @@ use SplFileInfo;
  * Only COMPLETED transactions count (pending ones arrive again once completed):
  * DEPOSIT is a sale, PAYMENT_RETURN a refund, CHARGEBACK a chargeback. Payments
  * out, withdrawals, fees and the other wallet movements are skipped.
+ *
+ * A CSV list works too (see csv()), for transfers copied from the portal.
  *
  * The MID is the wallet id (one wallet per currency); `date` is a Unix
  * timestamp, in seconds or milliseconds.
@@ -36,9 +39,12 @@ class FinBridgesParser implements ReportParser
 
     public function rows(SplFileInfo $file, string $timezone): iterable
     {
-        $data = json_decode((string) file_get_contents($file->getPathname()), true);
+        $content = (string) file_get_contents($file->getPathname());
+        $data = json_decode($content, true);
+
+        // A list typed or exported from the FinBridges portal instead of the API answer.
         if (! is_array($data)) {
-            return;
+            $data = $this->csv($content);
         }
 
         foreach ($data['list'] ?? $data['transactions'] ?? $data as $tx) {
@@ -46,6 +52,56 @@ class FinBridgesParser implements ReportParser
                 yield $row;
             }
         }
+    }
+
+    /**
+     * CSV list in the shape of the API fields. Header (any order, case does not matter):
+     * wallet_id, payment_id, reference, amount, currency, transaction_at (with a UTC offset,
+     * e.g. 2026-10-16T19:44:00+02:00), customer_name, customer_account, customer_bic.
+     * Optional: type (default DEPOSIT), status (default COMPLETED).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function csv(string $content): array
+    {
+        $lines = preg_split('/\R/', ltrim($content, "\xEF\xBB\xBF")) ?: [];
+        $header = null;
+        $list = [];
+
+        foreach ($lines as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            $cells = array_map('trim', str_getcsv($line, escape: ''));
+            if ($header === null) {
+                $header = array_map(fn ($h) => strtolower(str_replace([' ', '-'], '_', $h)), $cells);
+
+                continue;
+            }
+
+            $r = array_combine($header, array_slice(array_pad($cells, count($header), ''), 0, count($header)));
+            try {
+                $at = CarbonImmutable::parse($r['transaction_at'] ?? $r['date'] ?? '');
+            } catch (Throwable) {
+                continue;
+            }
+
+            $list[] = array_filter([
+                'walletId' => $r['wallet_id'] ?? $r['walletid'] ?? $r['mid'] ?? null,
+                'transactionNumber' => $r['payment_id'] ?? $r['transactionnumber'] ?? null,
+                'transactionType' => $r['type'] ?? 'DEPOSIT',
+                'status' => $r['status'] ?? 'COMPLETED',
+                'date' => $at->getTimestamp() * 1000,
+                'amountOrigCcy' => $r['amount'] ?? $r['amountorigccy'] ?? null,
+                'origCcy' => $r['currency'] ?? $r['origccy'] ?? 'EUR',
+                'reference' => $r['reference'] ?? null,
+                'remitterName' => $r['customer_name'] ?? $r['remittername'] ?? null,
+                'remitterAccount' => $r['customer_account'] ?? $r['remitteraccount'] ?? null,
+                'remitterBIC' => $r['customer_bic'] ?? $r['remitterbic'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+        }
+
+        return $list;
     }
 
     /**
@@ -100,7 +156,7 @@ class FinBridgesParser implements ReportParser
             transactedAt: $at,
             transactedOn: $on,
             raw: $tx,
-            reference: $this->reference(Values::text($tx['details'] ?? null)),
+            reference: Values::text($tx['reference'] ?? null) ?? $this->reference(Values::text($tx['details'] ?? null)),
         );
     }
 

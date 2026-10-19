@@ -10,6 +10,8 @@ use App\Models\Provider;
 use App\Models\User;
 use App\Reports\Parsers\FinBridgesParser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use SplFileInfo;
 use Tests\Concerns\BuildsReportFixtures;
 use Tests\TestCase;
@@ -236,5 +238,27 @@ class OperationManagementTest extends TestCase
 
         $this->assertSame(['890661', '891153', 'Invoice paid'], array_map(fn ($r) => $r->reference, $rows));
         @unlink($file);
+    }
+
+    public function test_a_csv_list_of_transfers_can_be_uploaded_in_the_report_center()
+    {
+        Storage::fake('local');
+        $bank = Provider::factory()->create(['name' => 'FinBridges', 'code' => 'finbridges', 'type' => ProviderType::Bank, 'report_format' => 'finbridges', 'timezone' => 'UTC', 'report_delay_days' => 0]);
+        $this->mid($this->merchantWithTariff(), $bank, null, ['mid' => 'CJPU1K100']);
+        $csv = implode("\n", [
+            'wallet_id,payment_id,reference,amount,currency,transaction_at,customer_name,customer_account,customer_bic',
+            'CJPU1K100,a2ff4580,890661,105.00,EUR,2026-09-16T19:44:00+02:00,Susanne Jutta Gaus,DE44 1007 7777 0448 3848 00,NORSDE51XXX',
+            'CJPU1K100,a2feea04,891153,260.10,EUR,2026-09-16T15:28:00+02:00,Mw MD Jansen,NL45 INGB 0101 2587 71,INGBNL2A',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('transfers.csv', $csv);
+        $this->actingAs($this->admin)->post(route('admin.reports.upload'), ['provider_id' => $bank->id, 'file' => $file])->assertSessionHasNoErrors();
+
+        $operation = MerchantOperation::query()->where('payment_id', 'a2ff4580')->firstOrFail();
+        $this->assertSame('890661', $operation->reference);
+        $this->assertSame('Susanne Jutta Gaus', $operation->customerName());
+        $this->assertSame('2026-09-16 17:44:00', $operation->transaction_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-16', $operation->report_date->toDateString());
+        $this->assertSame(2, MerchantOperation::query()->count());
     }
 }
