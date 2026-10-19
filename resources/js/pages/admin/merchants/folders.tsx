@@ -44,6 +44,7 @@ type FolderMid = {
 
 type FolderMerchant = {
     id: number;
+    public_id: string;
     name: string;
     website: string | null;
     status: MerchantStatus;
@@ -111,7 +112,7 @@ function MerchantCard({ merchant }: { merchant: FolderMerchant }) {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-3">
                 <Store className="size-4 text-muted-foreground" />
                 <Link
-                    href={admin.merchants.show(merchant.id)}
+                    href={admin.merchants.show(merchant.public_id)}
                     className="font-medium hover:underline"
                 >
                     {merchant.name}

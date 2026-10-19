@@ -123,6 +123,7 @@ final class MerchantFolders
     {
         return [
             'id' => $merchant->id,
+            'public_id' => $merchant->public_id,
             'name' => $merchant->name,
             'website' => $merchant->website,
             'status' => $merchant->status->value,

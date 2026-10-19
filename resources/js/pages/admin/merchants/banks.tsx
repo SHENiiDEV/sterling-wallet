@@ -32,6 +32,7 @@ type BankSummary = {
 type BankRow = {
     id: number;
     merchant_id: number;
+    merchant_public_id: string;
     merchant: string;
     company: string | null;
     website: string | null;
@@ -190,7 +191,7 @@ export default function MerchantBanks({
                                             <TableCell className="pl-5">
                                                 <Link
                                                     href={admin.merchants.show(
-                                                        row.merchant_id,
+                                                        row.merchant_public_id,
                                                     )}
                                                     className="font-medium hover:underline"
                                                 >

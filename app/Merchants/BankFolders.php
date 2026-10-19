@@ -52,6 +52,7 @@ final class BankFolders
             ->map(fn (MerchantAcquirer $a) => [
                 'id' => $a->id,
                 'merchant_id' => $a->merchant_id,
+                'merchant_public_id' => $a->merchant->public_id,
                 'merchant' => $a->merchant->name,
                 'company' => $a->merchant->company?->name,
                 'website' => $a->merchant->website,
