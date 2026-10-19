@@ -2,11 +2,13 @@
 
 namespace App\Reports\Reconciliation;
 
+use App\Enums\MidStatus;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
+use App\Reports\Ingestion\ReportIngestionService;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Collection;
@@ -18,6 +20,10 @@ use Illuminate\Support\Facades\DB;
  * (acquirer first, then gateway, then config defaults).
  *
  * Pairs are one-to-one: an operation that has a pair never takes part again.
+ *
+ * One gateway account can feed several terminals (MIDs of different banks).
+ * Its rows are first booked to one of them; when a bank operation of another
+ * MID pairs with such a row, the row moves to that MID.
  */
 class ReconciliationService
 {
@@ -43,8 +49,9 @@ class ReconciliationService
 
         // Clearing lags the payment by a few days, so the gateway side is
         // searched in a wider range than the acquirer's report period.
-        $bank = $this->unmatched($mid, ProviderType::Bank, $from->toDateString(), $to->toDateString());
-        $gate = $this->unmatched($mid, ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString());
+        $declines = (bool) $rules['include_declines'];
+        $bank = $this->unmatched([$mid->id], ProviderType::Bank, $from->toDateString(), $to->toDateString(), $declines);
+        $gate = $this->unmatched([$mid->id, ...$this->sharingGate($mid)], ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString(), $declines);
         if ($bank->isEmpty() || $gate->isEmpty()) {
             return 0;
         }
@@ -74,10 +81,18 @@ class ReconciliationService
             }
         }
 
-        DB::transaction(function () use ($pairs) {
+        DB::transaction(function () use ($pairs, $mid) {
             foreach ($pairs as [$bankOp, $gateOp]) {
                 $bankOp->update(['matched_operation_id' => $gateOp->id, 'sp_id' => $gateOp->payment_id]);
                 $gateOp->update(['matched_operation_id' => $bankOp->id, 'sp_id' => $bankOp->payment_id]);
+
+                // The gateway row was booked to a sibling terminal: it belongs to this MID.
+                if ((int) $gateOp->merchant_mid_id !== $mid->id) {
+                    $gateOp->update(['merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id]);
+                    if ($bankOp->report_date !== null) {
+                        app(ReportIngestionService::class)->ensureReport($mid->gateProvider, $mid, CarbonImmutable::parse($bankOp->report_date));
+                    }
+                }
             }
         });
 
@@ -85,7 +100,7 @@ class ReconciliationService
     }
 
     /**
-     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>}
+     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool}
      */
     public function rulesFor(?Provider $bank, ?Provider $gate): array
     {
@@ -97,16 +112,39 @@ class ReconciliationService
     }
 
     /**
+     * Other MIDs fed by one of this MID's gateway accounts.
+     *
+     * @return list<int>
+     */
+    private function sharingGate(MerchantMid $mid): array
+    {
+        $accounts = $mid->gateAccounts();
+        if ($accounts === []) {
+            return [];
+        }
+
+        return MerchantMid::query()
+            ->where('gate_provider_id', $mid->gate_provider_id)
+            ->whereKeyNot($mid->id)
+            ->where('status', '!=', MidStatus::Inactive->value)
+            ->get()
+            ->filter(fn (MerchantMid $other) => array_intersect($accounts, $other->gateAccounts()) !== [])
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $midIds
      * @return Collection<int, MerchantOperation>
      */
-    private function unmatched(MerchantMid $mid, ProviderType $role, string $from, string $to): Collection
+    private function unmatched(array $midIds, ProviderType $role, string $from, string $to, bool $withDeclines = false): Collection
     {
         return MerchantOperation::query()
-            ->where('merchant_mid_id', $mid->id)
+            ->whereIn('merchant_mid_id', $midIds)
             ->where('role', $role)
             ->whereNull('matched_operation_id')
-            // Declines never reach clearing, so they have nothing to pair with.
-            ->where('operation_type', '!=', OperationType::Decline)
+            // Declines never reach clearing, so by default they have nothing to pair with.
+            ->when(! $withDeclines, fn ($q) => $q->where('operation_type', '!=', OperationType::Decline))
             ->whereBetween('report_date', [$from, $to])
             ->orderBy('transaction_at')
             ->orderBy('id')

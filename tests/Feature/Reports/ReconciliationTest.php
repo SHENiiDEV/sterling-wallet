@@ -161,4 +161,35 @@ class ReconciliationTest extends TestCase
 
         $this->artisan('reports:reconcile')->expectsOutputToContain('1 new pair(s)')->assertSuccessful();
     }
+
+    public function test_declines_are_paired_only_when_the_rules_ask_for_it()
+    {
+        $decline = ['operation_type' => OperationType::Decline];
+        $bank = $this->op(ProviderType::Bank, 'MADFIN-1', '2026-09-15 10:38:00', $decline);
+        $gate = $this->op(ProviderType::Gate, 'cpi_AAA', '2026-09-15 10:38:41', $decline);
+
+        $this->assertSame(0, $this->reconcile());
+
+        $this->bank->update(['matching' => ['include_declines' => true]]);
+
+        $this->assertSame(1, $this->reconcile());
+        $this->assertSame('cpi_AAA', $bank->fresh()->sp_id);
+        $this->assertSame('MADFIN-1', $gate->fresh()->sp_id);
+    }
+
+    public function test_a_gateway_row_moves_to_the_terminal_it_was_paired_with()
+    {
+        // A second terminal (another bank) fed by the same Corefy account.
+        $other = $this->mid($this->mid->merchant, $this->madfin(), $this->gate, ['mid' => 'T-2']);
+
+        // The Corefy row was booked to the first MID, but the bank row is on the second.
+        $gate = $this->op(ProviderType::Gate, 'cpi_X', '2026-09-15 10:00:30');
+        $bank = $this->op(ProviderType::Bank, 'MF-1', '2026-09-15 10:00:00', ['merchant_mid_id' => $other->id, 'provider_id' => $other->bank_provider_id]);
+
+        $this->assertSame(1, app(ReconciliationService::class)->reconcile($other, '2026-09-15', '2026-09-15'));
+
+        $this->assertSame($other->id, $gate->fresh()->merchant_mid_id);
+        $this->assertSame('cpi_X', $bank->fresh()->sp_id);
+        $this->assertDatabaseHas('daily_report_tasks', ['merchant_mid_id' => $other->id]);
+    }
 }

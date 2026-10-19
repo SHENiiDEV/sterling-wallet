@@ -56,6 +56,9 @@ return [
         'window_minutes' => 5,
         'try_timezone_shift' => true,
         'tie_breakers' => ['email', 'closest_time'],
+        // Declines normally never reach clearing, so they are not paired. A bank whose
+        // report lists them (Madfin) can switch this on to get the gateway id on every row.
+        'include_declines' => false,
     ],
 
     /*
