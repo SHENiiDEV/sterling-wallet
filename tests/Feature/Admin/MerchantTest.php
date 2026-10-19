@@ -9,6 +9,8 @@ use App\Enums\ProviderType;
 use App\Enums\TariffProduct;
 use App\Enums\UserRole;
 use App\Models\AdminAuditLog;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\Provider;
@@ -119,6 +121,33 @@ class MerchantTest extends TestCase
 
         $this->get(route('admin.merchants.index', ['search' => '5550001']))
             ->assertInertia(fn (Assert $page) => $page->has('merchants.data', 1));
+    }
+
+    public function test_folders_group_merchants_and_mids_by_client()
+    {
+        $client = Client::query()->create(['name' => 'Acme']);
+        $company = Company::factory()->create(['client_id' => $client->id, 'name' => 'Acme Ltd']);
+        $shop = Merchant::factory()->create(['company_id' => $company->id, 'name' => 'Acme Shop']);
+        MerchantMid::factory()->for($shop)->create(['currency' => Currency::Eur, 'mid' => '7770001']);
+        Merchant::factory()->create(['company_id' => null, 'name' => 'Loose Shop']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.merchants.folders'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('open', null)
+                ->has('folders', 2)
+                ->where('folders.0.name', 'Acme')
+                ->where('folders.0.mids', 1)
+                ->where('folders.1.key', 'none'));
+
+        $this->get(route('admin.merchants.folders', ['client' => $client->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('open.name', 'Acme')
+                ->where('open.groups.0.name', 'Acme Ltd')
+                ->where('open.groups.0.merchants.0.mids.0.mid', '7770001'));
+
+        $this->get(route('admin.merchants.folders', ['client' => 'none']))
+            ->assertInertia(fn (Assert $page) => $page->where('open.groups.0.merchants.0.name', 'Loose Shop'));
     }
 
     public function test_merchant_can_have_mids_in_several_currencies()

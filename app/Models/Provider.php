@@ -63,6 +63,16 @@ class Provider extends Model
     }
 
     /**
+     * Merchants' onboarding records with this bank.
+     *
+     * @return HasMany<MerchantAcquirer, $this>
+     */
+    public function acquirers(): HasMany
+    {
+        return $this->hasMany(MerchantAcquirer::class);
+    }
+
+    /**
      * @return HasMany<MerchantMid, $this>
      */
     public function bankMids(): HasMany

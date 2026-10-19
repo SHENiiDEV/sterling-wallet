@@ -52,7 +52,7 @@ const navGroups: NavGroup[] = [
         items: [
             {
                 title: 'Merchants & MIDs',
-                href: admin.merchants.index(),
+                href: admin.merchants.folders(),
                 icon: Store,
                 module: 'merchants',
             },
