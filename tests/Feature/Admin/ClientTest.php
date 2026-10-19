@@ -114,4 +114,39 @@ class ClientTest extends TestCase
         $this->assertCount(1, $data['pending']);
         $this->assertSame(3, $data['totals']['EUR']['sales']);
     }
+
+    public function test_the_report_can_be_limited_to_one_company()
+    {
+        $client = $this->clientWithTwoCompanies();
+        $company = $client->companies()->where('name', 'LUNEHOLM LTD')->firstOrFail();
+
+        $data = app(ClientDailyStatement::class)->data($client, CarbonImmutable::parse('2026-09-15'), $company->id);
+
+        $this->assertSame(['LUNEHOLM LTD'], array_keys($data['companies']));
+        $this->assertSame(3, $data['totals']['EUR']['sales']);
+
+        $pdf = $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'company' => $company->id]));
+        $pdf->assertOk();
+        $this->assertStringContainsString('LUNEHOLM_LTD', (string) $pdf->headers->get('Content-Disposition'));
+
+        // A company of another client is not available.
+        $stranger = Company::factory()->create();
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'company' => $stranger->id]))->assertNotFound();
+    }
+
+    public function test_the_client_page_lists_days_with_each_company()
+    {
+        $client = $this->clientWithTwoCompanies();
+
+        $this->actingAs($this->admin)->get(route('admin.clients.show', ['client' => $client, 'month' => '2026-09']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('admin/clients/show')
+                ->has('companies', 2)
+                ->where('month', '2026-09')
+                ->has('days', 1)
+                ->where('days.0.date', '2026-09-15')
+                ->where('days.0.completed', 2)
+                ->has('days.0.companies', 2));
+    }
 }

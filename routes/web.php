@@ -64,7 +64,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
         });
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
-        Route::resource('clients', ClientController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::resource('clients', ClientController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
         Route::get('clients/{client}/report', [ClientController::class, 'report'])->name('clients.report');
         Route::post('clients/{client}/send-report', [ClientController::class, 'send'])->name('clients.send-report');
         Route::post('companies/{company}/portal-users', [PortalUserController::class, 'store'])->name('companies.portal-users.store');

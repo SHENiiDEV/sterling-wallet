@@ -4,7 +4,9 @@ namespace App\Reports\Generation;
 
 use App\Enums\ReportStatus;
 use App\Models\Client;
+use App\Models\Company;
 use App\Models\DailyReportTask;
+use App\Models\Merchant;
 use App\Support\PdfRenderer;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -22,19 +24,25 @@ class ClientDailyStatement
 {
     private const TOTAL_KEYS = ['sales', 'turnover', 'deductions', 'fees', 'reserve', 'payout'];
 
-    public function render(Client $client, CarbonImmutable $date): string
+    /**
+     * @param  int|null  $companyId  only this company of the client (default: all of them)
+     */
+    public function render(Client $client, CarbonImmutable $date, ?int $companyId = null): string
     {
-        return PdfRenderer::render('reports.client-daily', $this->data($client, $date));
+        return PdfRenderer::render('reports.client-daily', $this->data($client, $date, $companyId));
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function data(Client $client, CarbonImmutable $date): array
+    public function data(Client $client, CarbonImmutable $date, ?int $companyId = null): array
     {
+        $scope = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
+        $companyIds = $scope === null ? Company::query()->where('client_id', $client->id)->pluck('id')->all() : [$scope->id];
+
         $tasks = DailyReportTask::query()
             ->with('merchant.company', 'merchantMid.bankProvider')
-            ->whereIn('merchant_id', $client->merchants()->select('merchants.id'))
+            ->whereIn('merchant_id', Merchant::query()->whereIn('company_id', $companyIds)->select('id'))
             ->whereDate('report_date', $date->toDateString())
             ->get()
             ->sortBy(fn (DailyReportTask $t) => [$t->merchant->company->name ?? '', $t->merchantMid->mid])
@@ -56,6 +64,9 @@ class ClientDailyStatement
                 'acquirer' => $task->merchantMid->bankProvider?->name,
                 'currency' => $task->currency,
                 'sales' => (int) $task->sales_count,
+                'declines' => (int) ($task->summary_data['counts']['declines'] ?? 0),
+                'refunds' => (int) ($task->summary_data['counts']['refunds'] ?? 0),
+                'chargebacks' => (int) ($task->summary_data['counts']['chargebacks'] ?? 0),
                 'turnover' => $this->dec($task->turnover),
                 'deductions' => $this->dec($task->refunds_amount)->plus($this->dec($task->chargebacks_amount)),
                 'fees' => $this->dec($task->total_merchant_fee)->plus($this->dec($task->conversion_fee)),
@@ -72,6 +83,7 @@ class ClientDailyStatement
 
         return [
             'client' => $client,
+            'scope' => $scope,
             'date' => $date,
             'companies' => $companies,
             'totals' => $totals,
@@ -80,24 +92,24 @@ class ClientDailyStatement
         ];
     }
 
-    public function xlsx(Client $client, CarbonImmutable $date): string
+    public function xlsx(Client $client, CarbonImmutable $date, ?int $companyId = null): string
     {
-        $data = $this->data($client, $date);
+        $data = $this->data($client, $date, $companyId);
 
-        $rows = [['Company', 'Merchant', 'MID', 'Acquirer', 'Currency', 'Sales', 'Turnover', 'Refunds & chargebacks', 'Fees', 'Reserve', 'Payout']];
+        $rows = [['Company', 'Merchant', 'MID', 'Acquirer', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
         foreach ($data['companies'] as $company => $block) {
             foreach ($block['rows'] as $row) {
-                $rows[] = [$company, $row['merchant'], $row['mid'], $row['acquirer'], $row['currency'], $row['sales'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+                $rows[] = [$company, $row['merchant'], $row['mid'], $row['acquirer'], $row['currency'], $row['sales'], $row['declines'], $row['refunds'], $row['chargebacks'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
             }
         }
         foreach ($data['totals'] as $currency => $total) {
-            $rows[] = ['Total', null, null, null, $currency, $total['sales'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+            $rows[] = ['Total', null, null, null, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
         }
 
         $book = new Spreadsheet;
         $sheet = $book->getActiveSheet()->setTitle('Daily report');
-        $sheet->fromArray([[$client->name.' — '.$date->toDateString()], [], ...$rows]);
-        foreach (range('A', 'K') as $column) {
+        $sheet->fromArray([[$client->name.($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$date->toDateString()], [], ...$rows]);
+        foreach (range('A', 'N') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 
@@ -115,8 +127,11 @@ class ClientDailyStatement
      */
     private function add(?array &$total, array $row): void
     {
-        $total ??= ['sales' => 0, ...array_fill_keys(array_slice(self::TOTAL_KEYS, 1), BigDecimal::zero())];
+        $total ??= ['sales' => 0, 'declines' => 0, 'refunds' => 0, 'chargebacks' => 0, ...array_fill_keys(array_slice(self::TOTAL_KEYS, 1), BigDecimal::zero())];
         $total['sales'] += $row['sales'];
+        $total['declines'] += $row['declines'];
+        $total['refunds'] += $row['refunds'];
+        $total['chargebacks'] += $row['chargebacks'];
         foreach (array_slice(self::TOTAL_KEYS, 1) as $key) {
             $total[$key] = $total[$key]->plus($row[$key]);
         }

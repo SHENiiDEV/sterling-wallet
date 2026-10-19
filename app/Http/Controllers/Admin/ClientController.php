@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\ReportStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClientRequest;
 use App\Mail\ClientDailyReportMail;
 use App\Models\Client;
+use App\Models\Company;
+use App\Models\DailyReportTask;
+use App\Models\Merchant;
 use App\Reports\Generation\ClientDailyStatement;
 use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
@@ -67,6 +71,72 @@ class ClientController extends Controller
     }
 
     /**
+     * Inside a client: its companies and, day by day, what each of them did.
+     */
+    public function show(Request $request, Client $client): Response
+    {
+        $client->load('companies:id,client_id,name,parent_id');
+        $companyIds = $client->companies->pluck('id');
+        $merchants = Merchant::query()->whereIn('company_id', $companyIds)->with('mids:id,merchant_id,mid,currency,status')->orderBy('name')->get();
+
+        // The month asked for, else the latest one with reports.
+        $latest = DailyReportTask::query()->whereIn('merchant_id', $merchants->pluck('id'))->max('report_date');
+        $month = preg_match('/^\d{4}-\d{2}$/', (string) $request->query('month'))
+            ? (string) $request->query('month')
+            : CarbonImmutable::parse((string) ($latest ?? now()))->format('Y-m');
+
+        $tasks = DailyReportTask::query()
+            ->with('merchant:id,name,company_id')
+            ->whereIn('merchant_id', $merchants->pluck('id'))
+            ->where('report_date', 'like', "{$month}-%")
+            ->get();
+
+        $days = $tasks->groupBy(fn (DailyReportTask $t) => $t->report_date->toDateString())
+            ->sortKeysDesc()
+            ->map(function ($group, string $date) use ($client) {
+                $done = $group->where('status', ReportStatus::Completed);
+
+                return [
+                    'date' => $date,
+                    'completed' => $done->count(),
+                    'waiting' => $group->count() - $done->count(),
+                    // Net payout per currency, all companies.
+                    'payout' => $done->groupBy('currency')->map(fn ($g) => number_format((float) $g->sum('net_payout'), 2, '.', ''))->all(),
+                    'companies' => $client->companies->map(function (Company $company) use ($done) {
+                        $own = $done->filter(fn (DailyReportTask $t) => $t->merchant?->company_id === $company->id);
+
+                        return [
+                            'id' => $company->id,
+                            'name' => $company->name,
+                            'reports' => $own->count(),
+                            'payout' => $own->groupBy('currency')->map(fn ($g) => number_format((float) $g->sum('net_payout'), 2, '.', ''))->all(),
+                        ];
+                    })->filter(fn (array $c) => $c['reports'] > 0)->values()->all(),
+                ];
+            })->values()->all();
+
+        return Inertia::render('admin/clients/show', [
+            'client' => [
+                'id' => $client->id,
+                'name' => $client->name,
+                'invoice_email' => $client->invoice_email,
+                'notes' => $client->notes,
+            ],
+            'companies' => $client->companies->map(fn (Company $company) => [
+                'id' => $company->id,
+                'name' => $company->name,
+                'merchants' => $merchants->where('company_id', $company->id)->map(fn (Merchant $m) => [
+                    'public_id' => $m->public_id,
+                    'name' => $m->name,
+                    'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->value])->values()->all(),
+                ])->values()->all(),
+            ])->values()->all(),
+            'month' => $month,
+            'days' => $days,
+        ]);
+    }
+
+    /**
      * Consolidated daily report as PDF or XLSX.
      */
     public function report(Request $request, Client $client, ClientDailyStatement $statement): HttpResponse
@@ -74,12 +144,15 @@ class ClientController extends Controller
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
             'format' => ['sometimes', 'in:pdf,xlsx'],
+            'company' => ['nullable', 'integer'],
         ]);
         $date = CarbonImmutable::parse($data['date']);
         $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name).'_'.$data['date'];
+        $companyId = isset($data['company']) ? (int) $data['company'] : null;
+        $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name.($company ? '_'.$company->name : '')).'_'.$data['date'];
 
-        return response($xlsx ? $statement->xlsx($client, $date) : $statement->render($client, $date), 200, [
+        return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
         ]);

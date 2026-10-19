@@ -1,10 +1,11 @@
 @php($money = fn ($v, $c = null) => \App\Support\PdfRenderer::money($v, $c))
 @extends('pdf.layout')
 
-@section('title', 'Daily report '.$client->name.' '.$date->toDateString())
+@php($label = $client->name.($scope ? ' · '.$scope->name : ''))
+@section('title', 'Daily report '.$label.' '.$date->toDateString())
 @section('doc-title', 'Daily Processing Report')
-@section('doc-sub', $client->name.' · '.$date->toDateString())
-@section('footer', 'Daily report · '.$client->name.' · '.$date->toDateString())
+@section('doc-sub', $label.' · '.$date->toDateString())
+@section('footer', 'Daily report · '.$label.' · '.$date->toDateString())
 
 @section('content')
     <table class="meta">
@@ -13,7 +14,8 @@
                 <div class="label">Client</div>
                 <div class="value">{{ $client->name }}</div>
                 <table class="kv" style="margin-top: 4px">
-                    <tr><td class="k">Companies</td><td>{{ implode(', ', array_keys($companies)) ?: '—' }}</td></tr>
+                    <tr><td class="k">{{ $scope ? 'Company' : 'Companies' }}</td><td>{{ implode(', ', array_keys($companies)) ?: '—' }}</td></tr>
+                    <tr><td class="k">MIDs</td><td>{{ array_sum(array_map(fn ($b) => count($b['rows']), $companies)) }}</td></tr>
                 </table>
             </td>
             <td>
@@ -45,15 +47,20 @@
     @endif
 
     @foreach ($companies as $company => $block)
-        <h2>{{ $company }}</h2>
+        <h2>
+            {{ $company }}
+            <span class="hint">· {{ count($block['rows']) }} {{ count($block['rows']) === 1 ? 'MID' : 'MIDs' }}@foreach ($block['totals'] as $currency => $total) · {{ $currency }} net payout {{ $money($total['payout'], $currency) }}@endforeach</span>
+        </h2>
         <table class="grid">
             <thead>
                 <tr>
                     <th>MID</th>
                     <th>Acquirer</th>
                     <th class="num">Sales</th>
-                    <th class="num">Gross sales</th>
+                    <th class="num">Declines</th>
                     <th class="num">Refunds / CB</th>
+                    <th class="num">Gross sales</th>
+                    <th class="num">Refunds / CB amount</th>
                     <th class="num">Fees</th>
                     <th class="num">Reserve</th>
                     <th class="num">Net payout</th>
@@ -65,6 +72,8 @@
                         <td>{{ $row['mid'] }}@if ($row['label']) <span class="muted">· {{ $row['label'] }}</span>@endif</td>
                         <td>{{ $row['acquirer'] ?? '—' }}</td>
                         <td class="num">{{ $row['sales'] }}</td>
+                        <td class="num">{{ $row['declines'] }}</td>
+                        <td class="num">{{ $row['refunds'] + $row['chargebacks'] }}</td>
                         <td class="num">{{ $money($row['turnover'], $row['currency']) }}</td>
                         <td class="num">{{ $money($row['deductions']) }}</td>
                         <td class="num">{{ $money($row['fees']) }}</td>
@@ -76,6 +85,8 @@
                     <tr class="sub">
                         <td colspan="2">{{ $company }} · {{ $currency }}</td>
                         <td class="num">{{ $total['sales'] }}</td>
+                        <td class="num">{{ $total['declines'] }}</td>
+                        <td class="num">{{ $total['refunds'] + $total['chargebacks'] }}</td>
                         <td class="num">{{ $money($total['turnover']) }}</td>
                         <td class="num">{{ $money($total['deductions']) }}</td>
                         <td class="num">{{ $money($total['fees']) }}</td>
@@ -88,12 +99,14 @@
     @endforeach
 
     @if (count($companies) > 1 || count($totals) > 1)
-        <h2>Total for the client</h2>
+        <h2>{{ $scope ? 'Total' : 'Total for the client' }}</h2>
         <table class="grid avoid-break">
             <thead>
                 <tr>
                     <th>Currency</th>
                     <th class="num">Sales</th>
+                    <th class="num">Declines</th>
+                    <th class="num">Refunds / CB</th>
                     <th class="num">Gross sales</th>
                     <th class="num">Refunds / CB</th>
                     <th class="num">Fees</th>
@@ -106,6 +119,8 @@
                     <tr class="total">
                         <td>{{ $currency }}</td>
                         <td class="num">{{ $total['sales'] }}</td>
+                        <td class="num">{{ $total['declines'] }}</td>
+                        <td class="num">{{ $total['refunds'] + $total['chargebacks'] }}</td>
                         <td class="num">{{ $money($total['turnover']) }}</td>
                         <td class="num">{{ $money($total['deductions']) }}</td>
                         <td class="num">{{ $money($total['fees']) }}</td>
