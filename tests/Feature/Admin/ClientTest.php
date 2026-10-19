@@ -211,4 +211,26 @@ class ClientTest extends TestCase
         $this->actingAs($this->admin)->put(route('admin.clients.update', $client), ['name' => 'Internal', 'invoice_name' => 'Legal Name', 'invoice_address' => 'Somewhere 1'])->assertSessionHasNoErrors();
         $this->assertSame(['Internal', 'Legal Name'], [$client->fresh()->name, $client->fresh()->invoiceName()]);
     }
+
+    public function test_two_sites_of_one_company_are_told_apart_in_the_report()
+    {
+        $client = Client::query()->create(['name' => 'Luneholm group']);
+        $company = Company::factory()->create(['name' => 'DOMESTIC DREAMS LIMITED', 'client_id' => $client->id]);
+        $corefy = $this->corefy();
+        $bank = $this->cardaq();
+        $ingestion = app(ReportIngestionService::class);
+        $day = CarbonImmutable::parse('2026-09-15');
+
+        foreach ([['streetforge.co.uk', '4400000002', 'coma_TEST2'], ['makemy-cv.co.uk', '4400000001', 'coma_TEST1']] as [$site, $mid, $account]) {
+            $merchant = $this->merchantWithTariff(['company_id' => $company->id, 'name' => 'DOMESTIC DREAMS LIMITED · '.$site, 'website' => $site]);
+            $this->mid($merchant, $bank, $corefy, ['mid' => $mid, 'gate_mid' => $account]);
+            $ingestion->ingest($bank, $this->cardaqCsv($mid), $day);
+            $ingestion->ingest($corefy, $this->corefyCsv($account), $day);
+        }
+
+        $rows = app(ClientDailyStatement::class)->data($client, $day)['companies']['DOMESTIC DREAMS LIMITED']['rows'];
+
+        $this->assertSame(['makemy-cv.co.uk', 'streetforge.co.uk'], array_column($rows, 'website'));
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15']))->assertOk();
+    }
 }

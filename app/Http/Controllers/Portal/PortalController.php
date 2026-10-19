@@ -284,7 +284,7 @@ class PortalController extends Controller
     private function reportsQuery(Collection $merchants)
     {
         return DailyReportTask::query()
-            ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'merchantMid:id,mid'])
+            ->with(['merchant:id,name,company_id,website', 'merchant.company:id,name', 'merchantMid:id,mid'])
             ->whereIn('merchant_id', $merchants->pluck('id'))
             ->where('status', ReportStatus::Completed)
             ->orderByDesc('report_date')->orderBy('merchant_mid_id');
@@ -315,6 +315,7 @@ class PortalController extends Controller
             'period_from' => $r->period_from->toDateString(),
             'period_to' => $r->period_to->toDateString(),
             'merchant' => $r->merchant->name,
+            'website' => $r->merchant->website,
             'company' => $r->merchant->company?->name,
             'mid' => $r->merchantMid->mid,
             'currency' => $r->currency,

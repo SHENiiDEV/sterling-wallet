@@ -236,6 +236,8 @@ export default function PortalReports(props: Props) {
                                                 1 && (
                                                 <span className="block font-sans text-muted-foreground">
                                                     {r.merchant}
+                                                    {r.website &&
+                                                        ` · ${r.website}`}
                                                     {props.portal.companies
                                                         .length > 1 &&
                                                         r.company &&

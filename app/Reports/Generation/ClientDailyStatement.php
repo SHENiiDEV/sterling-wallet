@@ -45,7 +45,7 @@ class ClientDailyStatement
             ->whereIn('merchant_id', Merchant::query()->whereIn('company_id', $companyIds)->select('id'))
             ->whereDate('report_date', $date->toDateString())
             ->get()
-            ->sortBy(fn (DailyReportTask $t) => [$t->merchant->company->name ?? '', $t->merchantMid->mid])
+            ->sortBy(fn (DailyReportTask $t) => [$t->merchant->company->name ?? '', $t->merchant->name, $t->merchantMid->mid])
             ->values();
 
         $done = $tasks->where('status', ReportStatus::Completed);
@@ -60,6 +60,7 @@ class ClientDailyStatement
             $company = $task->merchant->company->name ?? $task->merchant->name;
             $row = [
                 'merchant' => $task->merchant->name,
+                'website' => $task->merchant->website,
                 'mid' => $task->merchantMid->mid,
                 'label' => $task->merchantMid->label,
                 'acquirer' => $task->merchantMid->bankProvider?->name,
@@ -107,20 +108,20 @@ class ClientDailyStatement
     {
         $data = $this->data($client, $date, $companyId);
 
-        $rows = [['Company', 'Merchant', 'MID', 'Acquirer', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
+        $rows = [['Company', 'Merchant', 'Website', 'MID', 'Acquirer', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
         foreach ($data['companies'] as $company => $block) {
             foreach ($block['rows'] as $row) {
-                $rows[] = [$company, $row['merchant'], $row['mid'], $row['acquirer'], $row['currency'], $row['sales'], $row['declines'], $row['refunds'], $row['chargebacks'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+                $rows[] = [$company, $row['merchant'], $row['website'], $row['mid'], $row['acquirer'], $row['currency'], $row['sales'], $row['declines'], $row['refunds'], $row['chargebacks'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
             }
         }
         foreach ($data['totals'] as $currency => $total) {
-            $rows[] = ['Total', null, null, null, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+            $rows[] = ['Total', null, null, null, null, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
         }
 
         $book = new Spreadsheet;
         $sheet = $book->getActiveSheet()->setTitle('Daily report');
         $sheet->fromArray([[$client->invoiceName().($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$date->toDateString()], [], ...$rows]);
-        foreach (range('A', 'N') as $column) {
+        foreach (range('A', 'O') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 

@@ -75,7 +75,15 @@
                 </tr>
             </thead>
             <tbody>
+                @php($sites = collect($block['rows'])->pluck('merchant')->unique()->count())
+                @php($lastSite = null)
                 @foreach ($block['rows'] as $row)
+                    @if ($sites > 1 && $row['merchant'] !== $lastSite)
+                        @php($lastSite = $row['merchant'])
+                        <tr class="sub">
+                            <td colspan="10">{{ $row['merchant'] }}@if ($row['website']) <span class="muted">· {{ $row['website'] }}</span>@endif</td>
+                        </tr>
+                    @endif
                     <tr>
                         <td>{{ $row['mid'] }}@if ($row['label']) <span class="muted">· {{ $row['label'] }}</span>@endif</td>
                         <td>{{ $row['acquirer'] ?? '—' }}</td>
