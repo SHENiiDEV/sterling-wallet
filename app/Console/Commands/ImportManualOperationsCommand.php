@@ -141,7 +141,7 @@ class ImportManualOperationsCommand extends Command
     }
 
     /**
-     * @return array<int, array<string, string|null>>|null  line number => row
+     * @return array<int, array<string, string|null>>|null line number => row
      */
     private function rows(string $path): ?array
     {
