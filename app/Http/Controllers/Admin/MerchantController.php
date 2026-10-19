@@ -15,6 +15,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
+use App\Merchants\MerchantFolders;
 use App\Merchants\MerchantOverview;
 use App\Merchants\MerchantPurger;
 use App\Models\Company;
@@ -34,6 +35,20 @@ use Inertia\Response;
 
 class MerchantController extends Controller
 {
+    /**
+     * Clients as folders; the flat table is `index`.
+     */
+    public function folders(Request $request, MerchantFolders $folders): Response
+    {
+        $key = $request->query('client');
+        $open = is_string($key) ? $folders->client($key) : null;
+
+        return Inertia::render('admin/merchants/folders', [
+            'folders' => $open === null ? $folders->clients() : [],
+            'open' => $open,
+        ]);
+    }
+
     public function index(Request $request): Response
     {
         $filters = $request->validate([

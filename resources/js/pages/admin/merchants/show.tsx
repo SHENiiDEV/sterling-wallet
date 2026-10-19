@@ -178,7 +178,7 @@ export default function MerchantShow(props: Props) {
             <PageBody>
                 <div className="flex flex-col gap-4">
                     <Link
-                        href={admin.merchants.index()}
+                        href={admin.merchants.folders()}
                         className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                     >
                         <ArrowLeft className="size-4" />

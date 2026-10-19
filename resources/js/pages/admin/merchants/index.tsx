@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { FlaskConical, Plus, Search, Store, X } from 'lucide-react';
+import { FlaskConical, Folder, Plus, Search, Store, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/admin/empty-state';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
@@ -97,12 +97,20 @@ export default function MerchantsIndex({
                     title="Merchants & MIDs"
                     description="Each merchant has one tariff and reserve policy, and any number of MIDs — one currency per MID."
                     actions={
-                        <Button asChild>
-                            <Link href={admin.merchants.create()}>
-                                <Plus />
-                                New merchant
-                            </Link>
-                        </Button>
+                        <>
+                            <Button variant="outline" asChild>
+                                <Link href={admin.merchants.folders()}>
+                                    <Folder />
+                                    Folders
+                                </Link>
+                            </Button>
+                            <Button asChild>
+                                <Link href={admin.merchants.create()}>
+                                    <Plus />
+                                    New merchant
+                                </Link>
+                            </Button>
+                        </>
                     }
                 />
 
