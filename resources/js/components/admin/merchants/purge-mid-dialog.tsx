@@ -40,7 +40,9 @@ export function PurgeMidDialog({
     }, [mid?.id]);
 
     const matches = mid !== null && form.data.confirm.trim() === mid.mid.trim();
-    const errors = [form.errors.mid, form.errors.confirm].filter(Boolean);
+    // The server may also refuse with a `mid` error (e.g. a paid settlement).
+    const bag = form.errors as Record<string, string | undefined>;
+    const errors = [bag.mid, bag.confirm].filter(Boolean);
 
     return (
         <Dialog open={mid !== null} onOpenChange={(open) => !open && onClose()}>
