@@ -33,6 +33,8 @@ class ClientController extends Controller
                 ->map(fn (Client $client) => [
                     'id' => $client->id,
                     'name' => $client->name,
+                    'invoice_name' => $client->invoice_name,
+                    'invoice_address' => $client->invoice_address,
                     'invoice_email' => $client->invoice_email,
                     'notes' => $client->notes,
                     'companies' => $client->companies->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values(),
@@ -87,6 +89,8 @@ class ClientController extends Controller
             'client' => [
                 'id' => $client->id,
                 'name' => $client->name,
+                'invoice_name' => $client->invoice_name,
+                'invoice_address' => $client->invoice_address,
                 'invoice_email' => $client->invoice_email,
                 'notes' => $client->notes,
             ],
@@ -125,7 +129,7 @@ class ClientController extends Controller
         $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
         $companyId = isset($data['company']) ? (int) $data['company'] : null;
         $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->name.($company ? '_'.$company->name : '')).'_'.$data['date'];
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'];
 
         return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',

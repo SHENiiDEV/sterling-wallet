@@ -383,6 +383,8 @@ export type DocumentTemplate = {
 export type Client = {
     id: number;
     name: string;
+    invoice_name: string | null;
+    invoice_address: string | null;
     invoice_email: string | null;
     notes: string | null;
     companies: CompanyRef[];

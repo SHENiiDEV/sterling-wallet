@@ -210,6 +210,8 @@ function ClientDialog({
 }) {
     const form = useForm({
         name: client?.name ?? '',
+        invoice_name: client?.invoice_name ?? '',
+        invoice_address: client?.invoice_address ?? '',
         invoice_email: client?.invoice_email ?? '',
         notes: client?.notes ?? '',
     });
@@ -242,6 +244,7 @@ function ClientDialog({
                         label="Name"
                         htmlFor="client-name"
                         error={form.errors.name}
+                        hint="Internal: only shown in this admin panel"
                     >
                         <Input
                             id="client-name"
@@ -250,6 +253,35 @@ function ClientDialog({
                                 form.setData('name', e.target.value)
                             }
                             autoFocus
+                        />
+                    </Field>
+                    <Field
+                        label="Invoice name"
+                        htmlFor="client-invoice-name"
+                        error={form.errors.invoice_name}
+                        hint="Legal name printed on the client's reports. Empty: the name above."
+                    >
+                        <Input
+                            id="client-invoice-name"
+                            value={form.data.invoice_name}
+                            onChange={(e) =>
+                                form.setData('invoice_name', e.target.value)
+                            }
+                        />
+                    </Field>
+                    <Field
+                        label="Invoice address"
+                        htmlFor="client-invoice-address"
+                        error={form.errors.invoice_address}
+                        hint="Legal address and registration details, one per line"
+                    >
+                        <Textarea
+                            id="client-invoice-address"
+                            rows={3}
+                            value={form.data.invoice_address}
+                            onChange={(e) =>
+                                form.setData('invoice_address', e.target.value)
+                            }
                         />
                     </Field>
                     <Field

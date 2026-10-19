@@ -23,6 +23,8 @@ type Props = {
     client: {
         id: number;
         name: string;
+        invoice_name: string | null;
+        invoice_address: string | null;
         invoice_email: string | null;
         notes: string | null;
     };
@@ -112,7 +114,12 @@ export default function ClientShow({
                 <PageHeader
                     title={client.name}
                     description={
-                        client.invoice_email ?? 'No invoice e-mail yet'
+                        <>
+                            {client.invoice_name
+                                ? `Invoice name: ${client.invoice_name} · `
+                                : 'No invoice name yet · '}
+                            {client.invoice_email ?? 'No invoice e-mail yet'}
+                        </>
                     }
                 />
 

@@ -1,7 +1,7 @@
 @php($money = fn ($v, $c = null) => \App\Support\PdfRenderer::money($v, $c))
 @extends('pdf.layout')
 
-@php($label = $client->name.($scope ? ' · '.$scope->name : ''))
+@php($label = $client->invoiceName().($scope ? ' · '.$scope->name : ''))
 @section('title', 'Daily report '.$label.' '.$date->toDateString())
 @section('doc-title', 'Daily Processing Report')
 @section('doc-sub', $label.' · '.$date->toDateString())
@@ -12,7 +12,10 @@
         <tr>
             <td>
                 <div class="label">Client</div>
-                <div class="value">{{ $client->name }}</div>
+                <div class="value">{{ $client->invoiceName() }}</div>
+                @if (filled($client->invoice_address))
+                    <div class="muted" style="margin-top: 2px">{!! nl2br(e(trim((string) $client->invoice_address))) !!}</div>
+                @endif
                 <table class="kv" style="margin-top: 4px">
                     <tr><td class="k">{{ $scope ? 'Company' : 'Companies' }}</td><td>{{ implode(', ', array_keys($companies)) ?: '—' }}</td></tr>
                     <tr><td class="k">MIDs</td><td>{{ array_sum(array_map(fn ($b) => count($b['rows']), $companies)) }}</td></tr>
@@ -45,6 +48,11 @@
             </tr>
         </table>
     @endif
+
+    @foreach ($calc['total'] as $currency => $steps)
+        <h2>Payout calculation <span class="hint">· {{ $scope ? $scope->name : 'all companies' }} · all amounts in {{ $currency }}</span></h2>
+        @include('reports.partials.calc', ['steps' => $steps, 'currency' => $currency])
+    @endforeach
 
     @foreach ($companies as $company => $block)
         <h2>
@@ -96,6 +104,12 @@
                 @endforeach
             </tbody>
         </table>
+        @if (count($companies) > 1)
+            @foreach ($calc['companies'][$company] ?? [] as $currency => $steps)
+                <p class="muted" style="margin: 6px 0 2px">Calculation · {{ $company }} · {{ $currency }}</p>
+                @include('reports.partials.calc', ['steps' => $steps, 'currency' => $currency])
+            @endforeach
+        @endif
     @endforeach
 
     @if (count($companies) > 1 || count($totals) > 1)

@@ -24,7 +24,7 @@ class ClientDailyReportMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: sprintf('Daily report %s — %s', $this->date, $this->client->name));
+        return new Envelope(subject: sprintf('Daily report %s — %s', $this->date, $this->client->invoiceName()));
     }
 
     public function content(): Content
@@ -39,7 +39,7 @@ class ClientDailyReportMail extends Mailable
     {
         $statement = app(ClientDailyStatement::class);
         $date = CarbonImmutable::parse($this->date);
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $this->client->name).'_'.$this->date;
+        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $this->client->invoiceName()).'_'.$this->date;
 
         return [
             Attachment::fromData(fn () => $statement->render($this->client, $date), "{$name}.pdf")->withMime('application/pdf'),

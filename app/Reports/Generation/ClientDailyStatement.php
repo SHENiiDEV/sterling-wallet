@@ -55,6 +55,7 @@ class ClientDailyStatement
 
         $companies = [];
         $totals = [];
+        $sums = ['total' => [], 'companies' => []];
         foreach ($done as $task) {
             $company = $task->merchant->company->name ?? $task->merchant->name;
             $row = [
@@ -77,9 +78,18 @@ class ClientDailyStatement
             $companies[$company]['rows'][] = $row;
             $this->add($companies[$company]['totals'][$task->currency], $row);
             $this->add($totals[$task->currency], $row);
+            $this->accumulate($sums['companies'][$company][$task->currency], $task);
+            $this->accumulate($sums['total'][$task->currency], $task);
         }
 
         ksort($totals);
+        ksort($sums['total']);
+
+        // The same payout calculation as the single-MID statement, per currency and per company.
+        $calc = [
+            'total' => array_map(fn (array $sum) => $this->steps($sum), $sums['total']),
+            'companies' => array_map(fn (array $byCurrency) => array_map(fn (array $sum) => $this->steps($sum), $byCurrency), $sums['companies']),
+        ];
 
         return [
             'client' => $client,
@@ -87,6 +97,7 @@ class ClientDailyStatement
             'date' => $date,
             'companies' => $companies,
             'totals' => $totals,
+            'calc' => $calc,
             'pending' => $pending,
             'generatedAt' => now()->timezone(config('sterling.timezone', 'Europe/Riga')),
         ];
@@ -108,9 +119,33 @@ class ClientDailyStatement
 
         $book = new Spreadsheet;
         $sheet = $book->getActiveSheet()->setTitle('Daily report');
-        $sheet->fromArray([[$client->name.($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$date->toDateString()], [], ...$rows]);
+        $sheet->fromArray([[$client->invoiceName().($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$date->toDateString()], [], ...$rows]);
         foreach (range('A', 'N') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $calc = $book->createSheet()->setTitle('Calculation');
+        $lines = [];
+        $emit = function (string $title, array $steps) use (&$lines) {
+            $lines[] = [$title];
+            foreach ($steps as $step) {
+                $lines[] = [$step['label'], $step['detail'], (string) $step['amount']];
+            }
+            $lines[] = [];
+        };
+        foreach ($data['calc']['total'] as $currency => $steps) {
+            $emit(($data['scope'] ? $data['scope']->name : $client->invoiceName()).' · '.$currency, $steps);
+        }
+        if (count($data['calc']['companies']) > 1) {
+            foreach ($data['calc']['companies'] as $company => $byCurrency) {
+                foreach ($byCurrency as $currency => $steps) {
+                    $emit($company.' · '.$currency, $steps);
+                }
+            }
+        }
+        $calc->fromArray($lines);
+        foreach (['A', 'B', 'C'] as $column) {
+            $calc->getColumnDimension($column)->setAutoSize(true);
         }
 
         $path = tempnam(sys_get_temp_dir(), 'cli');
@@ -119,6 +154,63 @@ class ClientDailyStatement
         @unlink($path);
 
         return $content;
+    }
+
+    /**
+     * Adds one MID report to a running sum for the payout calculation.
+     *
+     * @param  array<string, mixed>|null  $sum
+     */
+    private function accumulate(?array &$sum, DailyReportTask $task): void
+    {
+        $fee = $task->summary_data['merchant_fee'] ?? [];
+        $counts = $task->summary_data['counts'] ?? [];
+        $values = [
+            'gross' => $this->dec($task->turnover),
+            'percent' => $this->dec($fee['percent'] ?? $task->total_merchant_fee),
+            'fixed' => $this->dec($fee['fixed'] ?? 0),
+            'fx' => $this->dec($fee['fx_markup'] ?? 0),
+            'refunds' => $this->dec($task->refunds_amount),
+            'chargebacks' => $this->dec($task->chargebacks_amount),
+            'fee' => $this->dec($task->total_merchant_fee),
+            'reserve' => $this->dec($task->reserve_amount),
+            'net_volume' => $this->dec($task->net_volume),
+            'conversion' => $this->dec($task->conversion_fee),
+            'payout' => $this->dec($task->net_payout),
+        ];
+        $sum ??= [...array_map(fn () => BigDecimal::zero(), $values), 'sales' => 0, 'refunds_count' => 0, 'chargebacks_count' => 0];
+
+        foreach ($values as $key => $value) {
+            $sum[$key] = $sum[$key]->plus($value);
+        }
+        $sum['sales'] += (int) ($counts['sales'] ?? $task->sales_count);
+        $sum['refunds_count'] += (int) ($counts['refunds'] ?? 0);
+        $sum['chargebacks_count'] += (int) ($counts['chargebacks'] ?? 0);
+    }
+
+    /**
+     * Gross sales down to net payout, as numbered steps (same as the MID statement).
+     *
+     * @param  array<string, mixed>  $sum
+     * @return list<array{kind: string, label: string, detail: string|null, amount: BigDecimal}>
+     */
+    private function steps(array $sum): array
+    {
+        $afterFees = $sum['gross']->minus($sum['refunds'])->minus($sum['chargebacks'])->minus($sum['fee']);
+
+        return [
+            ['kind' => 'plus', 'label' => 'Gross sales', 'detail' => $sum['sales'].' approved '.($sum['sales'] === 1 ? 'sale' : 'sales'), 'amount' => $sum['gross']],
+            ['kind' => 'minus', 'label' => 'Processing fee', 'detail' => 'Percent fee on sales', 'amount' => $sum['percent']->negated()],
+            ['kind' => 'minus', 'label' => 'Transaction fees', 'detail' => 'Success · decline · refund · chargeback', 'amount' => $sum['fixed']->negated()],
+            ...($sum['fx']->isZero() ? [] : [['kind' => 'minus', 'label' => 'Settlement FX markup', 'detail' => 'On the amount converted to '.config('sterling.settlement_currency'), 'amount' => $sum['fx']->negated()]]),
+            ['kind' => 'minus', 'label' => 'Refunds', 'detail' => $sum['refunds_count'].' refunded', 'amount' => $sum['refunds']->negated()],
+            ['kind' => 'minus', 'label' => 'Chargebacks', 'detail' => $sum['chargebacks_count'].' disputed', 'amount' => $sum['chargebacks']->negated()],
+            ['kind' => 'subtotal', 'label' => 'Net after fees', 'detail' => null, 'amount' => $afterFees],
+            ['kind' => 'minus', 'label' => 'Rolling reserve', 'detail' => 'Held per the merchant terms', 'amount' => $sum['reserve']->negated()],
+            ['kind' => 'subtotal', 'label' => 'Net volume', 'detail' => null, 'amount' => $sum['net_volume']],
+            ['kind' => 'minus', 'label' => 'Conversion fee', 'detail' => 'Fiat → crypto', 'amount' => $sum['conversion']->negated()],
+            ['kind' => 'total', 'label' => 'Net payout', 'detail' => 'Added to the next settlement', 'amount' => $sum['payout']],
+        ];
     }
 
     /**
