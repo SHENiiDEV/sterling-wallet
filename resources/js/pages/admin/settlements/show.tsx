@@ -475,6 +475,20 @@ export default function SettlementShow({
     >(null);
     const draft = settlement.status === 'draft';
     const currencies = Array.from(new Set(lines.map((l) => l.currency)));
+    // What the lines add up to in each currency, before and after conversion (in cents, so no rounding drift).
+    const currencyTotals = currencies.map((currency) => {
+        const own = lines.filter((l) => l.currency === currency);
+        const cents = (value: string) => Math.round(Number(value) * 100);
+
+        return {
+            currency,
+            lines: own.length,
+            amount: own.reduce((sum, l) => sum + cents(l.amount), 0) / 100,
+            payout:
+                own.reduce((sum, l) => sum + cents(l.amount_payout), 0) / 100,
+            rate: Number(own[0]?.rate) || null,
+        };
+    });
     const form = useForm({
         rates: Object.fromEntries(
             currencies.map((c) => [c, settlement.rates[c] ?? '']),
@@ -680,6 +694,39 @@ export default function SettlementShow({
                                                     </Button>
                                                 </TableCell>
                                             )}
+                                        </TableRow>
+                                    ))}
+                                    {currencyTotals.map((total, index) => (
+                                        <TableRow
+                                            key={total.currency}
+                                            className={
+                                                index === 0
+                                                    ? 'border-t-2 bg-muted/30 hover:bg-muted/30'
+                                                    : 'bg-muted/30 hover:bg-muted/30'
+                                            }
+                                        >
+                                            <TableCell className="font-medium">
+                                                Total {total.currency}
+                                                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                                    {total.lines}{' '}
+                                                    {total.lines === 1
+                                                        ? 'line'
+                                                        : 'lines'}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium tabular-nums">
+                                                {formatMoney(
+                                                    total.amount,
+                                                    total.currency,
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right text-muted-foreground tabular-nums">
+                                                {total.rate || '—'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium tabular-nums">
+                                                {formatMoney(total.payout)}
+                                            </TableCell>
+                                            {draft && <TableCell />}
                                         </TableRow>
                                     ))}
                                     <TableRow className="border-t-2 hover:bg-transparent">
