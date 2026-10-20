@@ -63,7 +63,6 @@ class ClientDailyStatement
                 'website' => $task->merchant->website,
                 'mid' => $task->merchantMid->mid,
                 'label' => $task->merchantMid->label,
-                'acquirer' => $task->merchantMid->bankProvider?->name,
                 'currency' => $task->currency,
                 'sales' => (int) $task->sales_count,
                 'declines' => (int) ($task->summary_data['counts']['declines'] ?? 0),
@@ -108,14 +107,14 @@ class ClientDailyStatement
     {
         $data = $this->data($client, $date, $companyId);
 
-        $rows = [['Company', 'Merchant', 'Website', 'MID', 'Acquirer', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
+        $rows = [['Company', 'Merchant', 'Website', 'MID', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
         foreach ($data['companies'] as $company => $block) {
             foreach ($block['rows'] as $row) {
-                $rows[] = [$company, $row['merchant'], $row['website'], $row['mid'], $row['acquirer'], $row['currency'], $row['sales'], $row['declines'], $row['refunds'], $row['chargebacks'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+                $rows[] = [$company, $row['merchant'], $row['website'], $row['mid'], $row['currency'], $row['sales'], $row['declines'], $row['refunds'], $row['chargebacks'], ...$this->strings($row, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
             }
         }
         foreach ($data['totals'] as $currency => $total) {
-            $rows[] = ['Total', null, null, null, null, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+            $rows[] = ['Total', null, null, null, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
         }
 
         $book = new Spreadsheet;

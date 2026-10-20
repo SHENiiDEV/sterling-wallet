@@ -63,7 +63,6 @@
             <thead>
                 <tr>
                     <th>MID</th>
-                    <th>Acquirer</th>
                     <th class="num">Sales</th>
                     <th class="num">Declines</th>
                     <th class="num">Refunds / CB</th>
@@ -81,12 +80,11 @@
                     @if ($sites > 1 && $row['merchant'] !== $lastSite)
                         @php($lastSite = $row['merchant'])
                         <tr class="sub">
-                            <td colspan="10">{{ $row['merchant'] }}@if ($row['website']) <span class="muted">· {{ $row['website'] }}</span>@endif</td>
+                            <td colspan="9">{{ $row['merchant'] }}@if ($row['website']) <span class="muted">· {{ $row['website'] }}</span>@endif</td>
                         </tr>
                     @endif
                     <tr>
                         <td>{{ $row['mid'] }}@if ($row['label']) <span class="muted">· {{ $row['label'] }}</span>@endif</td>
-                        <td>{{ $row['acquirer'] ?? '—' }}</td>
                         <td class="num">{{ $row['sales'] }}</td>
                         <td class="num">{{ $row['declines'] }}</td>
                         <td class="num">{{ $row['refunds'] + $row['chargebacks'] }}</td>
@@ -99,7 +97,7 @@
                 @endforeach
                 @foreach ($block['totals'] as $currency => $total)
                     <tr class="sub">
-                        <td colspan="2">{{ $company }} · {{ $currency }}</td>
+                        <td>{{ $company }} · {{ $currency }}</td>
                         <td class="num">{{ $total['sales'] }}</td>
                         <td class="num">{{ $total['declines'] }}</td>
                         <td class="num">{{ $total['refunds'] + $total['chargebacks'] }}</td>

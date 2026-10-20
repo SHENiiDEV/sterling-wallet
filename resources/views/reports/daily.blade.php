@@ -27,7 +27,7 @@
                 <div class="label">Report</div>
                 <div class="value">{{ $task->report_date->format('l, j F Y') }}</div>
                 <table class="kv" style="margin-top: 4px">
-                    <tr><td class="k">MID</td><td>{{ $task->merchantMid->mid }}@if ($acquirer) <span class="muted">· {{ $acquirer }}</span>@endif</td></tr>
+                    <tr><td class="k">MID</td><td>{{ $task->merchantMid->mid }}</td></tr>
                     <tr>
                         <td class="k">Period</td>
                         <td>
