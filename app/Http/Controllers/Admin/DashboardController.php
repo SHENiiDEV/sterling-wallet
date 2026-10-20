@@ -33,11 +33,16 @@ class DashboardController extends Controller
 
         [$from, $to] = ProfitController::period($request);
         [$prevFrom, $prevTo] = ProfitQuery::previous($from, $to);
+        $product = ProfitController::product($request);
+        $all = $profit;
+        $profit = $profit->forProduct($product);
 
         return Inertia::render('admin/dashboard', [
             'profit' => $canProfit ? [
                 'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
                 'baseCurrency' => config('sterling.base_currency'),
+                'product' => $product?->value,
+                'products' => $all->byProduct($from, $to),
                 'summary' => $profit->summary($from, $to),
                 'previous' => $profit->summary($prevFrom, $prevTo),
                 'daily' => $profit->daily($from, $to),

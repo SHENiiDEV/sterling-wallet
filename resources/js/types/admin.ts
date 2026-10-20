@@ -326,6 +326,13 @@ export type ProfitSummary = {
     sales: number;
 };
 
+export type ProfitProduct = {
+    key: string;
+    label: string;
+    summary: ProfitSummary;
+    previous: ProfitSummary;
+};
+
 export type ProfitPoint = {
     date: string;
     turnover: number;

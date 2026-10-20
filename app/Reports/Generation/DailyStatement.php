@@ -103,7 +103,6 @@ class DailyStatement
             'task' => $task,
             'merchant' => $merchant,
             'currency' => $currency,
-            'acquirer' => $task->merchantMid->bankProvider?->name,
             'steps' => $steps,
             'schemes' => $this->schemes($summary['by_scheme'] ?? [], $tariff, $currency),
             'percentFee' => $percentFee,
