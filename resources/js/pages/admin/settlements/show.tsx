@@ -8,7 +8,7 @@ import {
     Trash2,
     XCircle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { PageErrors } from '@/components/admin/page-errors';
@@ -47,6 +47,7 @@ import { formatMoney } from '@/lib/money';
 import admin from '@/routes/admin';
 import { settlementColors } from '@/components/admin/settlements';
 import type { SettlementItem } from '@/components/admin/settlements';
+import type { Option } from '@/types';
 
 type Line = {
     id: number;
@@ -54,6 +55,7 @@ type Line = {
     type_label: string;
     description: string;
     report_id: number | null;
+    owner: string | null;
     currency: string;
     amount: string;
     rate: string;
@@ -74,7 +76,9 @@ type Props = {
         cancelled_at: string | null;
         cancel_reason: string | null;
         missing_rates: string[];
+        locked_scope: boolean;
     };
+    payoutCurrencies: Option[];
     lines: Line[];
     wallets: {
         id: number;
@@ -82,11 +86,13 @@ type Props = {
         currency: string;
         network: string;
         address: string;
+        merchant: string;
     }[];
     availableReports: {
         id: number;
         report_date: string;
         mid: string;
+        owner: string;
         currency: string;
         net_payout: string;
     }[];
@@ -116,6 +122,7 @@ function AddLinesDialog({
     const [releaseIds, setReleaseIds] = useState<number[]>([]);
     const toggle = (list: number[], set: (v: number[]) => void, id: number) =>
         set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+    const owners = Array.from(new Set(reports.map((r) => r.owner)));
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -127,27 +134,74 @@ function AddLinesDialog({
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-2">
-                    {reports.map((r) => (
-                        <label
-                            key={`r${r.id}`}
-                            className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
-                        >
-                            <Checkbox
-                                checked={reportIds.includes(r.id)}
-                                onCheckedChange={() =>
-                                    toggle(reportIds, setReportIds, r.id)
-                                }
-                            />
-                            <span className="flex-1">
-                                Report {formatDate(r.report_date)} ·{' '}
-                                <span className="font-mono text-xs">
-                                    {r.mid}
-                                </span>
-                            </span>
-                            <span className="tabular-nums">
-                                {formatMoney(r.net_payout, r.currency)}
-                            </span>
-                        </label>
+                    {owners.map((owner) => (
+                        <div key={owner} className="grid gap-2">
+                            {settlement.client && (
+                                <label className="flex items-center gap-3 pt-2 text-sm font-medium">
+                                    <Checkbox
+                                        checked={reports
+                                            .filter((r) => r.owner === owner)
+                                            .every((r) =>
+                                                reportIds.includes(r.id),
+                                            )}
+                                        onCheckedChange={(checked) =>
+                                            setReportIds((ids) => [
+                                                ...ids.filter(
+                                                    (id) =>
+                                                        !reports.some(
+                                                            (r) =>
+                                                                r.id === id &&
+                                                                r.owner ===
+                                                                    owner,
+                                                        ),
+                                                ),
+                                                ...(checked === true
+                                                    ? reports
+                                                          .filter(
+                                                              (r) =>
+                                                                  r.owner ===
+                                                                  owner,
+                                                          )
+                                                          .map((r) => r.id)
+                                                    : []),
+                                            ])
+                                        }
+                                    />
+                                    {owner}
+                                </label>
+                            )}
+                            {reports
+                                .filter((r) => r.owner === owner)
+                                .map((r) => (
+                                    <label
+                                        key={`r${r.id}`}
+                                        className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
+                                    >
+                                        <Checkbox
+                                            checked={reportIds.includes(r.id)}
+                                            onCheckedChange={() =>
+                                                toggle(
+                                                    reportIds,
+                                                    setReportIds,
+                                                    r.id,
+                                                )
+                                            }
+                                        />
+                                        <span className="flex-1">
+                                            Report {formatDate(r.report_date)} ·{' '}
+                                            <span className="font-mono text-xs">
+                                                {r.mid}
+                                            </span>
+                                        </span>
+                                        <span className="tabular-nums">
+                                            {formatMoney(
+                                                r.net_payout,
+                                                r.currency,
+                                            )}
+                                        </span>
+                                    </label>
+                                ))}
+                        </div>
                     ))}
                     {releases.map((r) => (
                         <label
@@ -467,6 +521,7 @@ export default function SettlementShow({
     settlement,
     lines,
     wallets,
+    payoutCurrencies,
     availableReports,
     availableReleases,
 }: Props) {
@@ -497,6 +552,32 @@ export default function SettlementShow({
         notes: settlement.notes ?? '',
     });
     const wallet = wallets.find((w) => w.id === settlement.wallet_id);
+    const chosenWallet = wallets.find(
+        (w) => String(w.id) === form.data.wallet_id,
+    );
+
+    // A new payout currency brings new default rates and maybe another wallet.
+    useEffect(() => {
+        form.setData((data) => ({
+            ...data,
+            rates: Object.fromEntries(
+                currencies.map((c) => [c, settlement.rates[c] ?? '']),
+            ),
+            wallet_id: settlement.wallet_id ? String(settlement.wallet_id) : '',
+        }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [settlement.payout_currency]);
+
+    const changeCurrency = (currency: string) =>
+        router.put(
+            admin.settlements.update.url(settlement.id),
+            {
+                payout_currency: currency,
+                wallet_id: form.data.wallet_id || null,
+                notes: form.data.notes,
+            },
+            { preserveScroll: true },
+        );
 
     return (
         <>
@@ -520,14 +601,23 @@ export default function SettlementShow({
                                     'slate'
                                 }
                             />
-                            <Link
-                                href={admin.merchants.show(
-                                    settlement.merchant.public_id,
-                                )}
-                                className="hover:underline"
-                            >
-                                {settlement.merchant.name}
-                            </Link>
+                            {settlement.client ? (
+                                <span>
+                                    {settlement.client.name}{' '}
+                                    <span className="text-muted-foreground">
+                                        · all companies of the client
+                                    </span>
+                                </span>
+                            ) : (
+                                <Link
+                                    href={admin.merchants.show(
+                                        settlement.merchant.public_id,
+                                    )}
+                                    className="hover:underline"
+                                >
+                                    {settlement.merchant.name}
+                                </Link>
+                            )}
                             {settlement.creator && (
                                 <span>· created by {settlement.creator}</span>
                             )}
@@ -654,6 +744,11 @@ export default function SettlementShow({
                                                 ) : (
                                                     line.description
                                                 )}
+                                                {line.owner && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {line.owner}
+                                                    </div>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right tabular-nums">
                                                 {formatMoney(
@@ -763,6 +858,26 @@ export default function SettlementShow({
                                     );
                                 }}
                             >
+                                <Field label="Payout currency">
+                                    <Select
+                                        value={settlement.payout_currency}
+                                        onValueChange={changeCurrency}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {payoutCurrencies.map((c) => (
+                                                <SelectItem
+                                                    key={c.value}
+                                                    value={c.value}
+                                                >
+                                                    {c.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </Field>
                                 <h2 className="text-sm font-semibold">
                                     Rates to {settlement.payout_currency}
                                 </h2>
@@ -834,10 +949,22 @@ export default function SettlementShow({
                                                 >
                                                     {w.label} · {w.currency}{' '}
                                                     {w.network}
+                                                    {settlement.client &&
+                                                        ` · ${w.merchant}`}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    {chosenWallet &&
+                                        chosenWallet.currency.toUpperCase() !==
+                                            settlement.payout_currency && (
+                                            <p className="text-xs text-amber-600">
+                                                This wallet is for{' '}
+                                                {chosenWallet.currency}, the
+                                                payout is in{' '}
+                                                {settlement.payout_currency}.
+                                            </p>
+                                        )}
                                 </Field>
                                 <Field
                                     label="Notes"
