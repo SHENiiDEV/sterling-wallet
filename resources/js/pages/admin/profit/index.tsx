@@ -5,6 +5,7 @@ import {
     MerchantTable,
     PairTable,
     PeriodPicker,
+    ProductSplit,
     ProfitKpis,
 } from '@/components/admin/profit/profit-widgets';
 import {
@@ -23,6 +24,7 @@ import type {
     ProfitByMerchant,
     ProfitByPair,
     ProfitPoint,
+    ProfitProduct,
     ProfitSummary,
 } from '@/types';
 
@@ -37,6 +39,8 @@ type Props = {
     period: Period;
     previousPeriod: Period;
     baseCurrency: string;
+    product: string | null;
+    products: ProfitProduct[];
     summary: ProfitSummary;
     previous: ProfitSummary;
     daily: ProfitPoint[];
@@ -126,6 +130,8 @@ function Breakdown({
 export default function ProfitIndex({
     period,
     baseCurrency,
+    product,
+    products,
     summary,
     previous,
     daily,
@@ -141,7 +147,18 @@ export default function ProfitIndex({
                     title="Providers & profit"
                     description={`Completed daily reports only, converted to ${baseCurrency} at each report's frozen rate. Card and flow breakdowns come from operations of the same period.`}
                 />
-                <PeriodPicker period={period} url={admin.profit.index.url()} />
+                <PeriodPicker
+                    period={period}
+                    url={admin.profit.index.url()}
+                    product={product}
+                />
+                <ProductSplit
+                    products={products}
+                    product={product}
+                    period={period}
+                    url={admin.profit.index.url()}
+                    currency={baseCurrency}
+                />
 
                 <ProfitKpis
                     summary={summary}

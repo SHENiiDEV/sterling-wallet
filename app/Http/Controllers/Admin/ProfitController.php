@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\TariffProduct;
 use App\Http\Controllers\Controller;
 use App\Profit\ProfitQuery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,8 +20,13 @@ class ProfitController extends Controller
     {
         [$from, $to] = self::period($request);
         [$prevFrom, $prevTo] = ProfitQuery::previous($from, $to);
+        $product = self::product($request);
+        $all = $profit;
+        $profit = $profit->forProduct($product);
 
         return Inertia::render('admin/profit/index', [
+            'product' => $product?->value,
+            'products' => $all->byProduct($from, $to),
             'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
             'previousPeriod' => ['from' => $prevFrom->toDateString(), 'to' => $prevTo->toDateString()],
             'baseCurrency' => config('sterling.base_currency'),
@@ -31,6 +38,16 @@ class ProfitController extends Controller
             'byMerchant' => $profit->byMerchant($from, $to, 25),
             'breakdowns' => $profit->breakdowns($from, $to),
         ]);
+    }
+
+    /**
+     * `product` from the query: card acquiring, C2B …; none = everything.
+     */
+    public static function product(Request $request): ?TariffProduct
+    {
+        $data = $request->validate(['product' => ['nullable', Rule::enum(TariffProduct::class)]]);
+
+        return isset($data['product']) ? TariffProduct::from($data['product']) : null;
     }
 
     /**

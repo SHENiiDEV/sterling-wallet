@@ -14,6 +14,7 @@ import {
     MerchantTable,
     PairTable,
     PeriodPicker,
+    ProductSplit,
     ProfitKpis,
 } from '@/components/admin/profit/profit-widgets';
 import { CurrencyBadge } from '@/components/admin/tone-badge';
@@ -37,6 +38,7 @@ import type {
     ProfitByPair,
     ProfitOperations,
     ProfitPoint,
+    ProfitProduct,
     ProfitSummary,
 } from '@/types';
 
@@ -62,6 +64,8 @@ type Props = {
     profit: {
         period: Period;
         baseCurrency: string;
+        product: string | null;
+        products: ProfitProduct[];
         summary: ProfitSummary;
         previous: ProfitSummary;
         daily: ProfitPoint[];
@@ -168,8 +172,16 @@ export default function Dashboard({
                             <PeriodPicker
                                 period={profit.period}
                                 url={admin.dashboard.url()}
+                                product={profit.product}
                             />
                         </div>
+                        <ProductSplit
+                            products={profit.products}
+                            product={profit.product}
+                            period={profit.period}
+                            url={admin.dashboard.url()}
+                            currency={profit.baseCurrency}
+                        />
                         <ProfitKpis
                             summary={profit.summary}
                             previous={profit.previous}

@@ -7,6 +7,7 @@ use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use App\Enums\TariffProduct;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use App\Models\ReserveLedgerEntry;
@@ -25,6 +26,20 @@ class ProfitQuery
 
     private const COST = 'daily_report_tasks.total_provider_cost * coalesce(daily_report_tasks.fx_rate, 0)';
 
+    private ?TariffProduct $product = null;
+
+    /**
+     * The same figures for one product only (card acquiring, C2B …): a
+     * report belongs to the product of its MID's acquirer.
+     */
+    public function forProduct(?TariffProduct $product): static
+    {
+        $copy = clone $this;
+        $copy->product = $product;
+
+        return $copy;
+    }
+
     /**
      * @return Builder<DailyReportTask>
      */
@@ -32,7 +47,9 @@ class ProfitQuery
     {
         return DailyReportTask::query()
             ->where('daily_report_tasks.status', ReportStatus::Completed)
-            ->whereBetween('daily_report_tasks.report_date', [$from->toDateString(), $to->toDateString()]);
+            ->whereBetween('daily_report_tasks.report_date', [$from->toDateString(), $to->toDateString()])
+            ->when($this->product, fn (Builder $q, TariffProduct $product) => $q
+                ->whereHas('merchantMid.bankProvider', fn (Builder $p) => $p->where('product', $product->value)));
     }
 
     /**
@@ -71,6 +88,11 @@ class ProfitQuery
      */
     private function settlementFees(CarbonImmutable $from, CarbonImmutable $to): float
     {
+        // A settlement pays several products at once, so its charge is not split by product.
+        if ($this->product !== null) {
+            return 0.0;
+        }
+
         return abs((float) SettlementLine::query()
             ->where('type', SettlementLineType::Fee)
             ->where('currency', config('sterling.base_currency'))
@@ -272,6 +294,23 @@ class ProfitQuery
             ),
             'conversion' => $conversion,
         ];
+    }
+
+    /**
+     * Turnover, revenue, cost and profit of every product side by side.
+     *
+     * @return list<array{key: string, label: string, summary: array<string, mixed>, previous: array<string, mixed>}>
+     */
+    public function byProduct(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        [$prevFrom, $prevTo] = self::previous($from, $to);
+
+        return array_map(fn (TariffProduct $product) => [
+            'key' => $product->value,
+            'label' => $product->label(),
+            'summary' => $this->forProduct($product)->summary($from, $to),
+            'previous' => $this->forProduct($product)->summary($prevFrom, $prevTo),
+        ], TariffProduct::cases());
     }
 
     /**

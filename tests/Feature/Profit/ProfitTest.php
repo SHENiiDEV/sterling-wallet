@@ -5,11 +5,13 @@ namespace Tests\Feature\Profit;
 use App\Enums\Currency;
 use App\Enums\Module;
 use App\Enums\StatementStatus;
+use App\Enums\TariffProduct;
 use App\Models\CommercialOffer;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\MonthlyStatement;
 use App\Models\ProfitPartner;
+use App\Models\Provider;
 use App\Models\User;
 use App\Offers\OfferProposal;
 use App\Profit\ProfitQuery;
@@ -103,6 +105,29 @@ class ProfitTest extends TestCase
         $this->assertSame([60.0, 60.0], array_column($breakdowns['conversion'], 'rate'));
         $this->assertSame(6, array_sum(array_column($breakdowns['schemes'], 'operations')));
         $this->assertSame(['do_not_honor', 'insufficient_funds'], collect($breakdowns['decline_reasons'])->pluck('reason')->unique()->sort()->values()->all());
+    }
+
+    public function test_profit_can_be_split_by_product()
+    {
+        // The Madfin MID now serves a C2B flow; the Cardaq one stays card.
+        Provider::query()->where('code', 'madfin')->update(['product' => TariffProduct::C2b->value]);
+        $q = app(ProfitQuery::class);
+        $from = CarbonImmutable::parse('2026-09-01');
+        $to = CarbonImmutable::parse('2026-09-30');
+
+        $this->assertSame(6.91, $q->forProduct(TariffProduct::Card)->summary($from, $to)['net_profit']);
+        $this->assertSame(6.28, $q->forProduct(TariffProduct::C2b)->summary($from, $to)['net_profit']);
+        $this->assertSame(13.19, $q->summary($from, $to)['net_profit']);
+
+        $products = collect($q->byProduct($from, $to))->keyBy('key');
+        $this->assertSame(1, $products['card']['summary']['reports']);
+        $this->assertSame(1, $products['c2b']['summary']['reports']);
+
+        $this->actingAs($this->admin)->get(route('admin.dashboard', ['from' => '2026-09-01', 'to' => '2026-09-30', 'product' => 'c2b']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('profit.product', 'c2b')
+                ->where('profit.summary.net_profit', 6.28)
+                ->has('profit.products', 2));
     }
 
     public function test_dashboard_shows_profit_only_with_the_profit_module()

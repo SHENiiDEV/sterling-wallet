@@ -20,6 +20,7 @@ import type {
     ProfitByMerchant,
     ProfitByPair,
     ProfitPoint,
+    ProfitProduct,
     ProfitSummary,
 } from '@/types';
 
@@ -52,9 +53,21 @@ function presets(): { label: string; from: string; to: string }[] {
 /**
  * Date range control: presets plus from/to, one row above the charts.
  */
-export function PeriodPicker({ period, url }: { period: Period; url: string }) {
+export function PeriodPicker({
+    period,
+    url,
+    product,
+}: {
+    period: Period;
+    url: string;
+    product?: string | null;
+}) {
     const go = (from: string, to: string) =>
-        router.get(url, { from, to }, { preserveScroll: true, replace: true });
+        router.get(
+            url,
+            { from, to, ...(product ? { product } : {}) },
+            { preserveScroll: true, replace: true },
+        );
 
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -382,5 +395,91 @@ export function MerchantTable({
                 </Table>
             )}
         </section>
+    );
+}
+
+/**
+ * Every product side by side; a card selects it for the whole page, "All" clears it.
+ */
+export function ProductSplit({
+    products,
+    product,
+    period,
+    url,
+    currency,
+}: {
+    products: ProfitProduct[];
+    product: string | null;
+    period: Period;
+    url: string;
+    currency: string;
+}) {
+    const pick = (key: string | null) =>
+        router.get(
+            url,
+            { ...period, ...(key ? { product: key } : {}) },
+            { preserveScroll: true, replace: true },
+        );
+
+    return (
+        <div className="grid gap-3 md:grid-cols-3">
+            <button
+                type="button"
+                onClick={() => pick(null)}
+                className={cn(
+                    'rounded-xl border bg-card p-4 text-left shadow-xs transition hover:border-primary/40',
+                    product === null && 'border-primary ring-1 ring-primary',
+                )}
+            >
+                <p className="text-sm font-semibold">All products</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                    Card acquiring and C2B together
+                </p>
+            </button>
+            {products.map((p) => (
+                <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => pick(p.key)}
+                    className={cn(
+                        'rounded-xl border bg-card p-4 text-left shadow-xs transition hover:border-primary/40',
+                        product === p.key &&
+                            'border-primary ring-1 ring-primary',
+                    )}
+                >
+                    <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{p.label}</p>
+                        <span className="text-xs text-muted-foreground">
+                            {p.summary.reports} reports
+                        </span>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 gap-y-1 text-sm">
+                        <dt className="text-muted-foreground">Turnover</dt>
+                        <dd className="text-right tabular-nums">
+                            {formatMoney(p.summary.turnover, currency)}
+                        </dd>
+                        <dt className="text-muted-foreground">Revenue</dt>
+                        <dd className="text-right tabular-nums">
+                            {formatMoney(p.summary.revenue, currency)}
+                        </dd>
+                        <dt className="text-muted-foreground">Net profit</dt>
+                        <dd className="text-right font-medium tabular-nums">
+                            {formatMoney(p.summary.net_profit, currency)}
+                        </dd>
+                    </dl>
+                    <div className="mt-1 flex items-center justify-between">
+                        <Delta
+                            now={p.summary.net_profit}
+                            before={p.previous.net_profit}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                            {p.summary.margin === null
+                                ? '—'
+                                : `${p.summary.margin}% margin`}
+                        </span>
+                    </div>
+                </button>
+            ))}
+        </div>
     );
 }
