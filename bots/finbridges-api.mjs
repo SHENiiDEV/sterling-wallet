@@ -3,13 +3,14 @@
  * No browser: plain signed HTTPS requests.
  *
  * Input (from Laravel): username = apiKey, password = apiSecret,
- * settings client_id / wallet_id, from / to (report period), download_dir.
+ * settings wallet_id (client_id only if list_path uses {clientId}), from / to
+ * (report period), download_dir.
  * Optional account settings:
- *   base_url   REQUIRED, e.g. https://demo.finbridges.eu (test) — the live address
- *              is given by FinBridges
+ *   base_url   REQUIRED: https://api.escrowfy.ch (live) or https://demo.finbridges.eu (test)
  *   list_path  default /api-public/transactions/wallet/{walletId}?from={from}&to={to}
  *              ({clientId} {walletId} {from} {to} are replaced); pages of `take`
- *              (default 100) are read with skip=0,1,2… until `count` is reached
+ *              (default 100) are read until `count` is reached. `skip` is an
+ *              offset (0, take, 2×take …); "skip_mode": "page" sends 0, 1, 2 instead
  *   external_ids  list of externalTransactionId values; with a list_path that has
  *              {externalId} (the documented by-external-id endpoint) each one is
  *              fetched and the results are collected. Handy to test the signature.
@@ -33,7 +34,7 @@ async function signedGet(input, pathWithQuery) {
     const settings = input.settings || {};
     if (!settings.base_url) {
         throw new Error(
-            'Account settings need base_url, e.g. "https://demo.finbridges.eu" (the live address comes from FinBridges).',
+            'Account settings need base_url: "https://api.escrowfy.ch" (live) or "https://demo.finbridges.eu" (test).',
         );
     }
     const base = settings.base_url.replace(/\/$/, '');
@@ -47,6 +48,8 @@ async function signedGet(input, pathWithQuery) {
 
     log(`GET ${base}${pathWithQuery}`);
     const response = await fetch(base + pathWithQuery, {
+        // A redirect changes the signed URL; never forward credentials to it.
+        redirect: 'manual',
         headers: {
             accept: 'application/json',
             'user-agent': 'SterlingPay-Wallet/1.0',
@@ -57,6 +60,11 @@ async function signedGet(input, pathWithQuery) {
         signal: AbortSignal.timeout(30000),
     });
     const text = await response.text();
+    if (response.status >= 300 && response.status < 400) {
+        throw new Error(
+            `FinBridges redirected to ${response.headers.get('location')} (HTTP ${response.status}). Check base_url: a redirect would invalidate the signature.`,
+        );
+    }
     if (!response.ok) {
         // An HTML answer is the marketing site, not the API: show its title, not the markup.
         const summary =
@@ -88,15 +96,21 @@ try {
             'Login (apiKey) and Password (apiSecret) are required.',
         );
     }
-    if (!clientId || !walletId) {
-        throw new Error('Account settings need client_id and wallet_id.');
+    if (!walletId) {
+        throw new Error('Account settings need wallet_id.');
     }
     settings.list_path ||=
         '/api-public/transactions/wallet/{walletId}?from={from}&to={to}';
 
+    if (settings.list_path.includes('{clientId}') && !clientId) {
+        throw new Error(
+            'list_path uses {clientId}: add client_id to the account settings.',
+        );
+    }
+
     const fill = (template) =>
         template
-            .replaceAll('{clientId}', encodeURIComponent(clientId))
+            .replaceAll('{clientId}', encodeURIComponent(clientId ?? ''))
             .replaceAll('{walletId}', encodeURIComponent(walletId))
             .replaceAll('{from}', input.from)
             .replaceAll('{to}', input.to);
@@ -123,13 +137,26 @@ try {
         const base = fill(settings.list_path);
         const take = Number(settings.take) || 100;
         const glue = base.includes('?') ? '&' : '?';
+        const seen = new Set();
         for (let page = 0; page < 200; page++) {
+            const skip = settings.skip_mode === 'page' ? page : page * take;
             const body = await signedGet(
                 input,
-                `${base}${glue}skip=${page}&take=${take}`,
+                `${base}${glue}skip=${skip}&take=${take}`,
             );
             const rows = Array.isArray(body) ? body : (body.list ?? []);
-            list.push(...rows);
+            // Never count a transaction twice, whatever the paging does.
+            const fresh = rows.filter((row) => {
+                const id = row.transactionNumber ?? row.externalTransactionId;
+
+                return id === undefined || !seen.has(id)
+                    ? (seen.add(id), true)
+                    : false;
+            });
+            list.push(...fresh);
+            if (fresh.length === 0) {
+                break;
+            }
             const total = Array.isArray(body) ? null : Number(body.count);
             if (
                 rows.length < take ||
