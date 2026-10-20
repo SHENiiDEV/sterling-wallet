@@ -14,8 +14,8 @@ use Carbon\CarbonImmutable;
 
 /**
  * FinBridges C2B wallet. Talks to the public API (no browser): one account is
- * one client wallet. Login = apiKey, Password = apiSecret, settings carry
- * `client_id`, `wallet_id` and `base_url`.
+ * one client wallet. Login = apiKey (token), Password = apiSecret, settings carry
+ * `wallet_id` and `base_url` (live: https://api.escrowfy.ch); `client_id` is optional.
  *
  * It is polled every few minutes over a short window (today and yesterday,
  * `lookback_days` in the settings): only transactions we do not have yet are

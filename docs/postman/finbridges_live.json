@@ -1,0 +1,227 @@
+{
+    "info": {
+        "name": "FinBridges live API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "description": "Signed GET requests against the live API (the same signature as the vendor's Node example). Import finbridges-live.postman_environment.json, fill baseUrl / apiToken / apiSecret / walletId, select it, then Send. Redirects are off: a redirect would change the signed URL."
+    },
+    "variable": [
+        {
+            "key": "from",
+            "value": ""
+        },
+        {
+            "key": "to",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "1. First page (skip=0, take=10)",
+            "description": "Smallest request: no dates.",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "// Live API signature: HMAC-SHA256(apiSecret, ts + METHOD + pathWithQuery), hex. No host, no body, no newline.",
+                            "if (!pm.collectionVariables.get('from')) pm.collectionVariables.set('from', new Date().toISOString().slice(0, 10));",
+                            "if (!pm.collectionVariables.get('to')) pm.collectionVariables.set('to', pm.collectionVariables.get('from'));",
+                            "",
+                            "const token = pm.environment.get('apiToken');",
+                            "const secret = pm.environment.get('apiSecret');",
+                            "if (!token || !secret || !pm.environment.get('walletId') || !pm.environment.get('baseUrl')) {",
+                            "    throw new Error('Fill baseUrl, apiToken, apiSecret and walletId in the FinBridges live environment and select it.');",
+                            "}",
+                            "",
+                            "const ts = Math.floor(Date.now() / 1000).toString();",
+                            "const method = pm.request.method.toUpperCase();",
+                            "// getPathWithQuery() keeps {{variables}} as text: resolve them, or the signature covers the wrong path.",
+                            "const path = pm.variables.replaceIn(pm.request.url.getPathWithQuery());",
+                            "",
+                            "pm.environment.set('ts', ts);",
+                            "pm.environment.set('sig', CryptoJS.HmacSHA256(ts + method + path, secret).toString(CryptoJS.enc.Hex));",
+                            "console.log('Signed:', ts + method + path);"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "const type = pm.response.headers.get('Content-Type') || '';",
+                            "",
+                            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                            "pm.test('Response is JSON (an HTML page with 200 is not a success)', () => pm.expect(type).to.include('application/json'));",
+                            "pm.test('Has count and list', () => {",
+                            "    const json = pm.response.json();",
+                            "    pm.expect(json.count).to.be.a('number');",
+                            "    pm.expect(json.list).to.be.an('array');",
+                            "});",
+                            "pm.test('Rows look like transactions', () => {",
+                            "    const list = pm.response.json().list;",
+                            "    if (list.length) {",
+                            "        ['transactionNumber', 'transactionType', 'status', 'amountOrigCcy', 'origCcy', 'date']",
+                            "            .forEach((field) => pm.expect(list[0]).to.have.property(field));",
+                            "    }",
+                            "});"
+                        ]
+                    }
+                }
+            ],
+            "protocolProfileBehavior": {
+                "followRedirects": false
+            },
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "x-app-access-token",
+                        "value": "{{apiToken}}"
+                    },
+                    {
+                        "key": "x-app-access-ts",
+                        "value": "{{ts}}"
+                    },
+                    {
+                        "key": "x-app-access-sig",
+                        "value": "{{sig}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/api-public/transactions/wallet/{{walletId}}?skip=0&take=10",
+                    "host": ["{{baseUrl}}"],
+                    "path": [
+                        "api-public",
+                        "transactions",
+                        "wallet",
+                        "{{walletId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        },
+                        {
+                            "key": "take",
+                            "value": "10"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "2. One day (from / to, take=100)",
+            "description": "Exactly the vendor example. Set the collection variables from / to (YYYY-MM-DD); empty means today.",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "// Live API signature: HMAC-SHA256(apiSecret, ts + METHOD + pathWithQuery), hex. No host, no body, no newline.",
+                            "if (!pm.collectionVariables.get('from')) pm.collectionVariables.set('from', new Date().toISOString().slice(0, 10));",
+                            "if (!pm.collectionVariables.get('to')) pm.collectionVariables.set('to', pm.collectionVariables.get('from'));",
+                            "",
+                            "const token = pm.environment.get('apiToken');",
+                            "const secret = pm.environment.get('apiSecret');",
+                            "if (!token || !secret || !pm.environment.get('walletId') || !pm.environment.get('baseUrl')) {",
+                            "    throw new Error('Fill baseUrl, apiToken, apiSecret and walletId in the FinBridges live environment and select it.');",
+                            "}",
+                            "",
+                            "const ts = Math.floor(Date.now() / 1000).toString();",
+                            "const method = pm.request.method.toUpperCase();",
+                            "// getPathWithQuery() keeps {{variables}} as text: resolve them, or the signature covers the wrong path.",
+                            "const path = pm.variables.replaceIn(pm.request.url.getPathWithQuery());",
+                            "",
+                            "pm.environment.set('ts', ts);",
+                            "pm.environment.set('sig', CryptoJS.HmacSHA256(ts + method + path, secret).toString(CryptoJS.enc.Hex));",
+                            "console.log('Signed:', ts + method + path);"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                            "const type = pm.response.headers.get('Content-Type') || '';",
+                            "",
+                            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                            "pm.test('Response is JSON (an HTML page with 200 is not a success)', () => pm.expect(type).to.include('application/json'));",
+                            "pm.test('Has count and list', () => {",
+                            "    const json = pm.response.json();",
+                            "    pm.expect(json.count).to.be.a('number');",
+                            "    pm.expect(json.list).to.be.an('array');",
+                            "});",
+                            "pm.test('Rows look like transactions', () => {",
+                            "    const list = pm.response.json().list;",
+                            "    if (list.length) {",
+                            "        ['transactionNumber', 'transactionType', 'status', 'amountOrigCcy', 'origCcy', 'date']",
+                            "            .forEach((field) => pm.expect(list[0]).to.have.property(field));",
+                            "    }",
+                            "});"
+                        ]
+                    }
+                }
+            ],
+            "protocolProfileBehavior": {
+                "followRedirects": false
+            },
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "x-app-access-token",
+                        "value": "{{apiToken}}"
+                    },
+                    {
+                        "key": "x-app-access-ts",
+                        "value": "{{ts}}"
+                    },
+                    {
+                        "key": "x-app-access-sig",
+                        "value": "{{sig}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/api-public/transactions/wallet/{{walletId}}?from={{from}}&to={{to}}&skip=0&take=100",
+                    "host": ["{{baseUrl}}"],
+                    "path": [
+                        "api-public",
+                        "transactions",
+                        "wallet",
+                        "{{walletId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "from",
+                            "value": "{{from}}"
+                        },
+                        {
+                            "key": "to",
+                            "value": "{{to}}"
+                        },
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        },
+                        {
+                            "key": "take",
+                            "value": "100"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}

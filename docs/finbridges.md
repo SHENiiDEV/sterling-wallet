@@ -30,15 +30,16 @@
 
 ```json
 {
-    "client_id": "IES…",
-    "wallet_id": "CJPU…",
-    "list_path": "/api-public/transactions/{clientId}/{walletId}?from={from}&to={to}"
+    "base_url": "https://api.escrowfy.ch",
+    "wallet_id": "CJPBR0AY00"
 }
 ```
 
-`list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Обязательно `base_url`: для теста `https://demo.finbridges.eu` (боевой адрес даст FinBridges). Необязательно: `take`, `ts_unit` (`s` или `ms`).
+`client_id` нужен только если `list_path` содержит `{clientId}`; для списка по кошельку он не нужен.
 
-Подпись подтверждена на демо-среде (Postman, ответ 200): hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
+`list_path` необязателен: по умолчанию `/api-public/transactions/wallet/{walletId}?from={from}&to={to}` (Get list of wallet transactions; страницы `skip`/`take` читаются до `count`). `{clientId} {walletId} {from} {to}` подставляются. Обязательно `base_url`: боевой `https://api.escrowfy.ch`, тестовый `https://demo.finbridges.eu`. Необязательно: `take`, `ts_unit` (`s` или `ms`), `skip_mode` (`offset` по умолчанию: `skip` = смещение 0, 100, 200…; `page`: 0, 1, 2…). Редиректы не выполняются: перенаправление ломает подпись, бот покажет, куда он вёл.
+
+Подпись подтверждена на демо-среде и по коду вендора для боевого API (Postman-коллекция `docs/postman/finbridges_live.json`): hex HMAC-SHA256(`apiSecret`, `ts + METHOD + pathWithQuery`), заголовки `x-app-access-ts/-sig/-token`. Если API отвечает 401/403, текст ответа виден в журнале запуска; по нему подправляется схема.
 
 ## Опрос раз в 10 минут
 
