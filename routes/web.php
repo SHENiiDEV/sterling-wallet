@@ -81,6 +81,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::middleware('module:operations')->group(function () {
         Route::get('operations', [OperationController::class, 'index'])->name('operations.index');
+        Route::get('operations/export', [OperationController::class, 'export'])->name('operations.export');
         Route::get('operations/create', [OperationController::class, 'create'])->name('operations.create');
         Route::post('operations', [OperationController::class, 'store'])->name('operations.store');
         Route::get('operations/{operation}', [OperationController::class, 'show'])->name('operations.show');

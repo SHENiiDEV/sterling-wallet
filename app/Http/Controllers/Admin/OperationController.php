@@ -30,13 +30,17 @@ use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OperationController extends Controller
 {
-    public function index(Request $request): Response
+    /**
+     * @return array<string, mixed>
+     */
+    private function filterInput(Request $request): array
     {
-        $filters = $request->validate([
-            'search' => ['nullable', 'string', 'max:128'],
+        return $request->validate([
+            'search' => ['nullable', 'string', 'max:512'],
             'provider' => ['nullable', 'integer'],
             'role' => ['nullable', 'string'],
             'type' => ['nullable', 'string'],
@@ -46,6 +50,48 @@ class OperationController extends Controller
             'to' => ['nullable', 'date'],
             'unmatched' => ['nullable', 'boolean'],
         ]);
+    }
+
+    /**
+     * The current selection (same filters as the list) as a CSV file.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $query = $this->filtered($this->filterInput($request))
+            ->with(['provider:id,name', 'merchant:id,name'])
+            ->orderBy('report_date')->orderBy('transaction_at')->orderBy('id');
+
+        $columns = ['Report date', 'Time (UTC)', 'Provider', 'Role', 'Type', 'Merchant', 'MID', 'Payment ID', 'Reference', 'ARN', 'RRN', 'Approval code', 'Card BIN', 'Card last 4', 'Scheme', 'Region', 'Issuer country', 'Amount', 'Currency', 'Customer', 'Customer e-mail', 'Customer account', 'Pair payment ID'];
+
+        AuditLogger::log('operations.exported', null, ['filters' => $request->only(['search', 'provider', 'role', 'type', 'from', 'to'])]);
+
+        return response()->streamDownload(function () use ($query, $columns) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $columns, escape: '');
+
+            // Bounded: a selection that large should be narrowed first.
+            $written = 0;
+            foreach ($query->lazy(2000) as $op) {
+                if (++$written > 200000) {
+                    break;
+                }
+
+                fputcsv($out, [
+                    $op->report_date?->toDateString(), $op->transaction_at?->utc()->format('Y-m-d H:i:s'), $op->provider?->name, $op->role->value,
+                    $op->operation_type->value, $op->merchant?->name, $op->mid, $op->payment_id, $op->reference, $op->getAttribute('arn'),
+                    $op->getAttribute('rrn'), $op->getAttribute('approval_code'), $op->card_bin, $op->card_last4, $op->ips, $op->region,
+                    $op->getAttribute('issuer_country'), $op->amount, $op->currency, $op->customerName(), $op->customer_email,
+                    $op->customerAccount(), $op->sp_id,
+                ], escape: '');
+            }
+
+            fclose($out);
+        }, 'operations_'.now()->format('Ymd_His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function index(Request $request): Response
+    {
+        $filters = $this->filterInput($request);
 
         $query = $this->filtered($filters);
 
@@ -317,6 +363,17 @@ class OperationController extends Controller
     {
         return MerchantOperation::query()
             ->when($filters['search'] ?? null, function (Builder $q, string $search) {
+                // Card masks, one or several: "535765%2604", "492182****1171" (BIN, wildcard, last 4).
+                if (preg_match_all('/(?<!\d)(\d{6})\d{0,2}\s*[%*xX.…•]+\s*(\d{4})(?!\d)/u', $search, $masks, PREG_SET_ORDER) > 0) {
+                    $q->where(function (Builder $q) use ($masks) {
+                        foreach ($masks as [, $bin, $last4]) {
+                            $q->orWhere(fn (Builder $q) => $q->where('card_bin', $bin)->where('card_last4', $last4));
+                        }
+                    });
+
+                    return;
+                }
+
                 $digits = preg_replace('/\D/', '', $search) ?? '';
                 $q->where(fn (Builder $q) => $q
                     ->where('arn', $search)
