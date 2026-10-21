@@ -3,7 +3,10 @@
 namespace App\Models;
 
 use App\Enums\SettlementStatus;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $number
  * @property int $merchant_id
  * @property int|null $client_id
+ * @property TariffProduct $product
  * @property SettlementStatus $status
  * @property string $payout_currency
  * @property array<string, string>|null $rates
@@ -33,16 +37,19 @@ use Illuminate\Support\Carbon;
  * @property-read Client|null $client
  */
 #[Fillable([
-    'number', 'merchant_id', 'client_id', 'status', 'payout_currency', 'rates', 'total_payout', 'wallet_id', 'notes',
+    'number', 'merchant_id', 'client_id', 'product', 'status', 'payout_currency', 'rates', 'total_payout', 'wallet_id', 'notes',
     'created_by', 'approved_by', 'approved_at', 'settled_by', 'settled_at', 'tx_hash', 'proof_path',
     'cancelled_by', 'cancelled_at', 'cancel_reason',
 ])]
 class Settlement extends Model
 {
+    use RestrictedToProduct;
+
     protected function casts(): array
     {
         return [
             'status' => SettlementStatus::class,
+            'product' => TariffProduct::class,
             'rates' => 'array',
             'total_payout' => 'decimal:4',
             'approved_at' => 'datetime',
@@ -125,5 +132,10 @@ class Settlement extends Model
     public function isEditable(): bool
     {
         return $this->status === SettlementStatus::Draft;
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where('product', $product->value);
     }
 }

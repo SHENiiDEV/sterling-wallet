@@ -4,7 +4,10 @@ namespace App\Models;
 
 use App\Enums\AcquirerStatus;
 use App\Enums\IntegrationStatus;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -25,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['merchant_id', 'provider_id', 'status', 'limit', 'limit_currency', 'integration_status', 'psp', 'mcc', 'notes'])]
 class MerchantAcquirer extends Model
 {
+    use RestrictedToProduct;
+
     protected function casts(): array
     {
         return [
@@ -48,5 +53,10 @@ class MerchantAcquirer extends Model
     public function provider(): BelongsTo
     {
         return $this->belongsTo(Provider::class);
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->whereHas('provider');
     }
 }

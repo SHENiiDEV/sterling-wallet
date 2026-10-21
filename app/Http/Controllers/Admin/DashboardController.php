@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\MidStatus;
 use App\Enums\Module;
 use App\Enums\ReportStatus;
+use App\Enums\SettlementStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DocumentResource;
@@ -14,6 +15,8 @@ use App\Models\Document;
 use App\Models\DocumentActivity;
 use App\Models\DocumentStatus;
 use App\Models\MerchantMid;
+use App\Models\MerchantOperation;
+use App\Models\SettlementLine;
 use App\Models\User;
 use App\Profit\ProfitQuery;
 use Illuminate\Database\Eloquent\Builder;
@@ -26,6 +29,11 @@ class DashboardController extends Controller
     public function __invoke(Request $request, ProfitQuery $profit): Response
     {
         $user = $request->user();
+        // A product-restricted partner gets its own overview, with no costs or profit.
+        if ($user->productScope() !== null) {
+            return $this->partnerOverview($request);
+        }
+
         $canProfit = $user->canAccess(Module::Profit);
         $canDocuments = $user->canAccess(Module::Documents);
 
@@ -86,6 +94,54 @@ class DashboardController extends Controller
                     'to_status' => $activity->toStatus ? DocumentStatusResource::make($activity->toStatus)->resolve() : null,
                     'created_at' => $activity->created_at?->toIso8601String(),
                 ]),
+            'reportAlerts' => $this->reportAlerts(),
+        ]);
+    }
+
+    /**
+     * What a C2B partner sees first: volume, what merchants pay us and what is
+     * waiting to be paid out. Every query is already narrowed to the partner's
+     * product; provider costs and profit are not part of it.
+     */
+    private function partnerOverview(Request $request): Response
+    {
+        [$from, $to] = ProfitController::period($request);
+        $user = $request->user();
+        $product = $user->productScope();
+
+        $reports = fn () => DailyReportTask::query()->toBase()
+            ->where('daily_report_tasks.status', ReportStatus::Completed)
+            ->whereBetween('daily_report_tasks.report_date', [$from->toDateString(), $to->toDateString()]);
+
+        $unsettled = DailyReportTask::query()->toBase()
+            ->where('status', ReportStatus::Completed)
+            ->whereNotIn('id', SettlementLine::query()->select('daily_report_task_id')
+                ->where('type', 'report')->whereNotNull('daily_report_task_id')
+                ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
+            ->selectRaw('currency, count(*) as reports, sum(net_payout) as payout')
+            ->groupBy('currency')->orderBy('currency')->get();
+
+        return Inertia::render('admin/c2b/overview', [
+            'product' => ['value' => $product->value, 'label' => $product->label()],
+            'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'totals' => $reports()
+                ->selectRaw('currency, count(*) as reports, sum(sales_count) as sales, sum(turnover) as turnover, sum(refunds_amount + chargebacks_amount) as refunds, sum(total_merchant_fee + conversion_fee) as fees, sum(net_payout) as payout')
+                ->groupBy('currency')->orderBy('currency')->get()
+                ->map(fn ($r) => ['currency' => $r->currency, 'reports' => (int) $r->reports, 'sales' => (int) $r->sales, 'turnover' => round((float) $r->turnover, 2), 'refunds' => round((float) $r->refunds, 2), 'fees' => round((float) $r->fees, 2), 'payout' => round((float) $r->payout, 2)]),
+            'daily' => $reports()
+                ->selectRaw('report_date, sum(turnover_base) as turnover')
+                ->groupBy('report_date')->orderBy('report_date')->get()
+                ->map(fn ($r) => ['date' => (string) $r->report_date, 'turnover' => round((float) $r->turnover, 2)]),
+            'baseCurrency' => config('sterling.base_currency'),
+            'merchants' => $reports()
+                ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
+                ->selectRaw('merchants.public_id, merchants.name, daily_report_tasks.currency, sum(daily_report_tasks.turnover) as turnover, sum(daily_report_tasks.total_merchant_fee + daily_report_tasks.conversion_fee) as fees')
+                ->groupBy('merchants.public_id', 'merchants.name', 'daily_report_tasks.currency')
+                ->orderByDesc('turnover')->limit(10)->get()
+                ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'currency' => $r->currency, 'turnover' => round((float) $r->turnover, 2), 'fees' => round((float) $r->fees, 2)]),
+            'unsettled' => $unsettled->map(fn ($r) => ['currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]),
+            'recent' => MerchantOperation::query()->with('merchant:id,name')->latest('transaction_at')->limit(8)->get()
+                ->map(fn (MerchantOperation $o) => ['id' => $o->id, 'reference' => $o->reference ?? $o->payment_id, 'merchant' => $o->merchant?->name, 'amount' => $o->amount, 'currency' => $o->currency, 'at' => $o->transaction_at?->toIso8601String()]),
             'reportAlerts' => $this->reportAlerts(),
         ]);
     }

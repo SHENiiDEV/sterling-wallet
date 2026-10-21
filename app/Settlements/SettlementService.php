@@ -6,6 +6,7 @@ use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use App\Enums\TariffProduct;
 use App\Models\Client;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
@@ -16,6 +17,7 @@ use App\Models\SettlementLine;
 use App\Models\User;
 use App\Reports\Generation\FxRateResolver;
 use App\Services\AuditLogger;
+use App\Support\ProductScope;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -38,9 +40,9 @@ class SettlementService
      *
      * @return Collection<int, DailyReportTask>
      */
-    public function availableReports(Merchant $merchant): Collection
+    public function availableReports(Merchant $merchant, ?TariffProduct $product = null): Collection
     {
-        return $this->availableReportsFor([$merchant->id]);
+        return $this->availableReportsFor([$merchant->id], $product);
     }
 
     /**
@@ -50,16 +52,17 @@ class SettlementService
      */
     public function availableReportsIn(Settlement $settlement): Collection
     {
-        return $this->availableReportsFor($settlement->merchantIds());
+        return $this->availableReportsFor($settlement->merchantIds(), $settlement->product);
     }
 
     /**
      * @param  list<int>  $merchantIds
      * @return Collection<int, DailyReportTask>
      */
-    private function availableReportsFor(array $merchantIds): Collection
+    private function availableReportsFor(array $merchantIds, ?TariffProduct $product = null): Collection
     {
         return DailyReportTask::query()
+            ->when($product, fn (Builder $q, TariffProduct $p) => $q->whereHas('merchantMid.bankProvider', fn (Builder $b) => $b->where('product', $p->value)))
             ->with(['merchantMid:id,mid,currency', 'merchant:id,name,company_id', 'merchant.company:id,name'])
             ->whereIn('merchant_id', $merchantIds)
             ->where('status', ReportStatus::Completed)
@@ -73,9 +76,9 @@ class SettlementService
      *
      * @return Collection<int, ReserveLedgerEntry>
      */
-    public function availableReleases(Merchant $merchant): Collection
+    public function availableReleases(Merchant $merchant, ?TariffProduct $product = null): Collection
     {
-        return $this->availableReleasesFor([$merchant->id]);
+        return $this->availableReleasesFor([$merchant->id], $product);
     }
 
     /**
@@ -83,16 +86,17 @@ class SettlementService
      */
     public function availableReleasesIn(Settlement $settlement): Collection
     {
-        return $this->availableReleasesFor($settlement->merchantIds());
+        return $this->availableReleasesFor($settlement->merchantIds(), $settlement->product);
     }
 
     /**
      * @param  list<int>  $merchantIds
      * @return Collection<int, ReserveLedgerEntry>
      */
-    private function availableReleasesFor(array $merchantIds): Collection
+    private function availableReleasesFor(array $merchantIds, ?TariffProduct $product = null): Collection
     {
         return ReserveLedgerEntry::query()
+            ->when($product, fn (Builder $q, TariffProduct $p) => $q->whereHas('merchantMid.bankProvider', fn (Builder $b) => $b->where('product', $p->value)))
             ->with('merchantMid:id,mid,merchant_id')
             ->whereIn('merchant_id', $merchantIds)
             ->where('type', ReserveEntryType::Release)
@@ -106,7 +110,7 @@ class SettlementService
      * The settlement charge follows the terms of the first merchant that has
      * something to pay (or the first merchant at all).
      */
-    public function createClientDraft(Client $client, ?User $by, ?string $payoutCurrency = null, bool $withReleases = true): Settlement
+    public function createClientDraft(Client $client, ?User $by, ?string $payoutCurrency = null, bool $withReleases = true, ?TariffProduct $product = null): Settlement
     {
         $merchants = Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->orderBy('id')->get();
         if ($merchants->isEmpty()) {
@@ -120,19 +124,23 @@ class SettlementService
             ->pluck('merchant_id');
         $primary = $merchants->first(fn (Merchant $m) => $pending->contains($m->id)) ?? $merchants->first();
 
-        return $this->createDraft($primary, $by, null, $withReleases, $client, $payoutCurrency);
+        return $this->createDraft($primary, $by, null, $withReleases, $client, $payoutCurrency, $product);
     }
 
     /**
      * @param  list<int>|null  $reportIds  null = every available report
      */
-    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true, ?Client $client = null, ?string $payoutCurrency = null): Settlement
+    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true, ?Client $client = null, ?string $payoutCurrency = null, ?TariffProduct $product = null): Settlement
     {
-        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases, $client, $payoutCurrency) {
+        // One settlement pays one product: a C2B partner can only make C2B ones.
+        $product ??= ProductScope::current() ?? TariffProduct::Card;
+
+        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases, $client, $payoutCurrency, $product) {
             $settlement = Settlement::query()->create([
                 'number' => 'SET-TMP-'.uniqid(),
                 'merchant_id' => $merchant->id,
                 'client_id' => $client?->id,
+                'product' => $product,
                 'status' => SettlementStatus::Draft,
                 'payout_currency' => $this->payoutCurrency($payoutCurrency),
                 'rates' => [],
@@ -351,7 +359,8 @@ class SettlementService
             return;
         }
 
-        $charge = BigDecimal::of($settlement->merchant->fee_settlement_fixed ?? 0);
+        // The settlement charge is part of the card terms; C2B has none yet.
+        $charge = $settlement->product === TariffProduct::Card ? BigDecimal::of($settlement->merchant->fee_settlement_fixed ?? 0) : BigDecimal::zero();
         $paysOut = $settlement->lines()->whereIn('type', [SettlementLineType::Report, SettlementLineType::ReserveRelease])->exists();
         $line = $settlement->lines()->where('type', SettlementLineType::Fee)->first();
 
@@ -464,19 +473,20 @@ class SettlementService
     }
 
     /**
-     * The latest draft of the merchant, or a new empty one.
+     * The latest draft of the merchant for the product, or a new empty one.
      */
-    public function openDraft(Merchant $merchant): Settlement
+    public function openDraft(Merchant $merchant, TariffProduct $product = TariffProduct::Card): Settlement
     {
         $clientId = $merchant->company?->client_id;
 
         $draft = Settlement::query()
             ->where(fn (Builder $q) => $q->where('merchant_id', $merchant->id)->when($clientId, fn (Builder $q) => $q->orWhere('client_id', $clientId)))
             ->where('status', SettlementStatus::Draft)
+            ->where('product', $product->value)
             ->latest('id')
             ->first();
 
-        return $draft ?? $this->createDraft($merchant, null, [], false);
+        return $draft ?? $this->createDraft($merchant, null, [], false, product: $product);
     }
 
     /**

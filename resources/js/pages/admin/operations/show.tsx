@@ -34,8 +34,8 @@ type Props = {
     charges: {
         merchant_percent: string;
         merchant_fee: string;
-        provider_percent: string;
-        provider_cost: string;
+        provider_percent: string | null;
+        provider_cost: string | null;
     } | null;
     pair: Operation | null;
     mid: {
@@ -384,15 +384,17 @@ export default function OperationShow({
                                         ({charges.merchant_percent}%)
                                     </span>
                                 </Row>
-                                <Row label="Provider cost">
-                                    {formatMoney(
-                                        charges.provider_cost,
-                                        operation.currency,
-                                    )}{' '}
-                                    <span className="text-muted-foreground">
-                                        ({charges.provider_percent}%)
-                                    </span>
-                                </Row>
+                                {charges.provider_cost !== null && (
+                                    <Row label="Provider cost">
+                                        {formatMoney(
+                                            charges.provider_cost,
+                                            operation.currency,
+                                        )}{' '}
+                                        <span className="text-muted-foreground">
+                                            ({charges.provider_percent}%)
+                                        </span>
+                                    </Row>
+                                )}
                                 <p className="pt-2 text-xs text-muted-foreground">
                                     Percent part only; fixed per-operation fees
                                     are added on the daily report.

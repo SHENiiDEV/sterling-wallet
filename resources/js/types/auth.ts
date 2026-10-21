@@ -15,6 +15,8 @@ export type Auth = {
     /** Admin modules the user may open (App\\Enums\\Module values). */
     modules: string[];
     is_super_admin: boolean;
+    /** Product the user is restricted to (a C2B partner), if any. */
+    product_scope: string | null;
 };
 
 export type Passkey = {

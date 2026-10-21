@@ -23,6 +23,17 @@ enum Module: string
     case Bots = 'bots';
     case Team = 'team';
 
+    /**
+     * Modules a product-restricted partner (e.g. C2B) can be given: every
+     * query behind them is narrowed to the partner's product.
+     *
+     * @return list<self>
+     */
+    public static function forPartners(): array
+    {
+        return [self::Merchants, self::Operations, self::Reports, self::Settlements];
+    }
+
     public function label(): string
     {
         return match ($this) {

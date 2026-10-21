@@ -6,7 +6,9 @@ use App\Enums\Currency;
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Models\Merchant;
+use App\Support\ProductScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -29,8 +31,8 @@ class MerchantMidRequest extends FormRequest
             'currency' => ['required', Rule::enum(Currency::class)],
             'label' => ['nullable', 'string', 'max:255'],
             'status' => ['required', Rule::enum(MidStatus::class)],
-            'bank_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value)],
-            'gate_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Gate->value)],
+            'bank_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value)->when(ProductScope::current(), fn ($rule, TariffProduct $p) => $rule->where('product', $p->value))],
+            'gate_provider_id' => ['nullable', Rule::exists('providers', 'id')->where('type', ProviderType::Gate->value)->when(ProductScope::current(), fn ($rule, TariffProduct $p) => $rule->where('product', $p->value))],
             'gate_mid' => ['nullable', 'string', 'max:64'],
             'extra_gate_mids' => ['nullable', 'array', 'max:50'],
             'extra_gate_mids.*' => ['string', 'max:64'],

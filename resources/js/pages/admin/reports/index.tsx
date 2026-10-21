@@ -57,7 +57,7 @@ type Total = {
     payout: number;
     paid_out: number;
     our_fee: number;
-    net_profit: number;
+    net_profit: number | null;
     reserve: number;
 };
 
@@ -442,12 +442,19 @@ export default function ReportsIndex({
                                     <dd className="text-right tabular-nums">
                                         {formatMoney(t.our_fee, t.currency)}
                                     </dd>
-                                    <dt className="text-muted-foreground">
-                                        Net profit
-                                    </dt>
-                                    <dd className="text-right font-medium tabular-nums">
-                                        {formatMoney(t.net_profit, t.currency)}
-                                    </dd>
+                                    {t.net_profit !== null && (
+                                        <>
+                                            <dt className="text-muted-foreground">
+                                                Net profit
+                                            </dt>
+                                            <dd className="text-right font-medium tabular-nums">
+                                                {formatMoney(
+                                                    t.net_profit,
+                                                    t.currency,
+                                                )}
+                                            </dd>
+                                        </>
+                                    )}
                                     <dt className="text-muted-foreground">
                                         Reserve held
                                     </dt>
@@ -564,7 +571,7 @@ export default function ReportsIndex({
                                                             : null,
                                                         cell.reason,
                                                         cell.turnover !== null
-                                                            ? `Turnover ${formatMoney(cell.turnover, row.currency)} · profit ${formatMoney(cell.net_profit, row.currency)}`
+                                                            ? `Turnover ${formatMoney(cell.turnover, row.currency)}${cell.net_profit !== null ? ` · profit ${formatMoney(cell.net_profit, row.currency)}` : ''}`
                                                             : null,
                                                     ]
                                                         .filter(Boolean)

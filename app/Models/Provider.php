@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProviderType;
 use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Database\Factories\ProviderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,7 +36,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Provider extends Model
 {
     /** @use HasFactory<ProviderFactory> */
-    use HasFactory;
+    use HasFactory, RestrictedToProduct;
 
     public const PERCENT_FIELDS = [
         'cost_visa_eu_percent', 'cost_visa_non_eu_percent', 'cost_mastercard_eu_percent', 'cost_mastercard_non_eu_percent',
@@ -135,5 +136,10 @@ class Provider extends Model
     public function scopeOfType(Builder $query, ProviderType $type): void
     {
         $query->where('type', $type);
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where('product', $product->value);
     }
 }

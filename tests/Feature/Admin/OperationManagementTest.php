@@ -54,6 +54,43 @@ class OperationManagementTest extends TestCase
         ];
     }
 
+    /**
+     * @return list<MerchantOperation>
+     */
+    private function cardOperations(): array
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $mid = $this->mid($this->merchantWithTariff(), $cardaq, $corefy);
+
+        return array_map(fn (array $card) => MerchantOperation::query()->create([
+            'merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id, 'provider_id' => $cardaq->id, 'role' => $cardaq->type,
+            'mid' => $mid->mid, 'payment_id' => 'P-'.$card[0].$card[1], 'operation_type' => 'sale', 'trn_type' => 'sale', 'ips' => 'visa',
+            'card_bin' => $card[0], 'card_last4' => $card[1], 'amount' => '10.00', 'currency' => 'EUR',
+            'transaction_at' => '2026-09-15 10:00:00', 'report_date' => '2026-09-15',
+        ]), [['535765', '2604'], ['492182', '1171'], ['465865', '1016'], ['411111', '1111']]);
+    }
+
+    public function test_card_masks_are_searched_together_and_exported()
+    {
+        $this->cardOperations();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.operations.index', ['search' => 'Card number - 535765%2604 Card number - 492182%1171 Card number - 465865%1016']))
+            ->assertInertia(fn ($page) => $page->has('operations.data', 3));
+
+        $this->get(route('admin.operations.index', ['search' => '411111****1111']))
+            ->assertInertia(fn ($page) => $page->has('operations.data', 1));
+
+        $csv = $this->get(route('admin.operations.export', ['search' => '535765%2604; 492182%1171']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('Payment ID', $csv);
+        $this->assertStringContainsString('P-5357652604', $csv);
+        $this->assertStringContainsString('P-4921821171', $csv);
+        $this->assertStringNotContainsString('P-4658651016', $csv);
+    }
+
     public function test_an_operation_can_be_added_by_hand()
     {
         [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];

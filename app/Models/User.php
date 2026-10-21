@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Module;
+use App\Enums\TariffProduct;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -24,6 +25,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $password
  * @property UserRole $role
  * @property list<string>|null $permissions
+ * @property string|null $product_scope
  * @property int|null $company_id
  * @property int|null $client_id
  * @property bool $is_active
@@ -35,7 +37,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'role', 'permissions', 'is_active', 'company_id', 'client_id', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'role', 'permissions', 'product_scope', 'is_active', 'company_id', 'client_id', 'created_by'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -105,6 +107,16 @@ class User extends Authenticatable implements PasskeyUser
         }
 
         return $this->role === UserRole::SuperAdmin || in_array($module->value, $this->permissions ?? [], true);
+    }
+
+    /**
+     * The only product this staff member may see (a C2B partner), if restricted.
+     */
+    public function productScope(): ?TariffProduct
+    {
+        return $this->isStaff() && $this->role !== UserRole::SuperAdmin && $this->product_scope !== null
+            ? TariffProduct::tryFrom($this->product_scope)
+            : null;
     }
 
     /**

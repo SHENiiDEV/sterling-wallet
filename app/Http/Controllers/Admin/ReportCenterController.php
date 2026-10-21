@@ -21,6 +21,7 @@ use App\Models\SettlementLine;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Reports\ReportDateResolver;
 use App\Services\AuditLogger;
+use App\Support\ProductScope;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -86,7 +87,7 @@ class ReportCenterController extends Controller
                     'reason' => $task->error_log,
                     'missing' => array_map(fn ($id) => $providerNames[$id] ?? '#'.$id, $missing),
                     'turnover' => $task->getRawOriginal('turnover'),
-                    'net_profit' => $task->getRawOriginal('net_profit'),
+                    'net_profit' => ProductScope::current() !== null ? null : $task->getRawOriginal('net_profit'),
                 ];
             }
 
@@ -160,8 +161,8 @@ class ReportCenterController extends Controller
                 'email_sent_at' => $report->email_sent_at?->toIso8601String(),
                 'fx_rate' => $report->fx_rate,
                 'base_currency' => $report->base_currency,
-                'summary' => $report->summary_data,
-                ...$report->only(['sales_count', ...DailyReportTask::MONEY_FIELDS]),
+                'summary' => $this->visibleSummary($report->summary_data),
+                ...$this->visibleMoney($report),
                 'files' => array_keys(array_filter([
                     'pdf' => $report->generated_pdf_path,
                     'xlsx' => $report->generated_xlsx_path,
@@ -350,9 +351,40 @@ class ReportCenterController extends Controller
                 'payout' => round((float) $r->payout, 2),
                 'paid_out' => round((float) ($paid[$r->currency] ?? 0), 2),
                 'our_fee' => round((float) $r->our_fee, 2),
-                'net_profit' => round((float) $r->net_profit, 2),
+                'net_profit' => ProductScope::current() !== null ? null : round((float) $r->net_profit, 2),
                 'reserve' => round((float) $r->reserve, 2),
             ])
             ->all();
+    }
+
+    /**
+     * The report's money fields; a product-restricted partner gets no provider cost or profit.
+     *
+     * @return array<string, mixed>
+     */
+    private function visibleMoney(DailyReportTask $report): array
+    {
+        $fields = $report->only(['sales_count', ...DailyReportTask::MONEY_FIELDS]);
+
+        if (ProductScope::current() !== null) {
+            foreach (['total_provider_cost', 'net_profit', 'net_profit_base'] as $hidden) {
+                $fields[$hidden] = null;
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $summary
+     * @return array<string, mixed>|null
+     */
+    private function visibleSummary(?array $summary): ?array
+    {
+        if ($summary !== null && ProductScope::current() !== null) {
+            unset($summary['provider_cost']);
+        }
+
+        return $summary;
     }
 }

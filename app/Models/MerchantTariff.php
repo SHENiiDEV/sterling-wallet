@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -23,6 +25,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['merchant_id', 'product', 'transfer_percent', 'success_fixed', 'refund_fixed', 'fiat_to_crypto_percent', 'settlement_fx_percent'])]
 class MerchantTariff extends Model
 {
+    use RestrictedToProduct;
+
     public const FIELDS = ['transfer_percent', 'success_fixed', 'refund_fixed', 'fiat_to_crypto_percent', 'settlement_fx_percent'];
 
     protected function casts(): array
@@ -43,5 +47,10 @@ class MerchantTariff extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class);
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where('product', $product->value);
     }
 }

@@ -7,8 +7,11 @@ use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -39,6 +42,8 @@ use Illuminate\Support\Carbon;
 ])]
 class DailyReportTask extends Model
 {
+    use RestrictedToProduct;
+
     public const MONEY_FIELDS = [
         'turnover', 'refunds_amount', 'chargebacks_amount', 'total_merchant_fee', 'total_provider_cost',
         'reserve_amount', 'net_volume', 'conversion_fee', 'net_payout', 'net_profit', 'turnover_base', 'net_profit_base',
@@ -147,5 +152,10 @@ class DailyReportTask extends Model
             ->whereIn('status', SettlementStatus::active())
             ->whereHas('lines', fn ($q) => $q->where('type', SettlementLineType::Report)->where('daily_report_task_id', $this->id))
             ->first();
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->whereHas('merchantMid');
     }
 }

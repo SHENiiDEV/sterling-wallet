@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\Module;
+use App\Enums\TariffProduct;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -35,12 +36,15 @@ class TeamController extends Controller
                     'role' => $u->role->value,
                     'role_label' => $u->role->label(),
                     'permissions' => $u->permissions ?? [],
+                    'product_scope' => $u->product_scope,
                     'is_active' => $u->is_active,
                     'two_factor' => $u->two_factor_confirmed_at !== null,
                     'last_login_at' => $u->last_login_at?->toIso8601String(),
                     'is_me' => $u->id === $request->user()->id,
                 ]),
             'modules' => Module::options(),
+            'partnerModules' => array_map(fn (Module $m) => $m->value, Module::forPartners()),
+            'products' => array_values(array_filter(TariffProduct::options(), fn (array $p) => $p['value'] !== TariffProduct::Card->value)),
             'roles' => [
                 ['value' => UserRole::Admin->value, 'label' => UserRole::Admin->label()],
                 ['value' => UserRole::SuperAdmin->value, 'label' => UserRole::SuperAdmin->label()],
@@ -60,6 +64,7 @@ class TeamController extends Controller
             'password' => $password,
             'role' => $data['role'],
             'permissions' => $data['role'] === UserRole::SuperAdmin->value ? null : array_values($data['permissions'] ?? []),
+            'product_scope' => $data['product_scope'] ?? null,
             'is_active' => true,
             'created_by' => $request->user()->id,
         ]);
@@ -77,6 +82,9 @@ class TeamController extends Controller
         $this->assertStaff($member);
         $data = $this->validated($request, $member);
 
+        if ($member->id === $request->user()->id && ! empty($data['product_scope'])) {
+            throw ValidationException::withMessages(['product_scope' => 'You cannot restrict yourself.']);
+        }
         if ($member->id === $request->user()->id && ($data['role'] !== $member->role->value || ! ($data['is_active'] ?? true))) {
             throw ValidationException::withMessages(['role' => 'You cannot change your own role or deactivate yourself.']);
         }
@@ -87,6 +95,7 @@ class TeamController extends Controller
             'email' => $data['email'],
             'role' => $data['role'],
             'permissions' => $data['role'] === UserRole::SuperAdmin->value ? null : array_values($data['permissions'] ?? []),
+            'product_scope' => $data['product_scope'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
         AuditLogger::log('team.updated', $member, ['role' => $member->role->value, 'permissions' => $member->permissions, 'is_active' => $member->is_active]);
@@ -121,9 +130,21 @@ class TeamController extends Controller
             'role' => ['required', Rule::in([UserRole::Admin->value, UserRole::SuperAdmin->value])],
             'permissions' => ['array'],
             'permissions.*' => [Rule::enum(Module::class)],
+            'product_scope' => ['nullable', Rule::in([TariffProduct::C2b->value])],
             'is_active' => ['boolean'],
             'password' => [$member ? 'prohibited' : 'nullable', 'string', 'min:12', 'max:255'],
         ]);
+
+        // A partner restricted to one product is never a super admin and only gets the partner modules.
+        if (! empty($data['product_scope'])) {
+            if ($data['role'] !== UserRole::Admin->value) {
+                throw ValidationException::withMessages(['product_scope' => 'Only an admin can be restricted to a product.']);
+            }
+            $extra = array_diff($data['permissions'] ?? [], array_map(fn (Module $m) => $m->value, Module::forPartners()));
+            if ($extra !== []) {
+                throw ValidationException::withMessages(['permissions' => 'A C2B partner cannot be given: '.implode(', ', $extra).'.']);
+            }
+        }
 
         $actor = $request->user();
         // Only super admins create, edit or promote super admins.

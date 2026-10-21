@@ -618,6 +618,7 @@ export default function SettlementShow({
                                     {settlement.merchant.name}
                                 </Link>
                             )}
+                            <span>· {settlement.product_label}</span>
                             {settlement.creator && (
                                 <span>· created by {settlement.creator}</span>
                             )}

@@ -1,5 +1,12 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeftRight, Link2Off, Plus, Search, X } from 'lucide-react';
+import {
+    ArrowLeftRight,
+    Download,
+    Link2Off,
+    Plus,
+    Search,
+    X,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/admin/empty-state';
 import {
@@ -148,6 +155,20 @@ export default function OperationsIndex({
                     description="Every operation from every provider file. Acquirer and gateway rows are paired by reconciliation."
                     actions={
                         <>
+                            <Button variant="outline" asChild>
+                                <a
+                                    href={admin.operations.export.url({
+                                        query: Object.fromEntries(
+                                            Object.entries(filters).filter(
+                                                ([, v]) => v,
+                                            ),
+                                        ),
+                                    })}
+                                >
+                                    <Download />
+                                    Export CSV
+                                </a>
+                            </Button>
                             <Button
                                 variant={unmatched ? 'default' : 'outline'}
                                 onClick={() =>
@@ -216,7 +237,7 @@ export default function OperationsIndex({
                                 <Input
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
-                                    placeholder="ARN, payment ID, pair ID, MID, e-mail, BIN or last 4…"
+                                    placeholder="ARN, payment ID, MID, e-mail, BIN, last 4 or card masks 535765%2604 492182%1171…"
                                     className="pl-9"
                                 />
                             </div>

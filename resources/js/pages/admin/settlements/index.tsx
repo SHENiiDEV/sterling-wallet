@@ -46,6 +46,7 @@ type Props = {
     pending: {
         public_id: string;
         name: string;
+        product: string;
         currency: string;
         reports: number;
         payout: number;
@@ -53,6 +54,7 @@ type Props = {
     pendingClients: {
         id: number;
         name: string;
+        product: string;
         currency: string;
         reports: number;
         companies: number;
@@ -60,12 +62,16 @@ type Props = {
     }[];
     clients: { id: number; name: string }[];
     payoutCurrencies: Option[];
+    products: Option[];
     filters: { status?: string; merchant?: string };
     statuses: Option[];
     merchants: { public_id: string; name: string }[];
 };
 
-type Target = { client: number } | { merchant: string };
+type Target = (
+    | { client: number; merchant?: undefined }
+    | { merchant: string; client?: undefined }
+) & { product?: string };
 
 const ALL = 'all';
 
@@ -73,12 +79,14 @@ function NewSettlementDialog({
     merchants,
     clients,
     payoutCurrencies,
+    products,
     preset,
     onClose,
 }: {
     merchants: Props['merchants'];
     clients: Props['clients'];
     payoutCurrencies: Props['payoutCurrencies'];
+    products: Props['products'];
     preset: Target | null;
     onClose: () => void;
 }) {
@@ -100,6 +108,7 @@ function NewSettlementDialog({
                 ? preset.merchant
                 : (merchants[0]?.public_id ?? ''),
         payout_currency: payoutCurrencies[0]?.value ?? 'USDC',
+        product: preset?.product ?? 'card',
     });
 
     return (
@@ -111,6 +120,7 @@ function NewSettlementDialog({
                         e.preventDefault();
                         form.transform((data) => ({
                             payout_currency: data.payout_currency,
+                            product: data.product,
                             ...(kind === 'client'
                                 ? { client: data.client }
                                 : { merchant: data.merchant }),
@@ -189,6 +199,30 @@ function NewSettlementDialog({
                             </Select>
                         </Field>
                     )}
+                    {products.length > 0 && (
+                        <Field label="Product" error={form.errors.product}>
+                            <Select
+                                value={form.data.product}
+                                onValueChange={(v) =>
+                                    form.setData('product', v)
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {products.map((p) => (
+                                        <SelectItem
+                                            key={p.value}
+                                            value={p.value}
+                                        >
+                                            {p.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                    )}
                     <Field
                         label="Pay out in"
                         error={form.errors.payout_currency}
@@ -242,6 +276,7 @@ export default function SettlementsIndex({
     pendingClients,
     clients,
     payoutCurrencies,
+    products,
     filters,
     statuses,
     merchants,
@@ -286,7 +321,7 @@ export default function SettlementsIndex({
                             <TableBody>
                                 {pendingClients.map((row) => (
                                     <TableRow
-                                        key={`c${row.id}-${row.currency}`}
+                                        key={`c${row.id}-${row.product}-${row.currency}`}
                                     >
                                         <TableCell className="font-medium">
                                             <span className="inline-flex items-center gap-2">
@@ -301,6 +336,13 @@ export default function SettlementsIndex({
                                             </span>
                                         </TableCell>
                                         <TableCell>
+                                            {products.length > 0 && (
+                                                <span className="mr-2 text-xs text-muted-foreground">
+                                                    {row.product === 'c2b'
+                                                        ? 'C2B'
+                                                        : 'Card'}
+                                                </span>
+                                            )}
                                             <CurrencyBadge
                                                 currency={row.currency}
                                             />
@@ -321,6 +363,7 @@ export default function SettlementsIndex({
                                                 onClick={() =>
                                                     setCreating({
                                                         client: row.id,
+                                                        product: row.product,
                                                     })
                                                 }
                                             >
@@ -331,12 +374,19 @@ export default function SettlementsIndex({
                                 ))}
                                 {pending.map((row) => (
                                     <TableRow
-                                        key={`${row.public_id}-${row.currency}`}
+                                        key={`${row.public_id}-${row.product}-${row.currency}`}
                                     >
                                         <TableCell className="font-medium">
                                             {row.name}
                                         </TableCell>
                                         <TableCell>
+                                            {products.length > 0 && (
+                                                <span className="mr-2 text-xs text-muted-foreground">
+                                                    {row.product === 'c2b'
+                                                        ? 'C2B'
+                                                        : 'Card'}
+                                                </span>
+                                            )}
                                             <CurrencyBadge
                                                 currency={row.currency}
                                             />
@@ -500,6 +550,7 @@ export default function SettlementsIndex({
                     merchants={merchants}
                     clients={clients}
                     payoutCurrencies={payoutCurrencies}
+                    products={products}
                     preset={creating}
                     onClose={() => setCreating(false)}
                 />

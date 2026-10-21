@@ -26,6 +26,7 @@ use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
 use App\Models\Settlement;
+use App\Support\ProductScope;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -108,7 +109,15 @@ class MerchantController extends Controller
 
     public function store(MerchantRequest $request): RedirectResponse
     {
-        $merchant = Merchant::query()->create($request->validated());
+        $data = $request->validated();
+        if (ProductScope::current() !== null) {
+            // Card terms are not the partner's to set: start from the neutral defaults.
+            $data += [
+                ...config('sterling.merchant_defaults'),
+                ...array_fill_keys([...Merchant::FIXED_FIELDS, 'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'fee_acq_eu_percent', 'fee_acq_non_eu_percent'], 0),
+            ];
+        }
+        $merchant = Merchant::query()->create($data);
         $merchant->syncTariffs($request->tariffs());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Merchant created. Add its MIDs next.']);
@@ -162,7 +171,7 @@ class MerchantController extends Controller
                 ]),
             'acquirerStatuses' => AcquirerStatus::options(),
             'integrationStatuses' => IntegrationStatus::options(),
-            'documents' => $merchant->documents()->with(['status', 'owner'])->latest('updated_at')->limit(5)->get()
+            'documents' => ProductScope::current() !== null ? [] : $merchant->documents()->with(['status', 'owner'])->latest('updated_at')->limit(5)->get()
                 ->map(fn ($document) => DocumentResource::make($document)->resolve()),
             'bankProviders' => Provider::query()->ofType(ProviderType::Bank)->orderBy('name')->get(['id', 'name', 'is_active']),
             'gateProviders' => Provider::query()->ofType(ProviderType::Gate)->orderBy('name')->get(['id', 'name', 'is_active']),
@@ -187,7 +196,7 @@ class MerchantController extends Controller
                     'sales_count' => $r->sales_count,
                     'turnover' => $r->turnover,
                     'net_payout' => $r->net_payout,
-                    'net_profit' => $r->net_profit,
+                    'net_profit' => ProductScope::current() !== null ? null : $r->net_profit,
                     'has_pdf' => $r->generated_pdf_path !== null,
                 ]),
             'settlements' => Settlement::query()
@@ -241,6 +250,9 @@ class MerchantController extends Controller
      */
     public function destroy(Request $request, Merchant $merchant, MerchantPurger $purger): RedirectResponse
     {
+        // Deleting wipes everything of the merchant, card data included.
+        abort_if(ProductScope::current() !== null, 403);
+
         $request->validate([
             'confirm' => ['required', 'string', function (string $attribute, mixed $value, Closure $fail) use ($merchant) {
                 if (trim((string) $value) !== trim($merchant->name)) {

@@ -45,6 +45,7 @@ type Member = {
     role: 'super_admin' | 'admin';
     role_label: string;
     permissions: string[];
+    product_scope: string | null;
     is_active: boolean;
     two_factor: boolean;
     last_login_at: string | null;
@@ -54,6 +55,7 @@ type Member = {
 type Props = {
     members: Member[];
     modules: Option[];
+    partnerModules: string[];
     roles: Option[];
     canManageSuperAdmins: boolean;
 };
@@ -61,12 +63,14 @@ type Props = {
 function MemberDialog({
     member,
     modules,
+    partnerModules,
     roles,
     canManageSuperAdmins,
     onClose,
 }: {
     member: Member | null;
     modules: Option[];
+    partnerModules: string[];
     roles: Option[];
     canManageSuperAdmins: boolean;
     onClose: () => void;
@@ -76,10 +80,15 @@ function MemberDialog({
         email: member?.email ?? '',
         role: member?.role ?? 'admin',
         permissions: member?.permissions ?? [],
+        product_scope: member?.product_scope ?? '',
         is_active: member?.is_active ?? true,
     });
     const { data, setData, errors } = form;
     const superAdmin = data.role === 'super_admin';
+    const partner = data.product_scope === 'c2b';
+    const shownModules = partner
+        ? modules.filter((m) => partnerModules.includes(m.value))
+        : modules;
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -180,6 +189,35 @@ function MemberDialog({
                             </label>
                         )}
                     </div>
+                    {!superAdmin && (
+                        <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+                            <Checkbox
+                                checked={partner}
+                                onCheckedChange={(on) => {
+                                    setData((d) => ({
+                                        ...d,
+                                        product_scope: on === true ? 'c2b' : '',
+                                        permissions:
+                                            on === true
+                                                ? d.permissions.filter((p) =>
+                                                      partnerModules.includes(
+                                                          p,
+                                                      ),
+                                                  )
+                                                : d.permissions,
+                                    }));
+                                }}
+                            />
+                            <span>
+                                <span className="font-medium">C2B partner</span>
+                                <span className="block text-xs text-muted-foreground">
+                                    Sees only C2B merchants, MIDs, operations,
+                                    reports and settlements — no card data, no
+                                    provider costs or profit.
+                                </span>
+                            </span>
+                        </label>
+                    )}
                     <Field label="Module access" error={errors.permissions}>
                         {superAdmin ? (
                             <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -188,7 +226,7 @@ function MemberDialog({
                             </p>
                         ) : (
                             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
-                                {modules.map((m) => (
+                                {shownModules.map((m) => (
                                     <label
                                         key={m.value}
                                         className="flex items-center gap-2 text-sm"
@@ -285,6 +323,7 @@ function CredentialsDialog({
 export default function TeamIndex({
     members,
     modules,
+    partnerModules,
     roles,
     canManageSuperAdmins,
 }: Props) {
@@ -364,9 +403,11 @@ export default function TeamIndex({
                                     <TableCell>
                                         <StatusBadge
                                             name={
-                                                m.is_active
-                                                    ? m.role_label
-                                                    : 'Deactivated'
+                                                !m.is_active
+                                                    ? 'Deactivated'
+                                                    : m.product_scope === 'c2b'
+                                                      ? 'C2B partner'
+                                                      : m.role_label
                                             }
                                             color={
                                                 !m.is_active
@@ -448,6 +489,7 @@ export default function TeamIndex({
                 <MemberDialog
                     member={editing === 'new' ? null : editing}
                     modules={modules}
+                    partnerModules={partnerModules}
                     roles={roles}
                     canManageSuperAdmins={canManageSuperAdmins}
                     onClose={() => setEditing(null)}

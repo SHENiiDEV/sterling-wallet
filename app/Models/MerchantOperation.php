@@ -5,7 +5,10 @@ namespace App\Models;
 use App\Casts\DateOnly;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -43,6 +46,8 @@ use Illuminate\Support\Carbon;
 ])]
 class MerchantOperation extends Model
 {
+    use RestrictedToProduct;
+
     protected function casts(): array
     {
         return [
@@ -133,5 +138,10 @@ class MerchantOperation extends Model
     public function matchedOperation(): BelongsTo
     {
         return $this->belongsTo(MerchantOperation::class, 'matched_operation_id');
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->whereHas('provider');
     }
 }
