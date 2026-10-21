@@ -52,6 +52,7 @@ class Client extends Model
 
     protected static function restrictToProduct(Builder $query, TariffProduct $product): void
     {
-        $query->where(fn (Builder $q) => $q->whereDoesntHave('companies')->orWhereHas('merchants'));
+        // A client with a C2B merchant, or one that has no merchant at all yet (just created).
+        $query->where(fn (Builder $q) => $q->whereHas('merchants')->orWhereDoesntHave('merchants', fn (Builder $m) => $m->withoutGlobalScope('product')));
     }
 }
