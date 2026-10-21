@@ -41,12 +41,20 @@ async function signedGet(input, pathWithQuery) {
     const ts = String(
         settings.ts_unit === 'ms' ? Date.now() : Math.floor(Date.now() / 1000),
     );
+    // A pasted key often carries a space or a line break: it would change the signature.
+    const token = String(input.username).trim();
+    const secret = String(input.password).trim();
+    const signed = ts + 'GET' + pathWithQuery;
     const sig = crypto
-        .createHmac('sha256', input.password)
-        .update(ts + 'GET' + pathWithQuery)
+        .createHmac('sha256', secret)
+        .update(signed)
         .digest('hex');
 
     log(`GET ${base}${pathWithQuery}`);
+    log(
+        `Signed string: ${signed} · token ${token.length} chars (${token.slice(0, 3)}…), secret ${secret.length} chars` +
+            (secret !== String(input.password) ? ' (whitespace trimmed)' : ''),
+    );
     const response = await fetch(base + pathWithQuery, {
         // A redirect changes the signed URL; never forward credentials to it.
         redirect: 'manual',
@@ -55,7 +63,7 @@ async function signedGet(input, pathWithQuery) {
             'user-agent': 'SterlingPay-Wallet/1.0',
             'x-app-access-ts': ts,
             'x-app-access-sig': sig,
-            'x-app-access-token': input.username,
+            'x-app-access-token': token,
         },
         signal: AbortSignal.timeout(30000),
     });
