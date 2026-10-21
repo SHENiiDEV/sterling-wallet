@@ -110,8 +110,8 @@ class DashboardController extends Controller
         $product = $user->productScope();
 
         $reports = fn () => DailyReportTask::query()->toBase()
-            ->where('status', ReportStatus::Completed)
-            ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()]);
+            ->where('daily_report_tasks.status', ReportStatus::Completed)
+            ->whereBetween('daily_report_tasks.report_date', [$from->toDateString(), $to->toDateString()]);
 
         $unsettled = DailyReportTask::query()->toBase()
             ->where('status', ReportStatus::Completed)
@@ -135,7 +135,7 @@ class DashboardController extends Controller
             'baseCurrency' => config('sterling.base_currency'),
             'merchants' => $reports()
                 ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
-                ->selectRaw('merchants.public_id, merchants.name, daily_report_tasks.currency, sum(turnover) as turnover, sum(total_merchant_fee + conversion_fee) as fees')
+                ->selectRaw('merchants.public_id, merchants.name, daily_report_tasks.currency, sum(daily_report_tasks.turnover) as turnover, sum(daily_report_tasks.total_merchant_fee + daily_report_tasks.conversion_fee) as fees')
                 ->groupBy('merchants.public_id', 'merchants.name', 'daily_report_tasks.currency')
                 ->orderByDesc('turnover')->limit(10)->get()
                 ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'currency' => $r->currency, 'turnover' => round((float) $r->turnover, 2), 'fees' => round((float) $r->fees, 2)]),
