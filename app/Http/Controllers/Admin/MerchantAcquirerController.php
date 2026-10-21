@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\AcquirerStatus;
 use App\Enums\IntegrationStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
 use App\Models\MerchantAcquirer;
 use App\Services\AuditLogger;
+use App\Support\ProductScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -55,7 +57,7 @@ class MerchantAcquirerController extends Controller
         return $request->validate([
             'provider_id' => [
                 'required',
-                Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value),
+                Rule::exists('providers', 'id')->where('type', ProviderType::Bank->value)->when(ProductScope::current(), fn ($rule, TariffProduct $p) => $rule->where('product', $p->value)),
                 Rule::unique('merchant_acquirers', 'provider_id')->where('merchant_id', $merchant->id)->ignore($acquirer?->id),
             ],
             'status' => ['required', Rule::enum(AcquirerStatus::class)],

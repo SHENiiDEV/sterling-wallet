@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Merchant;
 use App\Models\MerchantTariff;
+use App\Support\ProductScope;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Arr;
@@ -18,6 +19,9 @@ class MerchantResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // A product-restricted user (C2B partner) gets no card terms at all.
+        $restricted = ProductScope::current() !== null;
+
         return [
             'id' => $this->id,
             'public_id' => $this->public_id,
@@ -30,16 +34,16 @@ class MerchantResource extends JsonResource
             'company' => $this->whenLoaded('company', fn () => $this->company ? ['id' => $this->company->id, 'name' => $this->company->name] : null),
             'crypto_provider_id' => $this->crypto_provider_id,
             'crypto_provider' => $this->whenLoaded('cryptoProvider', fn () => $this->cryptoProvider?->name),
-            ...Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap']),
-            'settlement_terms' => $this->settlement_terms,
+            ...($restricted ? [] : Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap'])),
+            'settlement_terms' => $restricted ? null : $this->settlement_terms,
             'tariffs' => $this->whenLoaded('tariffs', fn () => (object) $this->tariffs->mapWithKeys(fn ($t) => [$t->product->value => [...$t->only(MerchantTariff::FIELDS), 'label' => $t->product->label()]])->all()),
-            'rolling_reserve_days' => $this->rolling_reserve_days,
+            'rolling_reserve_days' => $restricted ? null : $this->rolling_reserve_days,
             'invoice_email' => $this->invoice_email,
             'mcc' => $this->mcc,
             'onboarding_status' => $this->onboarding_status,
             'notes' => $this->notes,
             'mids' => $this->whenLoaded('mids', fn () => MerchantMidResource::collection($this->mids)->resolve()),
-            'missing_tariff' => $this->missingTariffFields(),
+            'missing_tariff' => $restricted ? [] : $this->missingTariffFields(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

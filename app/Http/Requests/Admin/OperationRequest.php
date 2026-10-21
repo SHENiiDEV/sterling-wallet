@@ -4,8 +4,11 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\Currency;
 use App\Enums\OperationType;
+use App\Enums\TariffProduct;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
+use App\Models\Provider;
+use App\Support\ProductScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -30,8 +33,8 @@ class OperationRequest extends FormRequest
         $text = fn (int $max) => ['nullable', 'string', 'max:'.$max];
 
         return [
-            'merchant_mid_id' => ['required', Rule::exists('merchant_mids', 'id')],
-            'provider_id' => ['required', Rule::exists('providers', 'id')],
+            'merchant_mid_id' => ['required', Rule::exists('merchant_mids', 'id')->when(ProductScope::current(), fn ($rule) => $rule->using(fn ($query) => $query->whereIn('bank_provider_id', Provider::query()->select('id'))))],
+            'provider_id' => ['required', Rule::exists('providers', 'id')->when(ProductScope::current(), fn ($rule, TariffProduct $p) => $rule->where('product', $p->value))],
             'payment_id' => ['required', 'string', 'max:128'],
             'reference' => $text(128),
             'sp_id' => $text(128),

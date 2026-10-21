@@ -3,6 +3,7 @@
 namespace App\Settlements;
 
 use App\Enums\ReserveEntryType;
+use App\Enums\TariffProduct;
 use App\Models\DailyReportTask;
 use App\Models\ReserveLedgerEntry;
 use Brick\Math\BigDecimal;
@@ -60,7 +61,7 @@ class ReserveReleaseService
                     'note' => 'Held for report '.($task?->report_date->toDateString() ?? '#'.$taskId),
                 ]);
 
-                $settlement = $this->settlements->openDraft($hold->merchantMid->merchant);
+                $settlement = $this->settlements->openDraft($hold->merchantMid->merchant, $hold->merchantMid->bankProvider?->product ?? TariffProduct::Card);
                 $this->settlements->addRelease($settlement, $release);
                 $this->settlements->recalculate($settlement);
 

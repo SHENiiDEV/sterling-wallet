@@ -4,7 +4,10 @@ namespace App\Models;
 
 use App\Casts\DateOnly;
 use App\Enums\ReserveEntryType;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +20,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['merchant_id', 'merchant_mid_id', 'daily_report_task_id', 'currency', 'type', 'amount', 'release_on', 'note', 'created_by'])]
 class ReserveLedgerEntry extends Model
 {
+    use RestrictedToProduct;
+
     protected function casts(): array
     {
         return [
@@ -40,5 +45,10 @@ class ReserveLedgerEntry extends Model
     public function dailyReport(): BelongsTo
     {
         return $this->belongsTo(DailyReportTask::class, 'daily_report_task_id');
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->whereHas('merchantMid');
     }
 }

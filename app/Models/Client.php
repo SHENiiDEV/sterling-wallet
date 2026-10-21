@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
@@ -21,6 +24,8 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 #[Fillable(['name', 'invoice_name', 'invoice_address', 'invoice_email', 'notes'])]
 class Client extends Model
 {
+    use RestrictedToProduct;
+
     /**
      * The legal name printed on reports and e-mails; `name` is for the admin only.
      */
@@ -43,5 +48,10 @@ class Client extends Model
     public function merchants(): HasManyThrough
     {
         return $this->hasManyThrough(Merchant::class, Company::class);
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where(fn (Builder $q) => $q->whereDoesntHave('companies')->orWhereHas('merchants'));
     }
 }

@@ -6,8 +6,11 @@ use App\Casts\DateOnly;
 use App\Enums\Currency;
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Database\Factories\MerchantMidFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,7 +41,7 @@ use Illuminate\Support\Carbon;
 class MerchantMid extends Model
 {
     /** @use HasFactory<MerchantMidFactory> */
-    use HasFactory;
+    use HasFactory, RestrictedToProduct;
 
     protected function casts(): array
     {
@@ -136,5 +139,10 @@ class MerchantMid extends Model
     public function reserveBalance(): string
     {
         return (string) $this->reserveEntries()->sum('amount');
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->whereHas('bankProvider');
     }
 }

@@ -4,8 +4,10 @@ namespace App\Models;
 
 use App\Enums\MerchantStatus;
 use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Database\Factories\MerchantFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,7 +37,7 @@ use Illuminate\Support\Str;
 class Merchant extends Model
 {
     /** @use HasFactory<MerchantFactory> */
-    use HasFactory;
+    use HasFactory, RestrictedToProduct;
 
     public const PERCENT_FIELDS = [
         'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
@@ -205,5 +207,10 @@ class Merchant extends Model
         }
 
         return $missing;
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where(fn (Builder $q) => $q->whereHas('mids')->orWhereHas('tariffs'));
     }
 }

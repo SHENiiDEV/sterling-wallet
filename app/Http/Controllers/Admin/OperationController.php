@@ -17,6 +17,7 @@ use App\Models\Provider;
 use App\Reports\Generation\Tariff;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Services\AuditLogger;
+use App\Support\ProductScope;
 use BackedEnum;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -269,7 +270,8 @@ class OperationController extends Controller
         return Inertia::render('admin/operations/show', [
             'operation' => OperationResource::make($operation)->resolve(),
             'raw' => $operation->raw ?? (object) [],
-            'fees' => array_filter($operation->only(['eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee']), fn ($v) => $v !== null),
+            // Bank-side fees are our cost: not for a product-restricted partner.
+            'fees' => ProductScope::current() !== null ? [] : array_filter($operation->only(['eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee']), fn ($v) => $v !== null),
             'charges' => $this->charges($operation),
             'pair' => $operation->matchedOperation ? OperationResource::make($operation->matchedOperation)->resolve() : null,
             'mid' => $operation->merchantMid ? [
@@ -293,6 +295,8 @@ class OperationController extends Controller
             return null;
         }
 
+        // The partner sees what the merchant pays, never what the provider charges us.
+        $hideCost = ProductScope::current() !== null;
         $amount = BigDecimal::of($op->amount)->abs();
         $merchantPercent = ($op->merchantMid ? Tariff::forMid($op->merchantMid) : Tariff::merchant($op->merchant))->percentFor($op);
         $providerPercent = Tariff::provider($op->provider)->percentFor($op);
@@ -300,8 +304,8 @@ class OperationController extends Controller
         return [
             'merchant_percent' => (string) $merchantPercent->strippedOfTrailingZeros(),
             'merchant_fee' => (string) $amount->multipliedBy($merchantPercent)->dividedBy(100, 2, RoundingMode::HalfUp),
-            'provider_percent' => (string) $providerPercent->strippedOfTrailingZeros(),
-            'provider_cost' => (string) $amount->multipliedBy($providerPercent)->dividedBy(100, 2, RoundingMode::HalfUp),
+            'provider_percent' => $hideCost ? null : (string) $providerPercent->strippedOfTrailingZeros(),
+            'provider_cost' => $hideCost ? null : (string) $amount->multipliedBy($providerPercent)->dividedBy(100, 2, RoundingMode::HalfUp),
         ];
     }
 

@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, Calculator } from 'lucide-react';
 import { AffixInput, Field, FormSection } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
@@ -63,6 +63,8 @@ export default function MerchantForm({
     products,
     defaults,
 }: Props) {
+    // A C2B partner sets only the basics and the C2B tariff.
+    const restricted = usePage().props.auth.product_scope !== null;
     const form = useForm({
         name: merchant?.name ?? '',
         website: merchant?.website ?? '',
@@ -504,161 +506,177 @@ export default function MerchantForm({
                             </label>
                         </FormSection>
 
-                        <FormSection
-                            title="Card tariff"
-                            description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active. N/A: the scheme is not offered."
-                        >
-                            {rate('fee_visa_eu_percent', 'Visa EU')}
-                            {rate('fee_visa_non_eu_percent', 'Visa non-EU')}
-                            {rate('fee_mastercard_eu_percent', 'Mastercard EU')}
-                            {rate(
-                                'fee_mastercard_non_eu_percent',
-                                'Mastercard non-EU',
-                            )}
-                            {input(
-                                'fee_wallet_percent',
-                                'Apple Pay / Google Pay',
-                                '%',
-                                'Added to the card rate on wallet payments',
-                            )}
-                        </FormSection>
+                        {!restricted && (
+                            <>
+                                <FormSection
+                                    title="Card tariff"
+                                    description="Our fee on successful volume, by card brand and issuer region. Required once the merchant is active. N/A: the scheme is not offered."
+                                >
+                                    {rate('fee_visa_eu_percent', 'Visa EU')}
+                                    {rate(
+                                        'fee_visa_non_eu_percent',
+                                        'Visa non-EU',
+                                    )}
+                                    {rate(
+                                        'fee_mastercard_eu_percent',
+                                        'Mastercard EU',
+                                    )}
+                                    {rate(
+                                        'fee_mastercard_non_eu_percent',
+                                        'Mastercard non-EU',
+                                    )}
+                                    {input(
+                                        'fee_wallet_percent',
+                                        'Apple Pay / Google Pay',
+                                        '%',
+                                        'Added to the card rate on wallet payments',
+                                    )}
+                                </FormSection>
 
-                        <FormSection
-                            title="Card per-operation fees"
-                            description="Flat fees, charged in the currency of the MID the operation ran on."
-                        >
-                            {input(
-                                'fee_success_fixed',
-                                'Success fee',
-                                'per op',
-                            )}
-                            {input(
-                                'fee_decline_fixed',
-                                'Decline fee',
-                                'per op',
-                            )}
-                            {input('fee_refund_fixed', 'Refund fee', 'per op')}
-                            {input(
-                                'fee_chargeback_fixed',
-                                'Chargeback fee',
-                                'per op',
-                            )}
-                            {input(
-                                'fee_collab_fixed',
-                                'Collab',
-                                'per op',
-                                'Optional; leave empty if not agreed',
-                            )}
-                        </FormSection>
+                                <FormSection
+                                    title="Card per-operation fees"
+                                    description="Flat fees, charged in the currency of the MID the operation ran on."
+                                >
+                                    {input(
+                                        'fee_success_fixed',
+                                        'Success fee',
+                                        'per op',
+                                    )}
+                                    {input(
+                                        'fee_decline_fixed',
+                                        'Decline fee',
+                                        'per op',
+                                    )}
+                                    {input(
+                                        'fee_refund_fixed',
+                                        'Refund fee',
+                                        'per op',
+                                    )}
+                                    {input(
+                                        'fee_chargeback_fixed',
+                                        'Chargeback fee',
+                                        'per op',
+                                    )}
+                                    {input(
+                                        'fee_collab_fixed',
+                                        'Collab',
+                                        'per op',
+                                        'Optional; leave empty if not agreed',
+                                    )}
+                                </FormSection>
+                            </>
+                        )}
 
                         {products.map(productSection)}
 
-                        <FormSection
-                            title="Reserve & payout"
-                            description="Reserve is held per MID up to that MID's limit and is the same for every product. Payouts are converted to USDC."
-                        >
-                            {rate(
-                                'rolling_reserve_percent',
-                                'Rolling reserve',
-                                'N/A = no reserve is held',
-                            )}
-                            <Field
-                                label="Reserve held for"
-                                htmlFor="rolling_reserve_days"
-                                error={errors.rolling_reserve_days}
+                        {!restricted && (
+                            <FormSection
+                                title="Reserve & payout"
+                                description="Reserve is held per MID up to that MID's limit and is the same for every product. Payouts are converted to USDC."
                             >
-                                <AffixInput
-                                    id="rolling_reserve_days"
-                                    suffix="days"
-                                    inputMode="numeric"
-                                    value={data.rolling_reserve_days}
-                                    onChange={(e) =>
-                                        setData(
-                                            'rolling_reserve_days',
-                                            e.target.value,
-                                        )
-                                    }
-                                />
-                            </Field>
-                            {input(
-                                'rolling_reserve_cap',
-                                'Max reserve balance',
-                                'cap',
-                                'Once held, nothing more is reserved and the rest is paid out. Empty = no cap',
-                            )}
-                            {input(
-                                'fee_fiat_to_crypto_percent',
-                                'Conversion fee (cards)',
-                                '%',
-                                'Charged on the net payout',
-                            )}
-                            {input(
-                                'fee_settlement_fx_percent',
-                                'Settlement FX markup',
-                                '%',
-                                'On MIDs outside EUR, which the acquirer converts',
-                            )}
-                            {input(
-                                'fee_settlement_fixed',
-                                'Settlement charge',
-                                'per settlement',
-                                'Deducted from the payout when a settlement is created',
-                            )}
-                            {input(
-                                'min_settlement_amount',
-                                'Minimum settlement',
-                                'min',
-                                'For reference, not enforced',
-                            )}
-                            <Field
-                                label="Settlement terms"
-                                htmlFor="settlement_terms"
-                                error={errors.settlement_terms}
-                                hint="Printed on the daily report, e.g. Daily, T+3 Business Days"
-                            >
-                                <Input
-                                    id="settlement_terms"
-                                    value={data.settlement_terms}
-                                    onChange={(e) =>
-                                        setData(
-                                            'settlement_terms',
-                                            e.target.value,
-                                        )
-                                    }
-                                />
-                            </Field>
-                            <Field
-                                label="Crypto provider"
-                                error={errors.crypto_provider_id}
-                            >
-                                <Select
-                                    value={data.crypto_provider_id || NONE}
-                                    onValueChange={(value) =>
-                                        setData(
-                                            'crypto_provider_id',
-                                            value === NONE ? '' : value,
-                                        )
-                                    }
+                                {rate(
+                                    'rolling_reserve_percent',
+                                    'Rolling reserve',
+                                    'N/A = no reserve is held',
+                                )}
+                                <Field
+                                    label="Reserve held for"
+                                    htmlFor="rolling_reserve_days"
+                                    error={errors.rolling_reserve_days}
                                 >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={NONE}>
-                                            Not set
-                                        </SelectItem>
-                                        {cryptoProviders.map((provider) => (
-                                            <SelectItem
-                                                key={provider.id}
-                                                value={String(provider.id)}
-                                            >
-                                                {provider.name}
+                                    <AffixInput
+                                        id="rolling_reserve_days"
+                                        suffix="days"
+                                        inputMode="numeric"
+                                        value={data.rolling_reserve_days}
+                                        onChange={(e) =>
+                                            setData(
+                                                'rolling_reserve_days',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                </Field>
+                                {input(
+                                    'rolling_reserve_cap',
+                                    'Max reserve balance',
+                                    'cap',
+                                    'Once held, nothing more is reserved and the rest is paid out. Empty = no cap',
+                                )}
+                                {input(
+                                    'fee_fiat_to_crypto_percent',
+                                    'Conversion fee (cards)',
+                                    '%',
+                                    'Charged on the net payout',
+                                )}
+                                {input(
+                                    'fee_settlement_fx_percent',
+                                    'Settlement FX markup',
+                                    '%',
+                                    'On MIDs outside EUR, which the acquirer converts',
+                                )}
+                                {input(
+                                    'fee_settlement_fixed',
+                                    'Settlement charge',
+                                    'per settlement',
+                                    'Deducted from the payout when a settlement is created',
+                                )}
+                                {input(
+                                    'min_settlement_amount',
+                                    'Minimum settlement',
+                                    'min',
+                                    'For reference, not enforced',
+                                )}
+                                <Field
+                                    label="Settlement terms"
+                                    htmlFor="settlement_terms"
+                                    error={errors.settlement_terms}
+                                    hint="Printed on the daily report, e.g. Daily, T+3 Business Days"
+                                >
+                                    <Input
+                                        id="settlement_terms"
+                                        value={data.settlement_terms}
+                                        onChange={(e) =>
+                                            setData(
+                                                'settlement_terms',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                </Field>
+                                <Field
+                                    label="Crypto provider"
+                                    error={errors.crypto_provider_id}
+                                >
+                                    <Select
+                                        value={data.crypto_provider_id || NONE}
+                                        onValueChange={(value) =>
+                                            setData(
+                                                'crypto_provider_id',
+                                                value === NONE ? '' : value,
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={NONE}>
+                                                Not set
                                             </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </Field>
-                        </FormSection>
+                                            {cryptoProviders.map((provider) => (
+                                                <SelectItem
+                                                    key={provider.id}
+                                                    value={String(provider.id)}
+                                                >
+                                                    {provider.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </Field>
+                            </FormSection>
+                        )}
 
                         <FormSection title="Notes">
                             <Field
@@ -679,7 +697,7 @@ export default function MerchantForm({
                         </FormSection>
                     </div>
 
-                    <TariffPreview data={data} />
+                    {!restricted && <TariffPreview data={data} />}
 
                     <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur md:-mx-6 md:px-6 xl:col-span-2">
                         <Button variant="outline" asChild>

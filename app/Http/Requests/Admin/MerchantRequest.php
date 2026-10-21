@@ -5,7 +5,9 @@ namespace App\Http\Requests\Admin;
 use App\Enums\MerchantStatus;
 use App\Enums\ProviderType;
 use App\Enums\TariffProduct;
+use App\Models\Company;
 use App\Models\Merchant;
+use App\Support\ProductScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -25,6 +27,24 @@ class MerchantRequest extends FormRequest
     public function rules(): array
     {
         $cardPercent = ['nullable', 'numeric', 'min:0', 'max:100'];
+
+        // A C2B partner never sees or sets card terms; only the C2B tariff is asked for.
+        if (ProductScope::current() !== null) {
+            return [
+                'name' => ['required', 'string', 'max:255'],
+                'website' => ['nullable', 'string', 'max:255'],
+                'company_id' => ['nullable', Rule::exists('companies', 'id')->using(fn ($query) => $query->whereIn('id', Company::query()->select('id')))],
+                'status' => ['required', Rule::enum(MerchantStatus::class)],
+                'is_test' => ['boolean'],
+                'tariffs' => ['required', 'array'],
+                ...$this->tariffRules(),
+                'tariffs.'.ProductScope::current()->value.'.transfer_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+                'invoice_email' => ['nullable', 'email', 'max:255'],
+                'mcc' => ['nullable', 'digits_between:3,4'],
+                'onboarding_status' => ['nullable', 'string', 'max:32'],
+                'notes' => ['nullable', 'string', 'max:5000'],
+            ];
+        }
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -70,6 +90,12 @@ class MerchantRequest extends FormRequest
             return $data;
         }
 
+        if (ProductScope::current() !== null) {
+            unset($data['tariffs']);
+
+            return $data;
+        }
+
         foreach (['eu', 'non_eu'] as $region) {
             $rates = array_filter([$data["fee_visa_{$region}_percent"] ?? null, $data["fee_mastercard_{$region}_percent"] ?? null], fn ($v) => $v !== null && $v !== '');
             $data["fee_acq_{$region}_percent"] = $rates === [] ? 0 : max(array_map('floatval', $rates));
@@ -92,7 +118,8 @@ class MerchantRequest extends FormRequest
         $tariffs = [];
 
         foreach (TariffProduct::separate() as $product) {
-            if (! array_key_exists($product->value, $input)) {
+            // A restricted user can only change the tariff of their own product.
+            if (! array_key_exists($product->value, $input) || (ProductScope::current() !== null && ProductScope::current() !== $product)) {
                 continue;
             }
 
@@ -192,7 +219,7 @@ class MerchantRequest extends FormRequest
     {
         return [
             function (Validator $validator) {
-                if ($this->input('status') !== MerchantStatus::Active->value || $this->boolean('is_test')) {
+                if (ProductScope::current() !== null || $this->input('status') !== MerchantStatus::Active->value || $this->boolean('is_test')) {
                     return;
                 }
 

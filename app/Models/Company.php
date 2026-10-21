@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\TariffProduct;
+use App\Models\Concerns\RestrictedToProduct;
 use Database\Factories\CompanyFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
-    use HasFactory;
+    use HasFactory, RestrictedToProduct;
 
     /**
      * @return BelongsTo<Company, $this>
@@ -108,5 +111,10 @@ class Company extends Model
         }
 
         return $chain;
+    }
+
+    protected static function restrictToProduct(Builder $query, TariffProduct $product): void
+    {
+        $query->where(fn (Builder $q) => $q->whereDoesntHave('merchants')->orWhereHas('merchants'));
     }
 }

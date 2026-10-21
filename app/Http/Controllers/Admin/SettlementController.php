@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\SettlementStatus;
+use App\Enums\TariffProduct;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\DailyReportTask;
@@ -14,6 +15,7 @@ use App\Models\SettlementLine;
 use App\Services\AuditLogger;
 use App\Settlements\SettlementService;
 use App\Settlements\SettlementStatementPdf;
+use App\Support\ProductScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,30 +51,34 @@ class SettlementController extends Controller
         // Merchants with money waiting to be settled.
         $pending = DailyReportTask::query()->toBase()
             ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
+            ->join('merchant_mids', 'merchant_mids.id', '=', 'daily_report_tasks.merchant_mid_id')
+            ->join('providers as bank', 'bank.id', '=', 'merchant_mids.bank_provider_id')
             ->where('daily_report_tasks.status', 'completed')
             ->whereNotIn('daily_report_tasks.id', SettlementLine::query()->select('daily_report_task_id')
                 ->where('type', 'report')->whereNotNull('daily_report_task_id')
                 ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
-            ->selectRaw('merchants.public_id, merchants.name, daily_report_tasks.currency, count(*) as reports, sum(daily_report_tasks.net_payout) as payout')
-            ->groupBy('merchants.public_id', 'merchants.name', 'daily_report_tasks.currency')
+            ->selectRaw('merchants.public_id, merchants.name, bank.product, daily_report_tasks.currency, count(*) as reports, sum(daily_report_tasks.net_payout) as payout')
+            ->groupBy('merchants.public_id', 'merchants.name', 'bank.product', 'daily_report_tasks.currency')
             ->orderBy('merchants.name')
             ->get()
-            ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]);
+            ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'product' => $r->product, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]);
 
         // The same money by client: what one payout to the client would cover.
         $pendingClients = DailyReportTask::query()->toBase()
             ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
             ->join('companies', 'companies.id', '=', 'merchants.company_id')
             ->join('clients', 'clients.id', '=', 'companies.client_id')
+            ->join('merchant_mids', 'merchant_mids.id', '=', 'daily_report_tasks.merchant_mid_id')
+            ->join('providers as bank', 'bank.id', '=', 'merchant_mids.bank_provider_id')
             ->where('daily_report_tasks.status', 'completed')
             ->whereNotIn('daily_report_tasks.id', SettlementLine::query()->select('daily_report_task_id')
                 ->where('type', 'report')->whereNotNull('daily_report_task_id')
                 ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
-            ->selectRaw('clients.id, clients.name, daily_report_tasks.currency, count(*) as reports, count(distinct companies.id) as companies, sum(daily_report_tasks.net_payout) as payout')
-            ->groupBy('clients.id', 'clients.name', 'daily_report_tasks.currency')
+            ->selectRaw('clients.id, clients.name, bank.product, daily_report_tasks.currency, count(*) as reports, count(distinct companies.id) as companies, sum(daily_report_tasks.net_payout) as payout')
+            ->groupBy('clients.id', 'clients.name', 'bank.product', 'daily_report_tasks.currency')
             ->orderBy('clients.name')
             ->get()
-            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $r->name, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'companies' => (int) $r->companies, 'payout' => round((float) $r->payout, 2)]);
+            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $r->name, 'product' => $r->product, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'companies' => (int) $r->companies, 'payout' => round((float) $r->payout, 2)]);
 
         return Inertia::render('admin/settlements/index', [
             'settlements' => $list,
@@ -80,6 +86,7 @@ class SettlementController extends Controller
             'pendingClients' => $pendingClients,
             'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
             'payoutCurrencies' => $this->payoutCurrencies(),
+            'products' => ProductScope::current() === null ? TariffProduct::options() : [],
             'filters' => (object) $filters,
             'statuses' => SettlementStatus::options(),
             'merchants' => Merchant::query()->orderBy('name')->get(['public_id', 'name']),
@@ -92,13 +99,16 @@ class SettlementController extends Controller
             'merchant' => ['nullable', 'required_without:client', 'string', 'exists:merchants,public_id'],
             'client' => ['nullable', 'required_without:merchant', 'integer', 'exists:clients,id'],
             'payout_currency' => ['nullable', Rule::in(array_keys(config('sterling.payout_currencies')))],
+            'product' => ['nullable', Rule::enum(TariffProduct::class)],
         ]);
+        // A restricted user cannot pick another product.
+        $product = ProductScope::current() ?? TariffProduct::tryFrom($data['product'] ?? '') ?? TariffProduct::Card;
 
         if (! empty($data['client'])) {
-            $settlement = $this->settlements->createClientDraft(Client::query()->findOrFail($data['client']), $request->user(), $data['payout_currency'] ?? null);
+            $settlement = $this->settlements->createClientDraft(Client::query()->findOrFail($data['client']), $request->user(), $data['payout_currency'] ?? null, product: $product);
         } else {
             $merchant = Merchant::query()->where('public_id', $data['merchant'])->firstOrFail();
-            $settlement = $this->settlements->createDraft($merchant, $request->user(), payoutCurrency: $data['payout_currency'] ?? null);
+            $settlement = $this->settlements->createDraft($merchant, $request->user(), payoutCurrency: $data['payout_currency'] ?? null, product: $product);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Draft {$settlement->number} created with {$settlement->lines()->count()} line(s)."]);
@@ -299,6 +309,8 @@ class SettlementController extends Controller
             'status_label' => $s->status->label(),
             'merchant' => ['public_id' => $s->merchant->public_id, 'name' => $s->merchant->name],
             'client' => $s->client ? ['id' => $s->client->id, 'name' => $s->client->name] : null,
+            'product' => $s->product->value,
+            'product_label' => $s->product->label(),
             'payout_currency' => $s->payout_currency,
             'total_payout' => $s->total_payout,
             'lines_count' => $s->lines_count ?? $s->lines()->count(),

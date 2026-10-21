@@ -36,12 +36,12 @@ type Report = {
     refunds_amount: string;
     chargebacks_amount: string;
     total_merchant_fee: string;
-    total_provider_cost: string;
+    total_provider_cost: string | null;
     reserve_amount: string;
     net_volume: string;
     conversion_fee: string;
     net_payout: string;
-    net_profit: string;
+    net_profit: string | null;
     turnover_base: string | null;
     net_profit_base: string | null;
     summary: {
@@ -312,30 +312,34 @@ export default function ReportShow({
                                     ),
                                 )}
                             />
-                            <Line
-                                label="Acquirer cost"
-                                value={`− ${m(report.summary?.provider_cost?.bank)}`}
-                            />
-                            <Line
-                                label="Gateway cost"
-                                value={`− ${m(report.summary?.provider_cost?.gate)}`}
-                            />
-                            <Line
-                                label="Crypto cost"
-                                value={`− ${m(report.summary?.provider_cost?.crypto)}`}
-                            />
-                            <Line
-                                label="Net profit"
-                                value={m(report.net_profit)}
-                                strong
-                            />
-                            <Line
-                                label={`In ${report.base_currency} (rate ${report.fx_rate ? Number(report.fx_rate) : '—'})`}
-                                value={formatMoney(
-                                    report.net_profit_base ?? 0,
-                                    report.base_currency,
-                                )}
-                            />
+                            {report.net_profit !== null && (
+                                <>
+                                    <Line
+                                        label="Acquirer cost"
+                                        value={`− ${m(report.summary?.provider_cost?.bank)}`}
+                                    />
+                                    <Line
+                                        label="Gateway cost"
+                                        value={`− ${m(report.summary?.provider_cost?.gate)}`}
+                                    />
+                                    <Line
+                                        label="Crypto cost"
+                                        value={`− ${m(report.summary?.provider_cost?.crypto)}`}
+                                    />
+                                    <Line
+                                        label="Net profit"
+                                        value={m(report.net_profit)}
+                                        strong
+                                    />
+                                    <Line
+                                        label={`In ${report.base_currency} (rate ${report.fx_rate ? Number(report.fx_rate) : '—'})`}
+                                        value={formatMoney(
+                                            report.net_profit_base ?? 0,
+                                            report.base_currency,
+                                        )}
+                                    />
+                                </>
+                            )}
                             <Line
                                 label="Declines"
                                 value={report.summary?.counts?.declines ?? 0}
