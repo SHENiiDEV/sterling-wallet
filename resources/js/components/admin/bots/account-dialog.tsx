@@ -1,4 +1,6 @@
 import { useForm } from '@inertiajs/react';
+import { MidPicker } from '@/components/admin/bots/mid-picker';
+import type { BotMid } from '@/components/admin/bots/mid-picker';
 import { Field } from '@/components/admin/form';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,12 +31,7 @@ export type BotProvider = {
     name: string;
     connector: string | null;
 };
-export type BotMid = {
-    id: number;
-    mid: string;
-    merchant: string;
-    provider_ids: number[];
-};
+export type { BotMid };
 
 /** Mailboxes the Cardaq bot can read reports from (setting `mail_provider`). */
 const MAIL_PROVIDERS = [
@@ -340,49 +337,11 @@ export function AccountDialog({
                                     No MID uses this provider yet.
                                 </p>
                             ) : (
-                                <div className="grid max-h-40 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
-                                    {providerMids.map((mid) => {
-                                        const checked = data.mid_ids.includes(
-                                            String(mid.id),
-                                        );
-
-                                        return (
-                                            <label
-                                                key={mid.id}
-                                                className="flex items-center gap-2 text-sm"
-                                            >
-                                                <Checkbox
-                                                    checked={checked}
-                                                    onCheckedChange={(on) =>
-                                                        setData(
-                                                            'mid_ids',
-                                                            on === true
-                                                                ? [
-                                                                      ...data.mid_ids,
-                                                                      String(
-                                                                          mid.id,
-                                                                      ),
-                                                                  ]
-                                                                : data.mid_ids.filter(
-                                                                      (id) =>
-                                                                          id !==
-                                                                          String(
-                                                                              mid.id,
-                                                                          ),
-                                                                  ),
-                                                        )
-                                                    }
-                                                />
-                                                <span className="font-mono text-xs">
-                                                    {mid.mid}
-                                                </span>
-                                                <span className="truncate text-muted-foreground">
-                                                    {mid.merchant}
-                                                </span>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
+                                <MidPicker
+                                    mids={providerMids}
+                                    value={data.mid_ids}
+                                    onChange={(ids) => setData('mid_ids', ids)}
+                                />
                             )}
                         </Field>
                         <label className="flex items-center gap-3 text-sm">
