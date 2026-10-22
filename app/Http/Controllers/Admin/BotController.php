@@ -63,11 +63,14 @@ class BotController extends Controller
             'connectors' => $connectors->options(),
             'statuses' => BotRunStatus::options(),
             'providers' => Provider::query()->whereIn('type', [ProviderType::Bank, ProviderType::Gate])->orderBy('name')->get(['id', 'name', 'connector']),
-            'mids' => MerchantMid::query()->with('merchant:id,name')->orderBy('mid')->get(['id', 'mid', 'merchant_id', 'bank_provider_id', 'gate_provider_id'])
+            'mids' => MerchantMid::query()->with('merchant.company.client')->orderBy('mid')->get(['id', 'mid', 'merchant_id', 'status', 'bank_provider_id', 'gate_provider_id', 'extra_gate_mids', 'gate_mid'])
                 ->map(fn (MerchantMid $mid) => [
                     'id' => $mid->id,
                     'mid' => $mid->mid,
                     'merchant' => $mid->merchant->name,
+                    'company' => $mid->merchant->company?->name,
+                    'client' => $mid->merchant->company?->client?->name,
+                    'status' => $mid->status->value,
                     'provider_ids' => $mid->requiredProviderIds(),
                 ]),
         ]);

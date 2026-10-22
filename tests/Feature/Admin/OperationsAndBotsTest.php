@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Enums\MidStatus;
 use App\Enums\UserRole;
 use App\Jobs\RunConnectorJob;
 use App\Models\BotRun;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\IntegrationAccount;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
@@ -107,6 +110,21 @@ class OperationsAndBotsTest extends TestCase
 
         $this->actingAs($merchant)->get(route('admin.operations.index'))->assertForbidden();
         $this->actingAs($merchant)->get(route('admin.bots.index'))->assertForbidden();
+    }
+
+    public function test_the_bot_mid_picker_gets_status_company_and_client()
+    {
+        $client = Client::query()->create(['name' => 'Group One']);
+        $company = Company::factory()->create(['name' => 'Parent Ltd', 'client_id' => $client->id]);
+        $merchant = $this->merchantWithTariff(['name' => 'Shop', 'company_id' => $company->id]);
+        $this->mid($merchant, $this->cardaq(), $this->corefy(), ['mid' => '4400000021', 'status' => MidStatus::Inactive]);
+
+        $this->actingAs($this->admin)->get(route('admin.bots.index'))
+            ->assertInertia(fn ($page) => $page
+                ->where('mids.0.mid', '4400000021')
+                ->where('mids.0.status', 'inactive')
+                ->where('mids.0.company', 'Parent Ltd')
+                ->where('mids.0.client', 'Group One'));
     }
 
     public function test_bot_accounts_keep_secrets_write_only()
