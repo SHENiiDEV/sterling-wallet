@@ -152,10 +152,10 @@ function PlanTable({ plan }: { plan: NonNullable<Props['plan']> }) {
         <section className="grid gap-3">
             <p className="text-sm text-muted-foreground">
                 What to give each terminal per day to fill its limit by the end
-                of the month: (limit − processed so far) ÷ {plan.days_left} day
-                {plan.days_left === 1 ? '' : 's'} left, today included. Today is{' '}
-                {formatDate(plan.as_of)}; yesterday&apos;s and today&apos;s
-                files may still be incoming.
+                of the month: (limit − processed up to yesterday) ÷{' '}
+                {plan.days_left} day{plan.days_left === 1 ? '' : 's'} after
+                today. Today is not counted (its report arrives tomorrow). The
+                daily amount is rounded down.
             </p>
             <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                 {plan.terminals.length === 0 ? (

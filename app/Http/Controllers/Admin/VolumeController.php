@@ -48,7 +48,7 @@ class VolumeController extends Controller
                 'selected' => null,
                 'plan' => [
                     'as_of' => $today->toDateString(),
-                    'days_left' => $today->daysInMonth - $today->day + 1,
+                    'days_left' => $today->daysInMonth - $today->day,
                     'days_in_month' => $today->daysInMonth,
                     'terminals' => $volumes->plan($today),
                 ],

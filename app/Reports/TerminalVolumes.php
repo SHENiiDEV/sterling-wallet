@@ -134,6 +134,17 @@ class TerminalVolumes
     }
 
     /**
+     * Down to the configured step (12 890 → 12 500); an amount below one step goes down to whole units.
+     */
+    private function roundDown(float $amount): int
+    {
+        $step = max(1, (int) config('sterling.volumes.round_step'));
+        $rounded = (int) (floor($amount / $step) * $step);
+
+        return $rounded > 0 ? $rounded : (int) floor($amount);
+    }
+
+    /**
      * What the terminal may take in a month: the per-scheme limits added up
      * when it has them, else its single processing limit.
      */
@@ -150,8 +161,9 @@ class TerminalVolumes
     /**
      * What to give each terminal per day to fill it by the end of the month.
      * Per limit ("bucket"): a terminal with limits per scheme gets one bucket
-     * per scheme, otherwise one for everything. needed = (limit - processed so
-     * far this month) / days left, today included.
+     * per scheme, otherwise one for everything. needed = (limit - processed up
+     * to yesterday) / the days after today. Today is not counted: its report
+     * only arrives tomorrow, so neither its volume nor the day itself is in the plan.
      *
      * @return Collection<int, array<string, mixed>>
      */
@@ -159,14 +171,15 @@ class TerminalVolumes
     {
         $from = $asOf->startOfMonth();
         $daysInMonth = $asOf->daysInMonth;
-        $daysLeft = $daysInMonth - $asOf->day + 1;
+        $daysLeft = $daysInMonth - $asOf->day;
         $completedDays = $asOf->day - 1;
+        $through = $asOf->subDay();
 
         // Successful volume so far this month per terminal and card scheme.
         $processed = MerchantOperation::query()->toBase()
             ->where('role', ProviderType::Gate->value)
             ->where('operation_type', 'sale')
-            ->whereBetween('report_date', [$from->toDateString(), $asOf->toDateString()])
+            ->whereBetween('report_date', [$from->toDateString(), $through->toDateString()])
             ->whereNotNull('merchant_mid_id')
             ->selectRaw('merchant_mid_id, ips, sum(amount) as volume, count(*) as approved')
             ->groupBy('merchant_mid_id', 'ips')
@@ -205,8 +218,8 @@ class TerminalVolumes
                         'used_percent' => $limit > 0 ? round($done / $limit * 100, 1) : null,
                         'left' => $left,
                         'needed_per_day' => $needed,
-                        // What to type into the PSP filter: a whole amount, rounded up so the limit is reached.
-                        'needed_rounded' => $needed !== null ? (int) ceil($needed) : null,
+                        // What to type into the PSP filter: rounded down to the step, never above the need.
+                        'needed_rounded' => $needed !== null ? $this->roundDown($needed) : null,
                         'even_pace' => $evenPace,
                         // Completed days at the normal pace versus what was really processed.
                         'behind' => round(max(0, $evenPace * $completedDays - $done), 2),

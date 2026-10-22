@@ -126,20 +126,23 @@ class VolumesAndSourcesTest extends TestCase
         $this->gateOperation('M1', 'sale', '20000.00', '2026-10-12', 'mastercard');
         $this->gateOperation('M2', 'decline', '99999.00', '2026-10-12', 'mastercard');
         $this->gateOperation('V0', 'sale', '7000.00', '2026-09-28', 'visa');
+        // Today (20 Oct) is not counted: its report arrives tomorrow.
+        $this->gateOperation('VT', 'sale', '1000.00', '2026-10-20', 'visa');
         $near = fn (float $expected) => fn ($value) => abs($value - $expected) < 0.01;
 
-        // 20 Oct: 12 days left, today included.
+        // 20 Oct: 11 days after today (21 to 31); the daily amount goes down to a multiple of 500.
         $this->actingAs($this->admin)->get(route('admin.volumes.index', ['view' => 'plan']))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('plan.days_left', 12)
+                ->where('plan.days_left', 11)
                 ->where('plan.terminals.0.mid', $this->mid->mid)
                 ->where('plan.terminals.0.buckets.0.scheme', 'visa')
                 ->where('plan.terminals.0.buckets.0.processed', $near(50000))
                 ->where('plan.terminals.0.buckets.0.left', $near(150000))
-                ->where('plan.terminals.0.buckets.0.needed_rounded', 12500)
+                ->where('plan.terminals.0.buckets.0.needed_per_day', $near(13636.36))
+                ->where('plan.terminals.0.buckets.0.needed_rounded', 13500)
                 ->where('plan.terminals.0.buckets.1.scheme', 'mastercard')
                 ->where('plan.terminals.0.buckets.1.left', $near(180000))
-                ->where('plan.terminals.0.buckets.1.needed_rounded', 15000));
+                ->where('plan.terminals.0.buckets.1.needed_rounded', 16000));
 
         // Without scheme limits the single processing limit counts every card.
         $this->mid->update(['processing_limit_visa' => null, 'processing_limit_mastercard' => null, 'processing_limit' => 100000]);
