@@ -56,6 +56,9 @@ type Filters = {
     from?: string;
     to?: string;
     unmatched?: string;
+    client?: string;
+    company?: string;
+    mid?: string;
 };
 
 type Props = {
@@ -63,6 +66,20 @@ type Props = {
     totals: OperationTotal[];
     filters: Filters;
     providers: ProviderRef[];
+    clients: { id: number; name: string }[];
+    companies: {
+        id: number;
+        name: string;
+        client_id: number | null;
+        parent_id: number | null;
+    }[];
+    mids: {
+        id: number;
+        mid: string;
+        currency: string;
+        merchant: string | null;
+        company_id: number | null;
+    }[];
     roles: Option[];
     types: Option[];
     currencies: Option[];
@@ -75,6 +92,9 @@ export default function OperationsIndex({
     totals,
     filters,
     providers,
+    clients,
+    companies,
+    mids,
     roles,
     types,
     currencies,
@@ -124,6 +144,72 @@ export default function OperationsIndex({
             }
         >
             <SelectTrigger className={cn('w-full', width)}>
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value={ALL}>{placeholder}</SelectItem>
+                {options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+
+    // Client → company (and its sub-companies) → terminal: each list narrows the next.
+    const companyOptions = companies.filter(
+        (c) => !filters.client || String(c.client_id) === filters.client,
+    );
+    const inCompany = (companyId: number | null) => {
+        if (!filters.company) {
+            return true;
+        }
+
+        const wanted = new Set([Number(filters.company)]);
+        let grew = true;
+
+        while (grew) {
+            grew = false;
+
+            for (const c of companies) {
+                if (
+                    c.parent_id !== null &&
+                    wanted.has(c.parent_id) &&
+                    !wanted.has(c.id)
+                ) {
+                    wanted.add(c.id);
+                    grew = true;
+                }
+            }
+        }
+
+        return companyId !== null && wanted.has(companyId);
+    };
+    const clientOf = (companyId: number | null) =>
+        companies.find((c) => c.id === companyId)?.client_id;
+    const midOptions = mids.filter(
+        (m) =>
+            inCompany(m.company_id) &&
+            (!filters.client ||
+                String(clientOf(m.company_id)) === filters.client),
+    );
+    const cascade = (
+        key: 'client' | 'company' | 'mid',
+        placeholder: string,
+        options: Option[],
+        reset: (keyof Filters)[],
+    ) => (
+        <Select
+            value={filters[key] ?? ALL}
+            onValueChange={(value) =>
+                apply({
+                    [key]: value === ALL ? '' : value,
+                    ...Object.fromEntries(reset.map((k) => [k, ''])),
+                })
+            }
+        >
+            <SelectTrigger className="w-full md:w-60">
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -296,6 +382,35 @@ export default function OperationsIndex({
                                     <X />
                                     Clear
                                 </Button>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-2 md:flex-row">
+                            {cascade(
+                                'client',
+                                'Any client',
+                                clients.map((c) => ({
+                                    value: String(c.id),
+                                    label: c.name,
+                                })),
+                                ['company', 'mid'],
+                            )}
+                            {cascade(
+                                'company',
+                                'Any company',
+                                companyOptions.map((c) => ({
+                                    value: String(c.id),
+                                    label: c.name,
+                                })),
+                                ['mid'],
+                            )}
+                            {cascade(
+                                'mid',
+                                'Any MID',
+                                midOptions.map((m) => ({
+                                    value: String(m.id),
+                                    label: `${m.mid} · ${m.merchant ?? '—'} · ${m.currency}`,
+                                })),
+                                [],
                             )}
                         </div>
                     </div>
