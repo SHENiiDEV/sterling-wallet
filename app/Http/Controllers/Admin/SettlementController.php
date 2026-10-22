@@ -309,8 +309,9 @@ class SettlementController extends Controller
             'status_label' => $s->status->label(),
             'merchant' => ['public_id' => $s->merchant->public_id, 'name' => $s->merchant->name],
             'client' => $s->client ? ['id' => $s->client->id, 'name' => $s->client->name] : null,
-            'product' => $s->product->value,
-            'product_label' => $s->product->label(),
+            // A settlement from before products existed is a card one.
+            'product' => ($s->product ?? TariffProduct::Card)->value,
+            'product_label' => ($s->product ?? TariffProduct::Card)->label(),
             'payout_currency' => $s->payout_currency,
             'total_payout' => $s->total_payout,
             'lines_count' => $s->lines_count ?? $s->lines()->count(),
