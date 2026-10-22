@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\ProviderController;
 use App\Http\Controllers\Admin\ReportCenterController;
 use App\Http\Controllers\Admin\SettlementController;
 use App\Http\Controllers\Admin\TeamController;
+use App\Http\Controllers\Admin\VolumeController;
 use App\Http\Controllers\Portal\PortalController;
 use Illuminate\Support\Facades\Route;
 
@@ -97,6 +98,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('reports/{report}/regenerate', [ReportCenterController::class, 'regenerate'])->name('reports.regenerate');
         Route::post('reports/{report}/resend', [ReportCenterController::class, 'resend'])->name('reports.resend');
         Route::delete('reports/{report}', [ReportCenterController::class, 'destroy'])->name('reports.destroy');
+        Route::get('volumes', [VolumeController::class, 'index'])->name('volumes.index');
+        Route::get('reports/{report}/source/{source}', [ReportCenterController::class, 'source'])->name('reports.source');
         Route::get('reports/{report}/download/{file}', [ReportCenterController::class, 'download'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
     });
 

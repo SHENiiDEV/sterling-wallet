@@ -6,6 +6,7 @@ import {
     Briefcase,
     Building2,
     CalendarCheck,
+    ChartColumn,
     FileStack,
     FileText,
     FolderKanban,
@@ -89,6 +90,12 @@ const navGroups: NavGroup[] = [
                 title: 'Report Control',
                 href: admin.reports.index(),
                 icon: CalendarCheck,
+                module: 'reports',
+            },
+            {
+                title: 'Volumes',
+                href: admin.volumes.index(),
+                icon: ChartColumn,
                 module: 'reports',
             },
             {

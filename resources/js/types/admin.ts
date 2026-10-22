@@ -164,6 +164,7 @@ export type Mid = {
     reports_start_date: string | null;
     rolling_reserve_limit: string;
     processing_limit: string | null;
+    daily_norm: string | null;
     reserve_balance?: string;
     notes: string | null;
 };

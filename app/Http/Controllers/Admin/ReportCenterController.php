@@ -11,6 +11,7 @@ use App\Enums\SettlementStatus;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateDailyReportJob;
 use App\Mail\DailyReportMail;
+use App\Models\DailyReportSource;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
@@ -177,6 +178,9 @@ class ReportCenterController extends Controller
                 'gate_provider' => $mid->gateProvider?->name,
             ],
             'sources' => $report->sources->map(fn ($s) => [
+                'id' => $s->id,
+                // The raw provider file holds every terminal of the provider: staff only.
+                'has_file' => ProductScope::current() === null && filled($s->file_path),
                 'provider' => $s->provider->name,
                 'role' => $s->role->value,
                 'rows' => $s->rows_count,
@@ -288,6 +292,27 @@ class ReportCenterController extends Controller
         abort_unless($path && $disk->exists($path), 404);
 
         return $disk->download($path);
+    }
+
+    /**
+     * The provider file this report was built from, exactly as it arrived
+     * (a bot download or a manual upload). It is the provider's whole file,
+     * so other terminals' rows may be in it.
+     */
+    public function source(DailyReportTask $report, DailyReportSource $source): StreamedResponse
+    {
+        abort_unless($source->daily_report_task_id === $report->id && ProductScope::current() === null, 404);
+
+        $disk = Storage::disk(config('sterling.reports.disk'));
+        abort_unless($source->file_path && $disk->exists($source->file_path), 404);
+
+        AuditLogger::log('report.source_downloaded', $report, ['provider_id' => $source->provider_id, 'file' => $source->file_path]);
+
+        // The stored name starts with a time stamp; the day and provider say more.
+        $extension = pathinfo($source->file_path, PATHINFO_EXTENSION);
+        $name = sprintf('%s_%s_%s%s', $source->provider->code, $source->role->value, $report->report_date->toDateString(), $extension !== '' ? '.'.$extension : '');
+
+        return $disk->download($source->file_path, $name);
     }
 
     /**
