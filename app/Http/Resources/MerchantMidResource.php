@@ -33,6 +33,7 @@ class MerchantMidResource extends JsonResource
             'reports_start_date' => $this->reports_start_date?->toDateString(),
             'rolling_reserve_limit' => $this->rolling_reserve_limit,
             'processing_limit' => $this->processing_limit,
+            'daily_norm' => $this->daily_norm,
             'reserve_balance' => $this->when(isset($this->reserve_balance), fn () => (string) ($this->reserve_balance ?? '0')),
             'notes' => $this->notes,
             'operations_count' => $this->when(isset($this->operations_count), fn () => (int) $this->operations_count),

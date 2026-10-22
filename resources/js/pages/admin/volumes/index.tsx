@@ -4,6 +4,7 @@ import { BarChart } from '@/components/admin/bar-chart';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { CurrencyBadge } from '@/components/admin/tone-badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
     Table,
     TableBody,
@@ -30,11 +31,19 @@ type Terminal = {
     approval_rate: number | null;
     limit: number | null;
     used_percent: number | null;
-    projected: number;
+    norm: number | null;
+    norm_derived: boolean;
+    norm_percent: number | null;
+    shortfall: number | null;
 };
 
 type Props = {
+    view: 'day' | 'month';
+    day: string | null;
     month: string;
+    today: string;
+    isToday: boolean;
+    shortcuts: { date: string; label: string }[];
     previous: string;
     next: string | null;
     rows: Terminal[];
@@ -42,7 +51,9 @@ type Props = {
         currency: string;
         terminals: number;
         approved: number;
+        declined: number;
         volume: number;
+        norm: number | null;
     }[];
     selected: {
         terminal: Terminal;
@@ -51,6 +62,8 @@ type Props = {
             approved: number;
             declined: number;
             volume: number;
+            norm: number | null;
+            norm_percent: number | null;
             cumulative: number;
             cumulative_percent: number | null;
         }[];
@@ -63,24 +76,37 @@ const monthLabel = (month: string) =>
         year: 'numeric',
     });
 
-/** Share of the monthly limit used: amber from 80 %, red from 100 %. */
-function Usage({ percent }: { percent: number | null }) {
+/** A bar with a percentage; `goal` bars go green when the target is met, limit bars go red when it is exceeded. */
+function Meter({
+    percent,
+    goal = false,
+    empty,
+}: {
+    percent: number | null;
+    goal?: boolean;
+    empty: string;
+}) {
     if (percent === null) {
-        return <span className="text-muted-foreground">no limit</span>;
+        return <span className="text-xs text-muted-foreground">{empty}</span>;
     }
+
+    const color = goal
+        ? percent >= 100
+            ? 'bg-emerald-500'
+            : percent >= 50
+              ? 'bg-amber-500'
+              : 'bg-rose-500'
+        : percent >= 100
+          ? 'bg-rose-500'
+          : percent >= 80
+            ? 'bg-amber-500'
+            : 'bg-emerald-500';
 
     return (
         <div className="flex items-center gap-2">
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                 <div
-                    className={cn(
-                        'h-full rounded-full',
-                        percent >= 100
-                            ? 'bg-rose-500'
-                            : percent >= 80
-                              ? 'bg-amber-500'
-                              : 'bg-emerald-500',
-                    )}
+                    className={cn('h-full rounded-full', color)}
                     style={{ width: `${Math.min(100, percent)}%` }}
                 />
             </div>
@@ -90,18 +116,28 @@ function Usage({ percent }: { percent: number | null }) {
 }
 
 export default function VolumesIndex({
+    view,
+    day,
     month,
+    today,
+    isToday,
+    shortcuts,
     previous,
     next,
     rows,
     totals,
     selected,
 }: Props) {
-    const go = (query: Record<string, string | number>) =>
-        router.get(admin.volumes.index.url(), query, {
-            preserveScroll: true,
-            preserveState: true,
-        });
+    const daily = view === 'day';
+    const go = (query: Record<string, string | number | null>) =>
+        router.get(
+            admin.volumes.index.url(),
+            Object.fromEntries(Object.entries(query).filter(([, v]) => v)),
+            { preserveScroll: true, preserveState: true },
+        );
+    const current: Record<string, string | null> = daily
+        ? { view, day }
+        : { view, month };
 
     return (
         <>
@@ -109,32 +145,105 @@ export default function VolumesIndex({
             <PageBody>
                 <PageHeader
                     title="Volumes"
-                    description="Successful gateway volume per terminal (MID), by day and month, against the monthly processing limit."
+                    description="Successful gateway volume per terminal (MID) against its daily norm and monthly limit."
                     actions={
-                        <div className="flex items-center gap-1">
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                aria-label="Previous month"
-                                onClick={() => go({ month: previous })}
-                            >
-                                <ChevronLeft />
-                            </Button>
-                            <span className="min-w-36 text-center text-sm font-medium">
-                                {monthLabel(month)}
-                            </span>
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                aria-label="Next month"
-                                disabled={next === null}
-                                onClick={() => next && go({ month: next })}
-                            >
-                                <ChevronRight />
-                            </Button>
+                        <div className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs">
+                            {(['day', 'month'] as const).map((v) => (
+                                <button
+                                    key={v}
+                                    type="button"
+                                    onClick={() =>
+                                        go(
+                                            v === 'day'
+                                                ? { view: 'day', day: today }
+                                                : { view: 'month', month },
+                                        )
+                                    }
+                                    className={cn(
+                                        'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                                        view === v
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:text-foreground',
+                                    )}
+                                >
+                                    {v === 'day' ? 'By day' : 'By month'}
+                                </button>
+                            ))}
                         </div>
                     }
                 />
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {daily &&
+                        shortcuts.map((s) => (
+                            <Button
+                                key={s.date}
+                                size="sm"
+                                variant={s.date === day ? 'default' : 'outline'}
+                                onClick={() => go({ view: 'day', day: s.date })}
+                            >
+                                {s.label}
+                            </Button>
+                        ))}
+                    <div className="flex items-center gap-1">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-8"
+                            aria-label="Previous"
+                            onClick={() =>
+                                go(
+                                    daily
+                                        ? { view, day: previous }
+                                        : { view, month: previous },
+                                )
+                            }
+                        >
+                            <ChevronLeft />
+                        </Button>
+                        {daily ? (
+                            <Input
+                                type="date"
+                                value={day ?? ''}
+                                max={today}
+                                onChange={(e) =>
+                                    e.target.value &&
+                                    go({ view: 'day', day: e.target.value })
+                                }
+                                className="h-8 w-40"
+                                aria-label="Day"
+                            />
+                        ) : (
+                            <span className="min-w-36 text-center text-sm font-medium">
+                                {monthLabel(month)}
+                            </span>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-8"
+                            aria-label="Next"
+                            disabled={next === null}
+                            onClick={() =>
+                                next &&
+                                go(
+                                    daily
+                                        ? { view, day: next }
+                                        : { view, month: next },
+                                )
+                            }
+                        >
+                            <ChevronRight />
+                        </Button>
+                    </div>
+                </div>
+
+                {isToday && (
+                    <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm">
+                        Today is not final: the gateway files for a day arrive
+                        after it ends, so the figures grow during the day.
+                    </p>
+                )}
 
                 {totals.length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -153,7 +262,10 @@ export default function VolumesIndex({
                                     {formatMoney(t.volume, t.currency, 0)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    {t.approved} successful transactions
+                                    {t.approved} successful · {t.declined}{' '}
+                                    declined
+                                    {t.norm !== null &&
+                                        ` · norm ${formatMoney(t.norm, t.currency, 0)}`}
                                 </p>
                             </div>
                         ))}
@@ -180,12 +292,21 @@ export default function VolumesIndex({
                                         Successful
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Approval
+                                        Declined
                                     </TableHead>
-                                    <TableHead>Of monthly limit</TableHead>
-                                    <TableHead className="pr-5 text-right">
-                                        Month pace
+                                    <TableHead>
+                                        {daily ? 'Daily norm' : 'Norm'}
                                     </TableHead>
+                                    {!daily && (
+                                        <TableHead className="pr-5">
+                                            Monthly limit
+                                        </TableHead>
+                                    )}
+                                    {daily && (
+                                        <TableHead className="pr-5 text-right">
+                                            Missing to norm
+                                        </TableHead>
+                                    )}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -197,7 +318,9 @@ export default function VolumesIndex({
                                             selected?.terminal.id === t.id &&
                                                 'bg-accent/50',
                                         )}
-                                        onClick={() => go({ month, mid: t.id })}
+                                        onClick={() =>
+                                            go({ ...current, mid: t.id })
+                                        }
                                     >
                                         <TableCell className="pl-5">
                                             <div className="flex items-center gap-2">
@@ -220,30 +343,54 @@ export default function VolumesIndex({
                                             {t.approved}
                                         </TableCell>
                                         <TableCell className="text-right text-muted-foreground tabular-nums">
-                                            {t.approval_rate === null
-                                                ? '—'
-                                                : `${t.approval_rate}%`}
+                                            {t.declined}
+                                            {t.approval_rate !== null &&
+                                                ` · ${t.approval_rate}% ok`}
                                         </TableCell>
                                         <TableCell>
-                                            <Usage percent={t.used_percent} />
-                                            {t.limit !== null && (
+                                            <Meter
+                                                goal
+                                                percent={t.norm_percent}
+                                                empty="no norm set"
+                                            />
+                                            {t.norm !== null && (
                                                 <div className="text-xs text-muted-foreground">
                                                     of{' '}
                                                     {formatMoney(
-                                                        t.limit,
+                                                        t.norm,
                                                         t.currency,
                                                         0,
                                                     )}
+                                                    {t.norm_derived &&
+                                                        ' (limit ÷ days)'}
                                                 </div>
                                             )}
                                         </TableCell>
-                                        <TableCell className="pr-5 text-right text-muted-foreground tabular-nums">
-                                            {formatMoney(
-                                                t.projected,
-                                                t.currency,
-                                                0,
-                                            )}
-                                        </TableCell>
+                                        {!daily && (
+                                            <TableCell className="pr-5">
+                                                <Meter
+                                                    percent={t.used_percent}
+                                                    empty="no limit"
+                                                />
+                                            </TableCell>
+                                        )}
+                                        {daily && (
+                                            <TableCell className="pr-5 text-right tabular-nums">
+                                                {t.shortfall === null ? (
+                                                    '—'
+                                                ) : t.shortfall === 0 ? (
+                                                    <span className="text-emerald-600">
+                                                        norm met
+                                                    </span>
+                                                ) : (
+                                                    formatMoney(
+                                                        t.shortfall,
+                                                        t.currency,
+                                                        0,
+                                                    )
+                                                )}
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -257,6 +404,11 @@ export default function VolumesIndex({
                             {selected.terminal.merchant.name} ·{' '}
                             <span className="font-mono">
                                 {selected.terminal.mid}
+                            </span>
+                            <span className="text-xs font-normal text-muted-foreground">
+                                {daily
+                                    ? `last ${selected.days.length} days`
+                                    : monthLabel(month)}
                             </span>
                             <Link
                                 href={admin.merchants.show(
@@ -302,23 +454,28 @@ export default function VolumesIndex({
                                         <TableHead className="text-right">
                                             Volume
                                         </TableHead>
-                                        <TableHead className="text-right">
-                                            Month to date
-                                        </TableHead>
                                         <TableHead className="pr-5">
-                                            Of limit
+                                            Of daily norm
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {selected.days
+                                    {[...selected.days]
+                                        .reverse()
                                         .filter(
                                             (d) =>
                                                 d.approved > 0 ||
-                                                d.declined > 0,
+                                                d.declined > 0 ||
+                                                d.date === day,
                                         )
                                         .map((d) => (
-                                            <TableRow key={d.date}>
+                                            <TableRow
+                                                key={d.date}
+                                                className={cn(
+                                                    d.date === day &&
+                                                        'bg-accent/50',
+                                                )}
+                                            >
                                                 <TableCell className="pl-5">
                                                     {formatDate(d.date)}
                                                 </TableCell>
@@ -335,18 +492,11 @@ export default function VolumesIndex({
                                                             .currency,
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="text-right tabular-nums">
-                                                    {formatMoney(
-                                                        d.cumulative,
-                                                        selected.terminal
-                                                            .currency,
-                                                    )}
-                                                </TableCell>
                                                 <TableCell className="pr-5">
-                                                    <Usage
-                                                        percent={
-                                                            d.cumulative_percent
-                                                        }
+                                                    <Meter
+                                                        goal
+                                                        percent={d.norm_percent}
+                                                        empty="no norm"
                                                     />
                                                 </TableCell>
                                             </TableRow>

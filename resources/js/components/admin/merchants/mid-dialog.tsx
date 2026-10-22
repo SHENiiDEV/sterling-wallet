@@ -62,6 +62,7 @@ export function MidDialog({
         rolling_reserve_limit: mid
             ? String(Number(mid.rolling_reserve_limit))
             : '100000',
+        daily_norm: mid?.daily_norm ? String(Number(mid.daily_norm)) : '',
         processing_limit: mid?.processing_limit
             ? String(Number(mid.processing_limit))
             : '',
@@ -312,6 +313,21 @@ export function MidDialog({
                                 value={data.processing_limit}
                                 onChange={(e) =>
                                     setData('processing_limit', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field
+                            label="Daily norm"
+                            htmlFor="daily_norm"
+                            error={errors.daily_norm}
+                            hint="Expected successful volume per day; empty = monthly limit ÷ days"
+                        >
+                            <AffixInput
+                                id="daily_norm"
+                                suffix={data.currency}
+                                value={data.daily_norm}
+                                onChange={(e) =>
+                                    setData('daily_norm', e.target.value)
                                 }
                             />
                         </Field>

@@ -60,7 +60,7 @@ class VolumesAndSourcesTest extends TestCase
 
         $near = fn (float $expected) => fn ($value) => abs($value - $expected) < 0.01;
 
-        $this->actingAs($this->admin)->get(route('admin.volumes.index'))
+        $this->actingAs($this->admin)->get(route('admin.volumes.index', ['view' => 'month']))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('month', '2026-10')
                 ->where('rows.0.mid', $this->mid->mid)
@@ -70,7 +70,7 @@ class VolumesAndSourcesTest extends TestCase
                 ->where('rows.0.used_percent', $near(30))
                 ->where('totals.0.currency', 'EUR'));
 
-        $this->get(route('admin.volumes.index', ['month' => '2026-10', 'mid' => $this->mid->id]))
+        $this->get(route('admin.volumes.index', ['view' => 'month', 'month' => '2026-10', 'mid' => $this->mid->id]))
             ->assertInertia(fn (Assert $page) => $page
                 ->has('selected.days', 31)
                 ->where('selected.days.17.approved', 2)
@@ -78,8 +78,44 @@ class VolumesAndSourcesTest extends TestCase
                 ->where('selected.days.18.declined', 1));
 
         // Another month has its own figures.
-        $this->get(route('admin.volumes.index', ['month' => '2026-09']))
+        $this->get(route('admin.volumes.index', ['view' => 'month', 'month' => '2026-09']))
             ->assertInertia(fn (Assert $page) => $page->where('rows.0.volume', $near(999)));
+    }
+
+    public function test_a_single_day_is_compared_with_the_daily_norm()
+    {
+        $this->mid->update(['daily_norm' => 150]);
+        $this->gateOperation('G1', 'sale', '100.00', '2026-10-18');
+        $this->gateOperation('G2', 'sale', '200.00', '2026-10-18');
+        $this->gateOperation('G3', 'sale', '60.00', '2026-10-19');
+        $near = fn (float $expected) => fn ($value) => abs($value - $expected) < 0.01;
+
+        // The default is Today (20 Oct): nothing yet, the whole norm is missing.
+        $this->actingAs($this->admin)->get(route('admin.volumes.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'day')
+                ->where('day', '2026-10-20')
+                ->where('isToday', true)
+                ->where('shortcuts.0.label', 'Today')
+                ->where('shortcuts.1.label', 'Yesterday')
+                ->where('rows.0.approved', 0)
+                ->where('rows.0.shortfall', $near(150)));
+
+        $this->get(route('admin.volumes.index', ['day' => '2026-10-18', 'mid' => $this->mid->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('isToday', false)
+                ->where('rows.0.volume', $near(300))
+                ->where('rows.0.norm_percent', $near(200))
+                ->where('rows.0.shortfall', $near(0))
+                ->has('selected.days', 14)
+                ->where('selected.days.13.volume', $near(300))
+                ->where('selected.days.12.norm_percent', $near(0)));
+
+        $this->get(route('admin.volumes.index', ['day' => '2026-10-19']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.0.volume', $near(60))
+                ->where('rows.0.norm_percent', $near(40))
+                ->where('rows.0.shortfall', $near(90)));
     }
 
     public function test_the_raw_provider_files_of_a_report_can_be_downloaded()
