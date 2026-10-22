@@ -2,6 +2,7 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
     Check,
+    Copy,
     Download,
     FileCheck2,
     Plus,
@@ -366,6 +367,132 @@ function AdjustmentDialog({
     );
 }
 
+type PayoutWallet = Props['wallets'][number];
+
+function CopyValue({ value }: { value: string }) {
+    const [copied, setCopied] = useState(false);
+
+    return (
+        <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            aria-label="Copy"
+            onClick={() => {
+                void navigator.clipboard?.writeText(value);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+            }}
+        >
+            {copied ? <Check className="text-emerald-600" /> : <Copy />}
+        </Button>
+    );
+}
+
+/**
+ * Where the money has to go: amount, currency, network and address of the chosen wallet.
+ */
+function PayoutDestination({
+    settlement,
+    wallet,
+}: {
+    settlement: Props['settlement'];
+    wallet: PayoutWallet | undefined;
+}) {
+    const amount = formatMoney(settlement.total_payout);
+    const mismatch =
+        wallet !== undefined &&
+        wallet.currency.toUpperCase() !== settlement.payout_currency;
+
+    if (!wallet) {
+        return (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+                No wallet chosen: there is nowhere to send the money.
+            </p>
+        );
+    }
+
+    return (
+        <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 text-sm">
+            <div>
+                <div className="text-xs text-muted-foreground">Send</div>
+                <div className="flex items-center gap-1 text-xl font-semibold tabular-nums">
+                    {amount} {settlement.payout_currency}
+                    <CopyValue value={settlement.total_payout} />
+                </div>
+            </div>
+            <dl className="grid grid-cols-[6rem_1fr] gap-y-2">
+                <dt className="text-muted-foreground">Currency</dt>
+                <dd className="font-medium">{wallet.currency}</dd>
+                <dt className="text-muted-foreground">Network</dt>
+                <dd className="font-medium">{wallet.network || '—'}</dd>
+                <dt className="text-muted-foreground">Wallet</dt>
+                <dd>
+                    {wallet.label} · {wallet.merchant}
+                </dd>
+                <dt className="text-muted-foreground">Address</dt>
+                <dd className="flex items-start gap-1">
+                    <span className="font-mono text-xs break-all">
+                        {wallet.address}
+                    </span>
+                    <CopyValue value={wallet.address} />
+                </dd>
+            </dl>
+            {mismatch && (
+                <p className="text-xs text-amber-600">
+                    The wallet is for {wallet.currency}, but the settlement is
+                    paid in {settlement.payout_currency}. Check before sending.
+                </p>
+            )}
+        </div>
+    );
+}
+
+function ApproveDialog({
+    settlement,
+    wallet,
+    onClose,
+}: {
+    settlement: Props['settlement'];
+    wallet: PayoutWallet | undefined;
+    onClose: () => void;
+}) {
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Approve {settlement.number}?</DialogTitle>
+                    <DialogDescription>
+                        After approval the lines are locked. This is where the
+                        money has to be sent.
+                    </DialogDescription>
+                </DialogHeader>
+                <PayoutDestination settlement={settlement} wallet={wallet} />
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline">
+                            Back
+                        </Button>
+                    </DialogClose>
+                    <Button
+                        onClick={() =>
+                            router.post(
+                                admin.settlements.approve.url(settlement.id),
+                                {},
+                                { preserveScroll: true, onFinish: onClose },
+                            )
+                        }
+                    >
+                        <Check />
+                        Approve
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function SettleDialog({
     settlement,
     onClose,
@@ -526,7 +653,7 @@ export default function SettlementShow({
     availableReleases,
 }: Props) {
     const [dialog, setDialog] = useState<
-        'add' | 'adjust' | 'settle' | 'cancel' | null
+        'add' | 'adjust' | 'approve' | 'settle' | 'cancel' | null
     >(null);
     const draft = settlement.status === 'draft';
     const currencies = Array.from(new Set(lines.map((l) => l.currency)));
@@ -637,17 +764,7 @@ export default function SettlementShow({
                                 </a>
                             </Button>
                             {draft && (
-                                <Button
-                                    onClick={() =>
-                                        router.post(
-                                            admin.settlements.approve.url(
-                                                settlement.id,
-                                            ),
-                                            {},
-                                            { preserveScroll: true },
-                                        )
-                                    }
-                                >
+                                <Button onClick={() => setDialog('approve')}>
                                     <Check />
                                     Approve
                                 </Button>
@@ -993,76 +1110,88 @@ export default function SettlementShow({
                                 </Button>
                             </form>
                         ) : (
-                            <section className="grid gap-2 rounded-xl border bg-card p-5 text-sm shadow-xs">
-                                <h2 className="text-sm font-semibold">
-                                    Payout
-                                </h2>
-                                {Object.entries(settlement.rates).map(
-                                    ([c, r]) => (
-                                        <div
-                                            key={c}
-                                            className="flex justify-between"
-                                        >
+                            <>
+                                {settlement.status === 'approved' && (
+                                    <PayoutDestination
+                                        settlement={settlement}
+                                        wallet={wallet}
+                                    />
+                                )}
+                                <section className="grid gap-2 rounded-xl border bg-card p-5 text-sm shadow-xs">
+                                    <h2 className="text-sm font-semibold">
+                                        Payout
+                                    </h2>
+                                    {Object.entries(settlement.rates).map(
+                                        ([c, r]) => (
+                                            <div
+                                                key={c}
+                                                className="flex justify-between"
+                                            >
+                                                <span className="text-muted-foreground">
+                                                    1 {c}
+                                                </span>
+                                                <span className="tabular-nums">
+                                                    {Number(r)}{' '}
+                                                    {settlement.payout_currency}
+                                                </span>
+                                            </div>
+                                        ),
+                                    )}
+                                    {wallet && (
+                                        <p className="break-all">
                                             <span className="text-muted-foreground">
-                                                1 {c}
+                                                To:
+                                            </span>{' '}
+                                            {wallet.currency} {wallet.network} ·{' '}
+                                            <span className="font-mono text-xs">
+                                                {wallet.address}
                                             </span>
-                                            <span className="tabular-nums">
-                                                {Number(r)}{' '}
-                                                {settlement.payout_currency}
-                                            </span>
-                                        </div>
-                                    ),
-                                )}
-                                {wallet && (
-                                    <p className="break-all">
-                                        <span className="text-muted-foreground">
-                                            To:
-                                        </span>{' '}
-                                        {wallet.currency} {wallet.network} ·{' '}
-                                        <span className="font-mono text-xs">
-                                            {wallet.address}
-                                        </span>
-                                    </p>
-                                )}
-                                {settlement.approved_at && (
-                                    <p>
-                                        <span className="text-muted-foreground">
-                                            Approved:
-                                        </span>{' '}
-                                        {formatDateTime(settlement.approved_at)}{' '}
-                                        · {settlement.approver}
-                                    </p>
-                                )}
-                                {settlement.settled_at && (
-                                    <p>
-                                        <span className="text-muted-foreground">
-                                            Paid:
-                                        </span>{' '}
-                                        {formatDateTime(settlement.settled_at)}{' '}
-                                        · {settlement.settler}
-                                    </p>
-                                )}
-                                {settlement.tx_hash && (
-                                    <p className="font-mono text-xs break-all">
-                                        {settlement.tx_hash}
-                                    </p>
-                                )}
-                                {settlement.has_proof && (
-                                    <a
-                                        href={admin.settlements.proof.url(
-                                            settlement.id,
-                                        )}
-                                        className="text-primary hover:underline"
-                                    >
-                                        Download confirmation
-                                    </a>
-                                )}
-                                {settlement.notes && (
-                                    <p className="text-muted-foreground">
-                                        {settlement.notes}
-                                    </p>
-                                )}
-                            </section>
+                                        </p>
+                                    )}
+                                    {settlement.approved_at && (
+                                        <p>
+                                            <span className="text-muted-foreground">
+                                                Approved:
+                                            </span>{' '}
+                                            {formatDateTime(
+                                                settlement.approved_at,
+                                            )}{' '}
+                                            · {settlement.approver}
+                                        </p>
+                                    )}
+                                    {settlement.settled_at && (
+                                        <p>
+                                            <span className="text-muted-foreground">
+                                                Paid:
+                                            </span>{' '}
+                                            {formatDateTime(
+                                                settlement.settled_at,
+                                            )}{' '}
+                                            · {settlement.settler}
+                                        </p>
+                                    )}
+                                    {settlement.tx_hash && (
+                                        <p className="font-mono text-xs break-all">
+                                            {settlement.tx_hash}
+                                        </p>
+                                    )}
+                                    {settlement.has_proof && (
+                                        <a
+                                            href={admin.settlements.proof.url(
+                                                settlement.id,
+                                            )}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Download confirmation
+                                        </a>
+                                    )}
+                                    {settlement.notes && (
+                                        <p className="text-muted-foreground">
+                                            {settlement.notes}
+                                        </p>
+                                    )}
+                                </section>
+                            </>
                         )}
                     </aside>
                 </div>
@@ -1079,6 +1208,13 @@ export default function SettlementShow({
                 <AdjustmentDialog
                     settlement={settlement}
                     currencies={currencies}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog === 'approve' && (
+                <ApproveDialog
+                    settlement={settlement}
+                    wallet={wallet}
                     onClose={() => setDialog(null)}
                 />
             )}
