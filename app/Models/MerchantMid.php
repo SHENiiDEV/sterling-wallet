@@ -35,7 +35,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'mid', 'provider_login', 'currency', 'label', 'status', 'bank_provider_id', 'gate_provider_id', 'gate_mid', 'extra_gate_mids',
-    'reports_start_date', 'rolling_reserve_limit', 'processing_limit', 'daily_norm', 'notes',
+    'reports_start_date', 'rolling_reserve_limit', 'processing_limit', 'processing_limit_visa', 'processing_limit_mastercard', 'daily_norm', 'notes',
     'reported_balance', 'reported_hold', 'balance_reported_at',
 ])]
 class MerchantMid extends Model
@@ -52,6 +52,8 @@ class MerchantMid extends Model
             'reports_start_date' => DateOnly::class,
             'rolling_reserve_limit' => 'decimal:2',
             'processing_limit' => 'decimal:2',
+            'processing_limit_visa' => 'decimal:2',
+            'processing_limit_mastercard' => 'decimal:2',
             'daily_norm' => 'decimal:2',
             'reported_balance' => 'decimal:2',
             'reported_hold' => 'decimal:2',

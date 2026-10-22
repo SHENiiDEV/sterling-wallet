@@ -39,6 +39,8 @@ class MerchantMidRequest extends FormRequest
             'reports_start_date' => ['nullable', 'date'],
             'rolling_reserve_limit' => ['required', 'numeric', 'min:0', 'max:1000000000'],
             'processing_limit' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'processing_limit_visa' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'processing_limit_mastercard' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'daily_norm' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];

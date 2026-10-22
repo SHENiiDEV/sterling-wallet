@@ -46,7 +46,7 @@ class TerminalVolumes
                 $volume = round((float) ($s->volume ?? 0), 2);
                 $approved = (int) ($s->approved ?? 0);
                 $declined = (int) ($s->declined ?? 0);
-                $limit = $mid->processing_limit !== null ? (float) $mid->processing_limit : null;
+                $limit = $this->totalLimit($mid);
                 $norm = $this->dailyNorm($mid, $from);
 
                 return [
@@ -92,7 +92,7 @@ class TerminalVolumes
             ->keyBy(fn ($r) => CarbonImmutable::parse($r->report_date)->toDateString());
 
         $mid = MerchantMid::query()->find($midId);
-        $limit = $mid?->processing_limit !== null ? (float) $mid->processing_limit : null;
+        $limit = $mid ? $this->totalLimit($mid) : null;
 
         $running = 0.0;
         $days = [];
@@ -128,11 +128,103 @@ class TerminalVolumes
             return ['amount' => (float) $mid->daily_norm, 'derived' => false];
         }
 
-        if ($mid->processing_limit !== null && (float) $mid->processing_limit > 0) {
-            return ['amount' => round((float) $mid->processing_limit / $day->daysInMonth, 2), 'derived' => true];
+        $limit = $this->totalLimit($mid);
+
+        return $limit !== null && $limit > 0 ? ['amount' => round($limit / $day->daysInMonth, 2), 'derived' => true] : null;
+    }
+
+    /**
+     * What the terminal may take in a month: the per-scheme limits added up
+     * when it has them, else its single processing limit.
+     */
+    private function totalLimit(MerchantMid $mid): ?float
+    {
+        $schemes = array_filter([$mid->processing_limit_visa, $mid->processing_limit_mastercard], fn ($v) => $v !== null);
+        if ($schemes !== []) {
+            return round(array_sum(array_map('floatval', $schemes)), 2);
         }
 
-        return null;
+        return $mid->processing_limit !== null ? (float) $mid->processing_limit : null;
+    }
+
+    /**
+     * What to give each terminal per day to fill it by the end of the month.
+     * Per limit ("bucket"): a terminal with limits per scheme gets one bucket
+     * per scheme, otherwise one for everything. needed = (limit - processed so
+     * far this month) / days left, today included.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function plan(CarbonImmutable $asOf): Collection
+    {
+        $from = $asOf->startOfMonth();
+        $daysInMonth = $asOf->daysInMonth;
+        $daysLeft = $daysInMonth - $asOf->day + 1;
+        $completedDays = $asOf->day - 1;
+
+        // Successful volume so far this month per terminal and card scheme.
+        $processed = MerchantOperation::query()->toBase()
+            ->where('role', ProviderType::Gate->value)
+            ->where('operation_type', 'sale')
+            ->whereBetween('report_date', [$from->toDateString(), $asOf->toDateString()])
+            ->whereNotNull('merchant_mid_id')
+            ->selectRaw('merchant_mid_id, ips, sum(amount) as volume, count(*) as approved')
+            ->groupBy('merchant_mid_id', 'ips')
+            ->get()
+            ->groupBy('merchant_mid_id');
+
+        return MerchantMid::query()
+            ->with(['merchant:id,public_id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
+            ->whereNotNull('gate_provider_id')
+            ->where('status', MidStatus::Active)
+            ->orderBy('mid')
+            ->get()
+            ->map(function (MerchantMid $mid) use ($processed, $daysLeft, $completedDays, $daysInMonth) {
+                $own = $processed->get($mid->id, collect());
+                $sum = fn (?string $scheme) => (float) $own->filter(fn ($r) => $scheme === null || $r->ips === $scheme)->sum('volume');
+                $count = fn (?string $scheme) => (int) $own->filter(fn ($r) => $scheme === null || $r->ips === $scheme)->sum('approved');
+
+                $limits = $mid->processing_limit_visa !== null || $mid->processing_limit_mastercard !== null
+                    ? array_filter(['visa' => $mid->processing_limit_visa, 'mastercard' => $mid->processing_limit_mastercard], fn ($v) => $v !== null)
+                    : ($mid->processing_limit !== null ? ['all' => $mid->processing_limit] : []);
+
+                $buckets = [];
+                foreach ($limits as $scheme => $limit) {
+                    $limit = (float) $limit;
+                    $done = round($sum($scheme === 'all' ? null : $scheme), 2);
+                    $left = round(max(0, $limit - $done), 2);
+                    $needed = $daysLeft > 0 ? round($left / $daysLeft, 2) : null;
+                    $evenPace = round($limit / $daysInMonth, 2);
+
+                    $buckets[] = [
+                        'scheme' => $scheme,
+                        'label' => ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'all' => 'All cards'][$scheme],
+                        'limit' => $limit,
+                        'processed' => $done,
+                        'approved' => $count($scheme === 'all' ? null : $scheme),
+                        'used_percent' => $limit > 0 ? round($done / $limit * 100, 1) : null,
+                        'left' => $left,
+                        'needed_per_day' => $needed,
+                        // What to type into the PSP filter: a whole amount, rounded up so the limit is reached.
+                        'needed_rounded' => $needed !== null ? (int) ceil($needed) : null,
+                        'even_pace' => $evenPace,
+                        // Completed days at the normal pace versus what was really processed.
+                        'behind' => round(max(0, $evenPace * $completedDays - $done), 2),
+                        'filled' => $left <= 0,
+                    ];
+                }
+
+                return [
+                    'id' => $mid->id,
+                    'mid' => $mid->mid,
+                    'currency' => $mid->currency->value,
+                    'merchant' => ['public_id' => $mid->merchant->public_id, 'name' => $mid->merchant->name],
+                    'pair' => ($mid->bankProvider?->name ?? '—').' ↔ '.($mid->gateProvider?->name ?? '—'),
+                    'buckets' => $buckets,
+                ];
+            })
+            ->filter(fn (array $r) => $r['buckets'] !== [])
+            ->values();
     }
 
     private function aggregates(): string

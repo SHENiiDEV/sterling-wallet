@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { BarChart } from '@/components/admin/bar-chart';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { CurrencyBadge } from '@/components/admin/tone-badge';
@@ -37,8 +37,36 @@ type Terminal = {
     shortfall: number | null;
 };
 
+type PlanBucket = {
+    scheme: string;
+    label: string;
+    limit: number;
+    processed: number;
+    approved: number;
+    used_percent: number | null;
+    left: number;
+    needed_per_day: number | null;
+    needed_rounded: number | null;
+    even_pace: number;
+    behind: number;
+    filled: boolean;
+};
+
 type Props = {
-    view: 'day' | 'month';
+    view: 'day' | 'month' | 'plan';
+    plan: {
+        as_of: string;
+        days_left: number;
+        days_in_month: number;
+        terminals: {
+            id: number;
+            mid: string;
+            currency: string;
+            merchant: { public_id: string; name: string };
+            pair: string;
+            buckets: PlanBucket[];
+        }[];
+    } | null;
     day: string | null;
     month: string;
     today: string;
@@ -115,8 +143,177 @@ function Meter({
     );
 }
 
+function PlanTable({ plan }: { plan: NonNullable<Props['plan']> }) {
+    const copy = (value: number) => {
+        void navigator.clipboard?.writeText(String(value));
+    };
+
+    return (
+        <section className="grid gap-3">
+            <p className="text-sm text-muted-foreground">
+                What to give each terminal per day to fill its limit by the end
+                of the month: (limit − processed so far) ÷ {plan.days_left} day
+                {plan.days_left === 1 ? '' : 's'} left, today included. Today is{' '}
+                {formatDate(plan.as_of)}; yesterday&apos;s and today&apos;s
+                files may still be incoming.
+            </p>
+            <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                {plan.terminals.length === 0 ? (
+                    <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+                        No active terminals with a processing limit. Set the
+                        limits in the terminal (MID) settings.
+                    </p>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                                <TableHead className="pl-5">Terminal</TableHead>
+                                <TableHead>Limit</TableHead>
+                                <TableHead className="text-right">
+                                    Processed
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Left
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Give per day
+                                </TableHead>
+                                <TableHead className="pr-5">Pace</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {plan.terminals.flatMap((t) =>
+                                t.buckets.map((b, i) => (
+                                    <TableRow key={`${t.id}-${b.scheme}`}>
+                                        <TableCell className="pl-5">
+                                            {i === 0 && (
+                                                <>
+                                                    <div className="flex items-center gap-2">
+                                                        <CurrencyBadge
+                                                            currency={
+                                                                t.currency
+                                                            }
+                                                        />
+                                                        <span className="font-mono text-xs">
+                                                            {t.mid}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {t.merchant.name} ·{' '}
+                                                        {t.pair}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="text-sm font-medium">
+                                                {b.label}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {formatMoney(
+                                                    b.limit,
+                                                    t.currency,
+                                                    0,
+                                                )}{' '}
+                                                / month
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="tabular-nums">
+                                                {formatMoney(
+                                                    b.processed,
+                                                    t.currency,
+                                                )}
+                                            </div>
+                                            <div className="flex justify-end">
+                                                <Meter
+                                                    percent={b.used_percent}
+                                                    goal
+                                                    empty="—"
+                                                />
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right tabular-nums">
+                                            {b.filled ? (
+                                                <span className="text-emerald-600">
+                                                    filled
+                                                </span>
+                                            ) : (
+                                                formatMoney(
+                                                    b.left,
+                                                    t.currency,
+                                                    0,
+                                                )
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {b.needed_rounded === null ||
+                                            b.filled ? (
+                                                '—'
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <span className="text-base font-semibold tabular-nums">
+                                                        {formatMoney(
+                                                            b.needed_rounded,
+                                                            t.currency,
+                                                            0,
+                                                        )}
+                                                    </span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-7"
+                                                        aria-label="Copy"
+                                                        onClick={() =>
+                                                            copy(
+                                                                b.needed_rounded!,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Copy />
+                                                    </Button>
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="pr-5 text-xs text-muted-foreground">
+                                            <div>
+                                                normal{' '}
+                                                {formatMoney(
+                                                    b.even_pace,
+                                                    t.currency,
+                                                    0,
+                                                )}
+                                                /day
+                                            </div>
+                                            {b.behind > 0 && !b.filled ? (
+                                                <div className="text-amber-600">
+                                                    behind by{' '}
+                                                    {formatMoney(
+                                                        b.behind,
+                                                        t.currency,
+                                                        0,
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-emerald-600">
+                                                    on pace
+                                                </div>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                )),
+                            )}
+                        </TableBody>
+                    </Table>
+                )}
+            </div>
+        </section>
+    );
+}
+
 export default function VolumesIndex({
     view,
+    plan,
     day,
     month,
     today,
@@ -148,7 +345,7 @@ export default function VolumesIndex({
                     description="Successful gateway volume per terminal (MID) against its daily norm and monthly limit."
                     actions={
                         <div className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs">
-                            {(['day', 'month'] as const).map((v) => (
+                            {(['day', 'month', 'plan'] as const).map((v) => (
                                 <button
                                     key={v}
                                     type="button"
@@ -156,7 +353,9 @@ export default function VolumesIndex({
                                         go(
                                             v === 'day'
                                                 ? { view: 'day', day: today }
-                                                : { view: 'month', month },
+                                                : v === 'month'
+                                                  ? { view: 'month', month }
+                                                  : { view: 'plan' },
                                         )
                                     }
                                     className={cn(
@@ -166,14 +365,23 @@ export default function VolumesIndex({
                                             : 'text-muted-foreground hover:text-foreground',
                                     )}
                                 >
-                                    {v === 'day' ? 'By day' : 'By month'}
+                                    {v === 'day'
+                                        ? 'By day'
+                                        : v === 'month'
+                                          ? 'By month'
+                                          : 'Plan'}
                                 </button>
                             ))}
                         </div>
                     }
                 />
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div
+                    className={cn(
+                        'flex flex-wrap items-center gap-2',
+                        view === 'plan' && 'hidden',
+                    )}
+                >
                     {daily &&
                         shortcuts.map((s) => (
                             <Button
@@ -245,6 +453,8 @@ export default function VolumesIndex({
                     </p>
                 )}
 
+                {view === 'plan' && plan && <PlanTable plan={plan} />}
+
                 {totals.length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {totals.map((t) => (
@@ -272,7 +482,12 @@ export default function VolumesIndex({
                     </div>
                 )}
 
-                <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                <section
+                    className={cn(
+                        'overflow-hidden rounded-xl border bg-card shadow-xs',
+                        view === 'plan' && 'hidden',
+                    )}
+                >
                     {rows.length === 0 ? (
                         <p className="px-5 py-10 text-center text-sm text-muted-foreground">
                             No terminals with a gateway yet.
