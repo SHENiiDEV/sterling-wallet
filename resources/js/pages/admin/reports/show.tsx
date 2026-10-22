@@ -62,6 +62,8 @@ type Props = {
         gate_provider: string | null;
     };
     sources: {
+        id: number;
+        has_file: boolean;
         provider: string;
         role: string;
         rows: number;
@@ -137,6 +139,18 @@ export default function ReportShow({
     lockReason,
 }: Props) {
     const [deleting, setDeleting] = useState(false);
+    // The provider files the report was built from, as they arrived.
+    const sourceFiles = (
+        [
+            ['bank', 'Download Bank'],
+            ['gate', 'Download Payment'],
+        ] as const
+    )
+        .map(([role, label]) => ({
+            label,
+            source: sources.find((s) => s.role === role && s.has_file),
+        }))
+        .filter((f) => f.source !== undefined);
     const c = report.currency;
     const m = (v: string | null | undefined) => formatMoney(v ?? 0, c);
     const completed = report.status === 'completed';
@@ -182,6 +196,24 @@ export default function ReportShow({
                     }
                     actions={
                         <>
+                            {sourceFiles.map(({ label, source }) => (
+                                <Button
+                                    key={label}
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                >
+                                    <a
+                                        href={admin.reports.source.url({
+                                            report: report.id,
+                                            source: source!.id,
+                                        })}
+                                    >
+                                        <Download />
+                                        {label}
+                                    </a>
+                                </Button>
+                            ))}
                             {report.files.map((file) => (
                                 <Button
                                     key={file}
