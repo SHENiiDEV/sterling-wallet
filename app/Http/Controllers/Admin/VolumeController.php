@@ -13,7 +13,8 @@ use Inertia\Response;
 /**
  * How much successful volume each terminal (MID) took through the gateway:
  * for one day (Today, Yesterday, any date) or a month, against the daily
- * norm and the monthly processing limit.
+ * norm and the monthly processing limit, and the daily amount still needed
+ * to fill each terminal by the end of the month (the plan).
  */
 class VolumeController extends Controller
 {
@@ -22,7 +23,7 @@ class VolumeController extends Controller
     public function index(Request $request, TerminalVolumes $volumes): Response
     {
         $data = $request->validate([
-            'view' => ['nullable', 'in:day,month'],
+            'view' => ['nullable', 'in:day,month,plan'],
             'day' => ['nullable', 'date_format:Y-m-d'],
             'month' => ['nullable', 'date_format:Y-m'],
             'mid' => ['nullable', 'integer'],
@@ -31,6 +32,28 @@ class VolumeController extends Controller
         $timezone = config('sterling.timezone');
         $today = CarbonImmutable::now($timezone)->startOfDay();
         $view = $data['view'] ?? 'day';
+
+        if ($view === 'plan') {
+            return Inertia::render('admin/volumes/index', [
+                'view' => 'plan',
+                'day' => null,
+                'month' => $today->format('Y-m'),
+                'today' => $today->toDateString(),
+                'isToday' => false,
+                'shortcuts' => $this->shortcuts($today),
+                'previous' => $today->toDateString(),
+                'next' => null,
+                'rows' => [],
+                'totals' => [],
+                'selected' => null,
+                'plan' => [
+                    'as_of' => $today->toDateString(),
+                    'days_left' => $today->daysInMonth - $today->day,
+                    'days_in_month' => $today->daysInMonth,
+                    'terminals' => $volumes->plan($today),
+                ],
+            ]);
+        }
 
         if ($view === 'month') {
             $from = isset($data['month']) ? CarbonImmutable::createFromFormat('Y-m-d', $data['month'].'-01', $timezone)->startOfDay() : $today->startOfMonth();
@@ -59,6 +82,7 @@ class VolumeController extends Controller
             'shortcuts' => $this->shortcuts($today),
             'previous' => $previous,
             'next' => $next,
+            'plan' => null,
             'rows' => $rows,
             'totals' => $this->totals($rows),
             'selected' => isset($data['mid']) && ($row = $rows->firstWhere('id', (int) $data['mid'])) !== null

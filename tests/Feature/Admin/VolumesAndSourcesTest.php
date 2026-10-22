@@ -40,12 +40,12 @@ class VolumesAndSourcesTest extends TestCase
         $this->mid = $this->mid($this->merchantWithTariff(['name' => 'Volume Shop']), $this->bank, $this->gate, ['processing_limit' => 1000]);
     }
 
-    private function gateOperation(string $payment, string $type, string $amount, string $day): void
+    private function gateOperation(string $payment, string $type, string $amount, string $day, string $ips = 'visa'): void
     {
         MerchantOperation::query()->create([
             'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->gate->id,
             'role' => ProviderType::Gate, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => $type,
-            'trn_type' => $type, 'ips' => 'visa', 'amount' => $amount, 'currency' => 'EUR',
+            'trn_type' => $type, 'ips' => $ips, 'amount' => $amount, 'currency' => 'EUR',
             'transaction_at' => $day.' 10:00:00', 'report_date' => $day,
         ]);
     }
@@ -116,6 +116,41 @@ class VolumesAndSourcesTest extends TestCase
                 ->where('rows.0.volume', $near(60))
                 ->where('rows.0.norm_percent', $near(40))
                 ->where('rows.0.shortfall', $near(90)));
+    }
+
+    public function test_the_plan_says_how_much_to_give_per_day_to_fill_each_scheme_limit()
+    {
+        // One terminal, 200k a month on Visa and 200k on Mastercard (Madfin style).
+        $this->mid->update(['processing_limit_visa' => 200000, 'processing_limit_mastercard' => 200000]);
+        $this->gateOperation('V1', 'sale', '50000.00', '2026-10-10', 'visa');
+        $this->gateOperation('M1', 'sale', '20000.00', '2026-10-12', 'mastercard');
+        $this->gateOperation('M2', 'decline', '99999.00', '2026-10-12', 'mastercard');
+        $this->gateOperation('V0', 'sale', '7000.00', '2026-09-28', 'visa');
+        // Today (20 Oct) is not counted: its report arrives tomorrow.
+        $this->gateOperation('VT', 'sale', '1000.00', '2026-10-20', 'visa');
+        $near = fn (float $expected) => fn ($value) => abs($value - $expected) < 0.01;
+
+        // 20 Oct: 11 days after today (21 to 31); the daily amount goes down to a multiple of 500.
+        $this->actingAs($this->admin)->get(route('admin.volumes.index', ['view' => 'plan']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('plan.days_left', 11)
+                ->where('plan.terminals.0.mid', $this->mid->mid)
+                ->where('plan.terminals.0.buckets.0.scheme', 'visa')
+                ->where('plan.terminals.0.buckets.0.processed', $near(50000))
+                ->where('plan.terminals.0.buckets.0.left', $near(150000))
+                ->where('plan.terminals.0.buckets.0.needed_per_day', $near(13636.36))
+                ->where('plan.terminals.0.buckets.0.needed_rounded', 13500)
+                ->where('plan.terminals.0.buckets.1.scheme', 'mastercard')
+                ->where('plan.terminals.0.buckets.1.left', $near(180000))
+                ->where('plan.terminals.0.buckets.1.needed_rounded', 16000));
+
+        // Without scheme limits the single processing limit counts every card.
+        $this->mid->update(['processing_limit_visa' => null, 'processing_limit_mastercard' => null, 'processing_limit' => 100000]);
+        $this->get(route('admin.volumes.index', ['view' => 'plan']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('plan.terminals.0.buckets.0.scheme', 'all')
+                ->where('plan.terminals.0.buckets.0.processed', $near(70000))
+                ->where('plan.terminals.0.buckets.0.needed_rounded', 2500));
     }
 
     public function test_the_raw_provider_files_of_a_report_can_be_downloaded()

@@ -62,6 +62,12 @@ export function MidDialog({
         rolling_reserve_limit: mid
             ? String(Number(mid.rolling_reserve_limit))
             : '100000',
+        processing_limit_visa: mid?.processing_limit_visa
+            ? String(Number(mid.processing_limit_visa))
+            : '',
+        processing_limit_mastercard: mid?.processing_limit_mastercard
+            ? String(Number(mid.processing_limit_mastercard))
+            : '',
         daily_norm: mid?.daily_norm ? String(Number(mid.daily_norm)) : '',
         processing_limit: mid?.processing_limit
             ? String(Number(mid.processing_limit))
@@ -317,10 +323,46 @@ export function MidDialog({
                             />
                         </Field>
                         <Field
+                            label="Visa limit"
+                            htmlFor="processing_limit_visa"
+                            error={errors.processing_limit_visa}
+                            hint="Monthly; when the terminal has a limit per scheme"
+                        >
+                            <AffixInput
+                                id="processing_limit_visa"
+                                suffix={data.currency}
+                                value={data.processing_limit_visa}
+                                onChange={(e) =>
+                                    setData(
+                                        'processing_limit_visa',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </Field>
+                        <Field
+                            label="Mastercard limit"
+                            htmlFor="processing_limit_mastercard"
+                            error={errors.processing_limit_mastercard}
+                            hint="Monthly; replaces the single limit above"
+                        >
+                            <AffixInput
+                                id="processing_limit_mastercard"
+                                suffix={data.currency}
+                                value={data.processing_limit_mastercard}
+                                onChange={(e) =>
+                                    setData(
+                                        'processing_limit_mastercard',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </Field>
+                        <Field
                             label="Daily norm"
                             htmlFor="daily_norm"
                             error={errors.daily_norm}
-                            hint="Expected successful volume per day; empty = monthly limit ÷ days"
+                            hint="Optional fixed daily target; empty = computed from the limits"
                         >
                             <AffixInput
                                 id="daily_norm"

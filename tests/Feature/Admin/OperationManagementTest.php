@@ -4,6 +4,8 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\ProviderType;
 use App\Models\AdminAuditLog;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
@@ -68,6 +70,41 @@ class OperationManagementTest extends TestCase
             'card_bin' => $card[0], 'card_last4' => $card[1], 'amount' => '10.00', 'currency' => 'EUR',
             'transaction_at' => '2026-09-15 10:00:00', 'report_date' => '2026-09-15',
         ]), [['535765', '2604'], ['492182', '1171'], ['465865', '1016'], ['411111', '1111']]);
+    }
+
+    public function test_operations_filter_by_client_company_and_terminal()
+    {
+        [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
+        $client = Client::query()->create(['name' => 'Group One']);
+        $parent = Company::factory()->create(['name' => 'Parent Ltd', 'client_id' => $client->id]);
+        $child = Company::factory()->create(['name' => 'Child Ltd', 'client_id' => $client->id, 'parent_id' => $parent->id]);
+        $stranger = Company::factory()->create(['name' => 'Other Ltd', 'client_id' => Client::query()->create(['name' => 'Group Two'])->id]);
+
+        $make = function (Company $company, string $mid, string $payment) use ($cardaq, $corefy) {
+            $m = $this->mid($this->merchantWithTariff(['company_id' => $company->id]), $cardaq, $corefy, ['mid' => $mid, 'gate_mid' => 'coma_'.$mid]);
+            MerchantOperation::query()->create([
+                'merchant_id' => $m->merchant_id, 'merchant_mid_id' => $m->id, 'provider_id' => $cardaq->id, 'role' => $cardaq->type,
+                'mid' => $m->mid, 'payment_id' => $payment, 'operation_type' => 'sale', 'trn_type' => 'sale', 'ips' => 'visa',
+                'amount' => '10.00', 'currency' => 'EUR', 'transaction_at' => '2026-09-15 10:00:00', 'report_date' => '2026-09-15',
+            ]);
+
+            return $m;
+        };
+        $parentMid = $make($parent, '4400000011', 'OP-PARENT');
+        $make($child, '4400000012', 'OP-CHILD');
+        $strangerMid = $make($stranger, '4400000013', 'OP-OTHER');
+
+        $total = fn (array $query, int $expected) => $this->actingAs($this->admin)
+            ->get(route('admin.operations.index', $query))
+            ->assertInertia(fn ($page) => $page->has('clients')->has('companies')->has('mids')->where('operations.total', $expected));
+
+        $total([], 3);
+        $total(['client' => $client->id], 2);
+        // A company includes its sub-companies.
+        $total(['company' => $parent->id], 2);
+        $total(['company' => $child->id], 1);
+        $total(['mid' => $parentMid->id], 1);
+        $total(['client' => $client->id, 'mid' => $strangerMid->id], 0);
     }
 
     public function test_card_masks_are_searched_together_and_exported()

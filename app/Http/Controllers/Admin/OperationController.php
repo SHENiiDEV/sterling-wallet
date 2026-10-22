@@ -9,6 +9,8 @@ use App\Enums\ReportStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OperationRequest;
 use App\Http\Resources\OperationResource;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
@@ -49,6 +51,9 @@ class OperationController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'unmatched' => ['nullable', 'boolean'],
+            'client' => ['nullable', 'integer'],
+            'company' => ['nullable', 'integer'],
+            'mid' => ['nullable', 'integer'],
         ]);
     }
 
@@ -122,6 +127,10 @@ class OperationController extends Controller
             'totals' => $totals,
             'filters' => (object) Arr::only($filters, array_keys($filters)),
             'providers' => Provider::query()->whereIn('type', [ProviderType::Bank, ProviderType::Gate])->orderBy('name')->get(['id', 'name']),
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'companies' => Company::query()->orderBy('name')->get(['id', 'name', 'client_id', 'parent_id']),
+            'mids' => MerchantMid::query()->with('merchant:id,name,company_id')->orderBy('mid')->get()
+                ->map(fn (MerchantMid $m) => ['id' => $m->id, 'mid' => $m->mid, 'currency' => $m->currency->value, 'merchant' => $m->merchant?->name, 'company_id' => $m->merchant?->company_id]),
             'roles' => array_values(array_filter(ProviderType::options(), fn ($o) => $o['value'] !== ProviderType::Crypto->value)),
             'types' => OperationType::options(),
             'currencies' => Currency::options(),
@@ -390,6 +399,13 @@ class OperationController extends Controller
                         fn (Builder $q) => $q->where('card_bin', substr($digits, 0, 6))->where('card_last4', substr($digits, -4)),
                     )));
             })
+            // Client → company (with its sub-companies) → terminal.
+            ->when($filters['client'] ?? null, fn (Builder $q, int $id) => $q->whereHas('merchant', fn (Builder $m) => $m->whereHas('company', fn (Builder $c) => $c->where('client_id', $id))))
+            ->when($filters['company'] ?? null, function (Builder $q, int $id) {
+                $ids = Company::query()->find($id)?->descendantIdsWithSelf() ?? [$id];
+                $q->whereHas('merchant', fn (Builder $m) => $m->whereIn('company_id', $ids));
+            })
+            ->when($filters['mid'] ?? null, fn (Builder $q, int $id) => $q->where('merchant_mid_id', $id))
             ->when($filters['provider'] ?? null, fn (Builder $q, int $id) => $q->where('provider_id', $id))
             ->when($filters['role'] ?? null, fn (Builder $q, string $role) => $q->where('role', $role))
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('operation_type', $type))

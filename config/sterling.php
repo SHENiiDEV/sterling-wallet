@@ -79,6 +79,14 @@ return [
     ],
 
     /*
+    | Volumes plan: the daily amount to give a terminal is rounded DOWN to this
+    | step (12 890 → 12 500 with 500), so the figure typed into a PSP filter is never too high.
+    */
+    'volumes' => [
+        'round_step' => (int) env('STERLING_VOLUMES_ROUND_STEP', 500),
+    ],
+
+    /*
     | Issuer countries counted as EU when a report has no region column.
     */
     'eu_countries' => [
