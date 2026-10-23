@@ -25,7 +25,11 @@ import { DeleteMerchantDialog } from '@/components/admin/merchants/delete-mercha
 import { PurgeMidDialog } from '@/components/admin/merchants/purge-mid-dialog';
 import type { MerchantDeletion } from '@/components/admin/merchants/delete-merchant-dialog';
 import { AcquirersSection } from '@/components/admin/merchants/acquirers-section';
-import type { Acquirer } from '@/components/admin/merchants/acquirers-section';
+import type {
+    Acquirer,
+    ClientRef,
+    HistoryEntry,
+} from '@/components/admin/merchants/acquirers-section';
 import { MidDialog } from '@/components/admin/merchants/mid-dialog';
 import {
     ReportsTab,
@@ -103,6 +107,8 @@ type Props = {
     walletTypes: Option[];
     canManageSeeds: boolean;
     acquirers: Acquirer[];
+    clients: ClientRef[];
+    history: HistoryEntry[];
     acquirerStatuses: Option[];
     integrationStatuses: Option[];
     deletion?: MerchantDeletion;
@@ -630,6 +636,8 @@ export default function MerchantShow(props: Props) {
                             merchantId={merchant.public_id}
                             acquirers={props.acquirers}
                             banks={props.bankProviders}
+                            clients={props.clients}
+                            history={props.history}
                             statuses={props.acquirerStatuses}
                             integrationStatuses={props.integrationStatuses}
                         />

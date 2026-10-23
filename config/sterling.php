@@ -87,6 +87,11 @@ return [
     ],
 
     /*
+    | An onboarding that sits in one in-flight status longer than this many days is flagged as stalled.
+    */
+    'onboarding_stale_days' => (int) env('STERLING_ONBOARDING_STALE_DAYS', 14),
+
+    /*
     | Issuer countries counted as EU when a report has no region column.
     */
     'eu_countries' => [

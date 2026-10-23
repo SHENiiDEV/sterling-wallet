@@ -14,6 +14,8 @@ use Illuminate\Support\Collection;
  */
 final class BankFolders
 {
+    public function __construct(private AcquirerIntegration $integration) {}
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -47,7 +49,7 @@ final class BankFolders
 
         $mids = MerchantMid::query()->where('bank_provider_id', $bank->id)->orderBy('currency')->get()->groupBy('merchant_id');
 
-        $rows = $bank->acquirers()->with('merchant.company:id,name')->get()
+        $rows = $bank->acquirers()->with(['merchant.company:id,name', 'client:id,name'])->get()
             ->sortBy(fn (MerchantAcquirer $a) => $a->merchant->name)
             ->map(fn (MerchantAcquirer $a) => [
                 'id' => $a->id,
@@ -61,8 +63,9 @@ final class BankFolders
                 'mcc' => $a->mcc ?? $a->merchant->mcc,
                 'limit' => $a->limit,
                 'limit_currency' => $a->limit_currency,
-                'integration' => $a->integration_status->label(),
-                'psp' => $a->psp,
+                'integration' => $this->integration->for($a)['label'],
+                'psp' => $a->client?->name ?? $a->psp,
+                'stale_days' => AcquirerIntegration::staleDays($a),
                 'notes' => $a->notes,
                 'mids' => ($mids[$a->merchant_id] ?? collect())->map(fn (MerchantMid $m) => ['id' => $m->id, 'mid' => $m->mid, 'currency' => $m->currency->value])->values()->all(),
             ])->values()->all();

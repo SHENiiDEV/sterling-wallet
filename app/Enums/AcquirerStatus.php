@@ -37,4 +37,12 @@ enum AcquirerStatus: string
             self::Closed => 'Closed',
         };
     }
+
+    /**
+     * Statuses where we are waiting on somebody; a long stay in one of them means the onboarding is stuck.
+     */
+    public function isInFlight(): bool
+    {
+        return in_array($this, [self::PrepareKyb, self::UpdateKyb, self::KybSubmitted, self::StartOnboarding, self::OnboardingInProcess, self::Rebrand], true);
+    }
 }

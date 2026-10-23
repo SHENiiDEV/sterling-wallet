@@ -2,6 +2,7 @@
 
 namespace App\Merchants;
 
+use App\Enums\AcquirerStatus;
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
 use App\Enums\TariffProduct;
@@ -32,6 +33,8 @@ class MidReadiness
         'no_wallet' => 'No payout wallet',
         'no_email' => 'No invoice e-mail',
         'no_client' => 'Not in a client',
+        'acq_no_client' => 'Bank record without a client (PSP)',
+        'kyb_stale' => 'Onboarding stalled',
     ];
 
     public function __construct(private FxRateResolver $fx) {}
@@ -51,7 +54,7 @@ class MidReadiness
         );
 
         return Merchant::query()
-            ->with(['company.client', 'wallets', 'mids.bankProvider', 'mids.gateProvider'])
+            ->with(['company.client', 'acquirers.provider:id,name', 'wallets', 'mids.bankProvider', 'mids.gateProvider'])
             ->whereIn('status', [MerchantStatus::Active, MerchantStatus::Onboarding])
             ->where('is_test', false)
             ->orderBy('name')
@@ -65,6 +68,17 @@ class MidReadiness
                 $mids = $merchant->mids;
                 if ($mids->isEmpty()) {
                     $add($merchantIssues, 'no_mids');
+                }
+                foreach ($merchant->acquirers as $acquirer) {
+                    if (in_array($acquirer->status, [AcquirerStatus::Closed, AcquirerStatus::Rejected], true)) {
+                        continue;
+                    }
+                    if ($acquirer->client_id === null) {
+                        $add($merchantIssues, 'acq_no_client', $acquirer->provider->name);
+                    }
+                    if (($days = AcquirerIntegration::staleDays($acquirer)) !== null) {
+                        $add($merchantIssues, 'kyb_stale', "{$acquirer->provider->name}: {$acquirer->status->label()} for {$days} days");
+                    }
                 }
                 if ($merchant->company?->client === null) {
                     $add($merchantIssues, 'no_client');

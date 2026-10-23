@@ -54,6 +54,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::middleware('module:merchants')->group(function () {
         Route::get('merchants/folders', [MerchantController::class, 'folders'])->name('merchants.folders');
         Route::get('checklist', [MidChecklistController::class, 'index'])->name('checklist.index');
+        Route::get('merchants/matrix', [MerchantController::class, 'matrix'])->name('merchants.matrix');
         Route::get('merchants/banks', [MerchantController::class, 'banks'])->name('merchants.banks');
         Route::resource('merchants', MerchantController::class);
         Route::scopeBindings()->group(function () {

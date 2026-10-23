@@ -6,6 +6,7 @@ use App\Enums\AcquirerStatus;
 use App\Enums\IntegrationStatus;
 use App\Enums\MerchantStatus;
 use App\Enums\ProviderType;
+use App\Models\Client;
 use App\Models\Company;
 use App\Models\Merchant;
 use App\Models\MerchantAcquirer;
@@ -249,6 +250,7 @@ final class BankSheetImporter
             'status' => $status,
             'integration_status' => $integration,
             'psp' => ($row['PSP'] ?? '') !== '' ? $row['PSP'] : null,
+            'client_id' => ($row['PSP'] ?? '') !== '' ? Client::query()->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($row['PSP']))])->value('id') : null,
             'mcc' => $mcc,
             'limit' => $limit,
             'notes' => ($row['Note'] ?? '') !== '' ? $row['Note'] : null,
