@@ -30,7 +30,7 @@ use Illuminate\Support\Str;
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
     'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'fee_fiat_to_crypto_percent',
-    'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap', 'settlement_terms',
+    'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap', 'settlement_terms', 'settlement_lag_days',
     'rolling_reserve_percent', 'rolling_reserve_days',
     'invoice_email', 'mcc', 'onboarding_status', 'notes',
 ])]
@@ -62,6 +62,7 @@ class Merchant extends Model
             'status' => MerchantStatus::class,
             'is_test' => 'boolean',
             'rolling_reserve_days' => 'integer',
+            'settlement_lag_days' => 'integer',
             ...array_fill_keys(self::PERCENT_FIELDS, 'decimal:3'),
             ...array_fill_keys(self::FIXED_FIELDS, 'decimal:4'),
             'fee_collab_fixed' => 'decimal:4',

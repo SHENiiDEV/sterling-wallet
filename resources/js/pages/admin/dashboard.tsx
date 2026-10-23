@@ -147,6 +147,14 @@ export default function Dashboard({
                                             — {alert.detail}
                                         </span>
                                     )}
+                                    {alert.key === 'settlements_due' && (
+                                        <Link
+                                            href={admin.settlements.index()}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Open settlements
+                                        </Link>
+                                    )}
                                     {alert.key === 'review_mids' && (
                                         <Link
                                             href={admin.merchants.index({

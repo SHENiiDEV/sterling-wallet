@@ -33,7 +33,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SettlementService
 {
-    public function __construct(private FxRateResolver $fx) {}
+    public function __construct(private FxRateResolver $fx, private SettlementSchedule $schedule) {}
 
     /**
      * Completed reports of the merchant that no active settlement pays yet.
@@ -56,15 +56,15 @@ class SettlementService
     }
 
     /**
-     * @param  list<int>  $merchantIds
+     * @param  list<int>|null  $merchantIds  null = every merchant
      * @return Collection<int, DailyReportTask>
      */
-    private function availableReportsFor(array $merchantIds, ?TariffProduct $product = null): Collection
+    public function availableReportsFor(?array $merchantIds, ?TariffProduct $product = null): Collection
     {
         return DailyReportTask::query()
             ->when($product, fn (Builder $q, TariffProduct $p) => $q->whereHas('merchantMid.bankProvider', fn (Builder $b) => $b->where('product', $p->value)))
-            ->with(['merchantMid:id,mid,currency', 'merchant:id,name,company_id', 'merchant.company:id,name'])
-            ->whereIn('merchant_id', $merchantIds)
+            ->with(['merchantMid:id,mid,currency', 'merchant:id,name,company_id,settlement_lag_days', 'merchant.company:id,name'])
+            ->when($merchantIds !== null, fn (Builder $q) => $q->whereIn('merchant_id', $merchantIds))
             ->where('status', ReportStatus::Completed)
             ->whereNotIn('id', $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id'))
             ->orderBy('report_date')
@@ -110,7 +110,7 @@ class SettlementService
      * The settlement charge follows the terms of the first merchant that has
      * something to pay (or the first merchant at all).
      */
-    public function createClientDraft(Client $client, ?User $by, ?string $payoutCurrency = null, bool $withReleases = true, ?TariffProduct $product = null): Settlement
+    public function createClientDraft(Client $client, ?User $by, ?string $payoutCurrency = null, bool $withReleases = true, ?TariffProduct $product = null, bool $dueOnly = false): Settlement
     {
         $merchants = Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->orderBy('id')->get();
         if ($merchants->isEmpty()) {
@@ -124,18 +124,18 @@ class SettlementService
             ->pluck('merchant_id');
         $primary = $merchants->first(fn (Merchant $m) => $pending->contains($m->id)) ?? $merchants->first();
 
-        return $this->createDraft($primary, $by, null, $withReleases, $client, $payoutCurrency, $product);
+        return $this->createDraft($primary, $by, null, $withReleases, $client, $payoutCurrency, $product, $dueOnly);
     }
 
     /**
      * @param  list<int>|null  $reportIds  null = every available report
      */
-    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true, ?Client $client = null, ?string $payoutCurrency = null, ?TariffProduct $product = null): Settlement
+    public function createDraft(Merchant $merchant, ?User $by, ?array $reportIds = null, bool $withReleases = true, ?Client $client = null, ?string $payoutCurrency = null, ?TariffProduct $product = null, bool $dueOnly = false): Settlement
     {
         // One settlement pays one product: a C2B partner can only make C2B ones.
         $product ??= ProductScope::current() ?? TariffProduct::Card;
 
-        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases, $client, $payoutCurrency, $product) {
+        return DB::transaction(function () use ($merchant, $by, $reportIds, $withReleases, $client, $payoutCurrency, $product, $dueOnly) {
             $settlement = Settlement::query()->create([
                 'number' => 'SET-TMP-'.uniqid(),
                 'merchant_id' => $merchant->id,
@@ -152,6 +152,10 @@ class SettlementService
             ]);
 
             $reports = $this->availableReportsIn($settlement);
+            // Reports that are not due yet by the merchant's T+N stay out of a "due" draft.
+            if ($dueOnly) {
+                $reports = $reports->reject(fn (DailyReportTask $r) => $this->schedule->state($r) === SettlementSchedule::NOT_DUE);
+            }
             if ($reportIds !== null) {
                 $reports = $reports->whereIn('id', $reportIds);
             }
@@ -393,9 +397,33 @@ class SettlementService
         ));
     }
 
-    public function approve(Settlement $settlement, User $by): Settlement
+    /**
+     * Report lines whose day is not yet due for payout by the merchant's schedule.
+     *
+     * @return Collection<int, DailyReportTask>
+     */
+    public function earlyReports(Settlement $settlement): Collection
+    {
+        return DailyReportTask::query()
+            ->with('merchant:id,settlement_lag_days')
+            ->whereIn('id', $settlement->lines()->where('type', SettlementLineType::Report)->whereNotNull('daily_report_task_id')->pluck('daily_report_task_id'))
+            ->get()
+            ->filter(fn (DailyReportTask $r) => $this->schedule->state($r) === SettlementSchedule::NOT_DUE)
+            ->values();
+    }
+
+    public function approve(Settlement $settlement, User $by, bool $confirmEarly = false): Settlement
     {
         $this->assertEditable($settlement);
+
+        $early = $this->earlyReports($settlement);
+        if ($early->isNotEmpty() && ! $confirmEarly) {
+            throw ValidationException::withMessages(['early' => sprintf(
+                '%d report(s) are not due for payout yet (%s). Confirm to pay them early.',
+                $early->count(),
+                $early->map(fn (DailyReportTask $r) => $r->report_date->toDateString())->implode(', '),
+            )]);
+        }
 
         if (! $settlement->lines()->exists()) {
             throw ValidationException::withMessages(['settlement' => 'A settlement needs at least one line.']);

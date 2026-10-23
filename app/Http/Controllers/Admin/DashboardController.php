@@ -19,6 +19,7 @@ use App\Models\MerchantOperation;
 use App\Models\SettlementLine;
 use App\Models\User;
 use App\Profit\ProfitQuery;
+use App\Settlements\DueSettlements;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -94,7 +95,7 @@ class DashboardController extends Controller
                     'to_status' => $activity->toStatus ? DocumentStatusResource::make($activity->toStatus)->resolve() : null,
                     'created_at' => $activity->created_at?->toIso8601String(),
                 ]),
-            'reportAlerts' => $this->reportAlerts(),
+            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements)),
         ]);
     }
 
@@ -142,7 +143,7 @@ class DashboardController extends Controller
             'unsettled' => $unsettled->map(fn ($r) => ['currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]),
             'recent' => MerchantOperation::query()->with('merchant:id,name')->latest('transaction_at')->limit(8)->get()
                 ->map(fn (MerchantOperation $o) => ['id' => $o->id, 'reference' => $o->reference ?? $o->payment_id, 'merchant' => $o->merchant?->name, 'amount' => $o->amount, 'currency' => $o->currency, 'at' => $o->transaction_at?->toIso8601String()]),
-            'reportAlerts' => $this->reportAlerts(),
+            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements)),
         ]);
     }
 
@@ -152,9 +153,22 @@ class DashboardController extends Controller
      *
      * @return list<array{key: string, label: string, count: int, detail: string|null}>
      */
-    private function reportAlerts(): array
+    private function reportAlerts(bool $withSettlements = false): array
     {
         $alerts = [];
+
+        // Reports that are due for payout today by the merchants' T+N, not yet in any settlement.
+        if ($withSettlements) {
+            $due = app(DueSettlements::class)->merchants();
+            if ($due->isNotEmpty()) {
+                $alerts[] = [
+                    'key' => 'settlements_due',
+                    'label' => 'merchant(s) have reports due for settlement',
+                    'count' => $due->count(),
+                    'detail' => $due->take(5)->map(fn (array $row) => $row['merchant']->name)->implode(', ').($due->count() > 5 ? ', …' : ''),
+                ];
+            }
+        }
 
         $review = MerchantMid::query()->where('status', MidStatus::Review)->pluck('mid');
         if ($review->isNotEmpty()) {
