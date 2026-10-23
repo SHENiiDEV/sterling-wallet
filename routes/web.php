@@ -41,6 +41,7 @@ Route::middleware(['auth', 'merchant'])->prefix('merchant')->name('portal.')->gr
     Route::get('reports', [PortalController::class, 'reports'])->name('reports');
     Route::get('reports/client', [PortalController::class, 'clientReport'])->name('reports.client');
     Route::get('reports/{report}/download/{file}', [PortalController::class, 'downloadReport'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
+    Route::get('volumes', [PortalController::class, 'volumes'])->name('volumes');
     Route::get('settlements', [PortalController::class, 'settlements'])->name('settlements');
     Route::get('settlements/{settlement}/pdf', [PortalController::class, 'settlementPdf'])->name('settlements.pdf');
 });

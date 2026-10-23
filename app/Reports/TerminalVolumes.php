@@ -17,17 +17,19 @@ use Illuminate\Support\Collection;
 class TerminalVolumes
 {
     /**
-     * One row per terminal that has a gateway.
+     * One row per terminal that has a gateway, optionally only of some merchants (the merchant portal).
      *
+     * @param  list<int>|null  $merchantIds
      * @return Collection<int, array<string, mixed>>
      */
-    public function rows(CarbonImmutable $from, CarbonImmutable $to, ?int $midId = null): Collection
+    public function rows(CarbonImmutable $from, CarbonImmutable $to, ?int $midId = null, ?array $merchantIds = null): Collection
     {
         $stats = MerchantOperation::query()->toBase()
             ->where('role', ProviderType::Gate->value)
             ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
             ->whereNotNull('merchant_mid_id')
             ->when($midId, fn ($q, int $id) => $q->where('merchant_mid_id', $id))
+            ->when($merchantIds !== null, fn ($q) => $q->whereIn('merchant_id', $merchantIds))
             ->selectRaw('merchant_mid_id, '.$this->aggregates())
             ->groupBy('merchant_mid_id')
             ->get()
@@ -39,6 +41,7 @@ class TerminalVolumes
             ->with(['merchant:id,public_id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
             ->whereNotNull('gate_provider_id')
             ->when($midId, fn ($q, int $id) => $q->whereKey($id))
+            ->when($merchantIds !== null, fn ($q) => $q->whereIn('merchant_id', $merchantIds))
             ->orderBy('mid')
             ->get()
             ->map(function (MerchantMid $mid) use ($stats, $days, $from) {

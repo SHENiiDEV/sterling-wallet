@@ -16,6 +16,7 @@ import type { User } from '@/types';
 const NAV = [
     { title: 'Dashboard', href: portal.dashboard.url(), exact: true },
     { title: 'Daily reports', href: portal.reports.url(), exact: false },
+    { title: 'Volumes', href: portal.volumes.url(), exact: false },
     { title: 'Settlements', href: portal.settlements.url(), exact: false },
 ];
 

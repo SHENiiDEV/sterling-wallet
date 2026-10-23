@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Portal;
 
+use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\SettlementStatus;
 use App\Http\Controllers\Controller;
@@ -11,10 +12,12 @@ use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantOperation;
 use App\Models\MerchantTariff;
 use App\Models\Settlement;
 use App\Reports\Generation\ClientDailyStatement;
 use App\Reports\Generation\ClientDays;
+use App\Reports\TerminalVolumes;
 use App\Settlements\SettlementStatementPdf;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
@@ -112,6 +115,60 @@ class PortalController extends Controller
                 ->paginate(25)
                 ->withQueryString()
                 ->through(fn (Settlement $s) => $this->settlement($s)),
+        ]);
+    }
+
+    /**
+     * How full each terminal of the client's merchants was, day by day, from
+     * the daily gateway reports. Corefy's file for a day arrives the next
+     * day, so the latest complete day is yesterday.
+     */
+    public function volumes(Request $request, TerminalVolumes $volumes): Response
+    {
+        [$merchants, $selected] = $this->scope($request);
+        $data = $request->validate([
+            'day' => ['nullable', 'date_format:Y-m-d'],
+            'mid' => ['nullable', 'integer'],
+        ]);
+
+        $timezone = config('sterling.timezone');
+        $yesterday = CarbonImmutable::now($timezone)->startOfDay()->subDay();
+        $day = isset($data['day']) ? min(CarbonImmutable::createFromFormat('Y-m-d', $data['day'], $timezone)->startOfDay(), $yesterday) : $yesterday;
+        $ids = $selected->pluck('id')->all();
+
+        // The month so far, to show how much of the monthly limit is used.
+        $month = $volumes->rows($day->startOfMonth(), $day, merchantIds: $ids)->keyBy('id');
+        $rows = $volumes->rows($day, $day, merchantIds: $ids)->map(fn (array $r) => [
+            'id' => $r['id'],
+            'mid' => $r['mid'],
+            'currency' => $r['currency'],
+            'merchant' => $r['merchant']['name'],
+            'volume' => $r['volume'],
+            'approved' => $r['approved'],
+            'declined' => $r['declined'],
+            'norm' => $r['norm'],
+            'norm_percent' => $r['norm_percent'],
+            'shortfall' => $r['shortfall'],
+            'month_volume' => $month[$r['id']]['volume'] ?? 0,
+            'month_limit' => $month[$r['id']]['limit'] ?? null,
+            'month_percent' => $month[$r['id']]['used_percent'] ?? null,
+        ])->values();
+
+        $selectedRow = isset($data['mid']) ? $rows->firstWhere('id', (int) $data['mid']) : null;
+
+        return Inertia::render('portal/volumes', [
+            ...$this->shared($request, $merchants, $selected),
+            'day' => $day->toDateString(),
+            'shortcuts' => array_map(fn (int $back) => [
+                'date' => $yesterday->subDays($back)->toDateString(),
+                'label' => $back === 0 ? 'Yesterday' : $yesterday->subDays($back)->format('D j M'),
+            ], range(0, 6)),
+            'dataThrough' => MerchantOperation::query()->toBase()->where('role', ProviderType::Gate->value)->whereIn('merchant_id', $ids)->max('report_date'),
+            'rows' => $rows,
+            'selected' => $selectedRow === null ? null : [
+                'terminal' => $selectedRow,
+                'days' => $volumes->series($selectedRow['id'], $day->subDays(13), $day),
+            ],
         ]);
     }
 
