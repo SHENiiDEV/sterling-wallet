@@ -95,6 +95,7 @@ type Pricing = {
     }[];
     reserve_percent: string;
     reserve_days: number;
+    currencies: string[];
     mids: { mid: string; currency: string; status: string }[];
 };
 
@@ -452,6 +453,16 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
     // Cards are the default product: shown unless the merchant only has others.
     const showCard = merchant.card_offered || merchant.products.length === 0;
 
+    // A fixed fee in the currency of the MID (€0.30, £0.30); several currencies: each one.
+    const fixedFee = (value: string) =>
+        Number(value) > 0
+            ? merchant.currencies.length > 0
+                ? merchant.currencies
+                      .map((c) => formatMoney(value, c))
+                      .join(' / ')
+                : formatMoney(value)
+            : 'Free';
+
     return (
         <div className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -520,9 +531,7 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                                         {label}
                                     </dt>
                                     <dd className="tabular-nums">
-                                        {Number(value) > 0
-                                            ? formatMoney(value)
-                                            : 'Free'}
+                                        {fixedFee(value)}
                                     </dd>
                                 </div>
                             ))}
@@ -552,9 +561,7 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                                     <dd className="tabular-nums">
                                         {kind === 'percent'
                                             ? formatPercent(value)
-                                            : Number(value) > 0
-                                              ? formatMoney(value)
-                                              : 'Free'}
+                                            : fixedFee(value)}
                                     </dd>
                                 </div>
                             ))}
@@ -570,7 +577,10 @@ function PricingCard({ merchant }: { merchant: Pricing }) {
                         ? `${formatPercent(merchant.reserve_percent)} · ${merchant.reserve_days} days`
                         : 'none'}
                 </span>{' '}
-                · Fixed fees are charged in each MID's currency.
+                ·{' '}
+                {merchant.currencies.length === 1
+                    ? `Fixed fees are charged in ${merchant.currencies[0]}.`
+                    : "Fixed fees are charged in each MID's currency."}
             </p>
         </div>
     );
