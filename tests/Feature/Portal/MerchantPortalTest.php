@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\FxRate;
 use App\Models\Merchant;
+use App\Models\MerchantMid;
 use App\Models\User;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Settlements\SettlementService;
@@ -75,6 +76,34 @@ class MerchantPortalTest extends TestCase
             'fee_acq_eu_percent' => 0, 'fee_acq_non_eu_percent' => 0,
         ]);
         $this->actingAs($user)->get(route('portal.dashboard'))->assertInertia(fn (Assert $page) => $page->where('pricing.0.card_offered', false)->has('pricing.0.products', 1));
+    }
+
+    public function test_volumes_show_the_clients_terminals_against_the_daily_norm()
+    {
+        MerchantMid::query()->where('merchant_id', $this->ours->id)->update(['daily_norm' => 700, 'processing_limit' => 3500]);
+        $user = $this->portalUser($this->ours);
+        $near = fn (float $expected) => fn ($value) => abs($value - $expected) < 0.01;
+
+        $this->actingAs($user)->get(route('portal.volumes', ['day' => '2026-09-15']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('day', '2026-09-15')
+                ->has('rows', 1)
+                ->where('rows.0.mid', '4400000001')
+                ->where('rows.0.approved', 3)
+                ->where('rows.0.volume', $near(350))
+                ->where('rows.0.norm_percent', $near(50))
+                ->where('rows.0.shortfall', $near(350))
+                ->where('rows.0.month_percent', $near(10))
+                // Our providers and the other client's terminals stay out of sight.
+                ->missing('rows.0.pair')
+                ->where('shortcuts.0.label', 'Yesterday'));
+
+        // The report for a day arrives the next day: the default and the latest day is yesterday.
+        $this->get(route('portal.volumes'))->assertInertia(fn (Assert $page) => $page->where('day', '2026-09-19'));
+        $this->get(route('portal.volumes', ['day' => '2026-12-01']))->assertInertia(fn (Assert $page) => $page->where('day', '2026-09-19'));
+
+        $this->get(route('portal.volumes', ['day' => '2026-09-15', 'mid' => MerchantMid::query()->where('merchant_id', $this->theirs->id)->value('id')]))
+            ->assertInertia(fn (Assert $page) => $page->where('selected', null));
     }
 
     public function test_after_login_everyone_lands_in_their_own_area()
