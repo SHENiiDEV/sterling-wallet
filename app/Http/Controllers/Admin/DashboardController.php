@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Enums\MidStatus;
 use App\Enums\Module;
+use App\Enums\OperationType;
 use App\Enums\ReportStatus;
 use App\Enums\SettlementStatus;
 use App\Enums\UserRole;
@@ -95,7 +96,7 @@ class DashboardController extends Controller
                     'to_status' => $activity->toStatus ? DocumentStatusResource::make($activity->toStatus)->resolve() : null,
                     'created_at' => $activity->created_at?->toIso8601String(),
                 ]),
-            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements)),
+            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements), $user->canAccess(Module::Operations)),
         ]);
     }
 
@@ -143,7 +144,7 @@ class DashboardController extends Controller
             'unsettled' => $unsettled->map(fn ($r) => ['currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]),
             'recent' => MerchantOperation::query()->with('merchant:id,name')->latest('transaction_at')->limit(8)->get()
                 ->map(fn (MerchantOperation $o) => ['id' => $o->id, 'reference' => $o->reference ?? $o->payment_id, 'merchant' => $o->merchant?->name, 'amount' => $o->amount, 'currency' => $o->currency, 'at' => $o->transaction_at?->toIso8601String()]),
-            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements)),
+            'reportAlerts' => $this->reportAlerts($user->canAccess(Module::Settlements), $user->canAccess(Module::Operations)),
         ]);
     }
 
@@ -153,7 +154,7 @@ class DashboardController extends Controller
      *
      * @return list<array{key: string, label: string, count: int, detail: string|null}>
      */
-    private function reportAlerts(bool $withSettlements = false): array
+    private function reportAlerts(bool $withSettlements = false, bool $withOperations = false): array
     {
         $alerts = [];
 
@@ -190,6 +191,19 @@ class DashboardController extends Controller
                     'count' => $count,
                     'detail' => (clone $tasks)->latest('report_date')->value('error_log'),
                 ];
+            }
+        }
+
+        // Rows that should have a pair by now (two days after their day) but have none: pair them by hand.
+        if ($withOperations) {
+            $unpaired = MerchantOperation::query()
+                ->whereNull('matched_operation_id')
+                ->where('operation_type', OperationType::Sale)
+                ->where('report_date', '<=', now(config('sterling.timezone'))->subDays(2)->toDateString())
+                ->whereHas('merchantMid', fn (Builder $q) => $q->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id'))
+                ->count();
+            if ($unpaired > 0) {
+                $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair for more than two days', 'count' => $unpaired, 'detail' => null];
             }
         }
 

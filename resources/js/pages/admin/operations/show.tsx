@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { ArrowLeft, Link2, Link2Off, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
@@ -7,6 +7,7 @@ import {
     OperationTypeBadge,
     RoleLabel,
 } from '@/components/admin/operation-badges';
+import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,8 @@ type Props = {
         provider_cost: string | null;
     } | null;
     pair: Operation | null;
+    candidates: Operation[];
+    allAmounts: boolean;
     mid: {
         mid: string;
         currency: string;
@@ -145,6 +148,12 @@ function OperationFacts({ op }: { op: Operation }) {
                     .filter(Boolean)
                     .join(' · ') || null}
             </Row>
+            {op.attempts !== null && op.attempts > 1 && (
+                <Row label="Attempts">
+                    {op.attempts}{' '}
+                    <span className="text-muted-foreground">(cascaded)</span>
+                </Row>
+            )}
             <Row label="Customer">{op.customer_name}</Row>
             <Row label="Customer account">
                 {op.customer_account && (
@@ -273,9 +282,12 @@ export default function OperationShow({
     fees,
     charges,
     pair,
+    candidates,
+    allAmounts,
     mid,
     report,
 }: Props) {
+    const [unpairing, setUnpairing] = useState(false);
     const rawEntries = Object.entries(raw);
     const feeEntries = Object.entries(fees);
 
@@ -348,13 +360,23 @@ export default function OperationShow({
                         title="Pair in the other system"
                         actions={
                             pair ? (
-                                <Link
-                                    href={admin.operations.show(pair.id)}
-                                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                                >
-                                    <Link2 className="size-3.5" />
-                                    Open
-                                </Link>
+                                <span className="flex items-center gap-3">
+                                    <Link
+                                        href={admin.operations.show(pair.id)}
+                                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                    >
+                                        <Link2 className="size-3.5" />
+                                        Open
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive"
+                                        onClick={() => setUnpairing(true)}
+                                    >
+                                        <Link2Off className="size-3.5" />
+                                        Unpair
+                                    </button>
+                                </span>
                             ) : null
                         }
                     >
@@ -368,6 +390,95 @@ export default function OperationShow({
                                     : mid?.gate_provider
                                       ? 'Not matched yet. Reconciliation runs every 15 minutes and on report generation.'
                                       : 'This MID has no gateway — nothing to pair with.'}
+                            </div>
+                        )}
+                        {!pair && mid?.gate_provider && (
+                            <div className="grid gap-2 border-t pt-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase">
+                                        Pair by hand
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        className="text-xs text-primary hover:underline"
+                                        onClick={() =>
+                                            router.get(
+                                                admin.operations.show.url(
+                                                    operation.id,
+                                                ),
+                                                allAmounts ? {} : { all: 1 },
+                                                { preserveScroll: true },
+                                            )
+                                        }
+                                    >
+                                        {allAmounts
+                                            ? 'Same amount only'
+                                            : 'Show other amounts'}
+                                    </button>
+                                </div>
+                                {candidates.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                        No unpaired{' '}
+                                        {operation.role === 'bank'
+                                            ? 'gateway'
+                                            : 'acquirer'}{' '}
+                                        row
+                                        {allAmounts
+                                            ? ''
+                                            : ' with this amount'}{' '}
+                                        within five days.
+                                    </p>
+                                ) : (
+                                    <ul className="grid gap-1.5">
+                                        {candidates.map((c) => (
+                                            <li
+                                                key={c.id}
+                                                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm"
+                                            >
+                                                <span className="font-mono text-xs">
+                                                    {c.payment_id}
+                                                </span>
+                                                <span className="text-muted-foreground">
+                                                    {c.transaction_at
+                                                        ? formatDateTime(
+                                                              c.transaction_at,
+                                                          )
+                                                        : '—'}
+                                                </span>
+                                                <span className="tabular-nums">
+                                                    {formatMoney(
+                                                        c.amount,
+                                                        c.currency,
+                                                    )}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {c.provider?.name}
+                                                </span>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="ml-auto"
+                                                    onClick={() =>
+                                                        router.post(
+                                                            admin.operations.pair.url(
+                                                                operation.id,
+                                                            ),
+                                                            {
+                                                                partner_id:
+                                                                    c.id,
+                                                            },
+                                                            {
+                                                                preserveScroll: true,
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    Pair
+                                                </Button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                         )}
                     </Panel>
@@ -447,6 +558,18 @@ export default function OperationShow({
                     </Panel>
                 </div>
             </PageBody>
+            <ConfirmDialog
+                open={unpairing}
+                onOpenChange={setUnpairing}
+                title="Remove this pair?"
+                description="Both rows become unpaired again; reconciliation may pair them anew, so pair them by hand to a different row if needed."
+                onConfirm={() =>
+                    router.delete(admin.operations.unpair.url(operation.id), {
+                        preserveScroll: true,
+                        onSuccess: () => setUnpairing(false),
+                    })
+                }
+            />
         </>
     );
 }

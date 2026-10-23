@@ -258,6 +258,7 @@ export type Operation = {
     issuer_country: string | null;
     issuer_name: string | null;
     trn_type: string | null;
+    attempts: number | null;
     operation_type: OperationType;
     operation_type_label: string;
     resolution: string | null;

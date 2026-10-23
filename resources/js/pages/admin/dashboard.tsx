@@ -147,6 +147,16 @@ export default function Dashboard({
                                             — {alert.detail}
                                         </span>
                                     )}
+                                    {alert.key === 'unpaired_operations' && (
+                                        <Link
+                                            href={admin.operations.index({
+                                                query: { unmatched: 1 },
+                                            })}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Open operations
+                                        </Link>
+                                    )}
                                     {alert.key === 'settlements_due' && (
                                         <Link
                                             href={admin.settlements.index()}
