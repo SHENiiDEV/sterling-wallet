@@ -274,6 +274,8 @@ class PortalController extends Controller
             ])->values()->all(),
             'reserve_percent' => $m->rolling_reserve_percent,
             'reserve_days' => $m->rolling_reserve_days,
+            // Fixed fees are in the currency of the MID they ran on: the symbol follows from it.
+            'currencies' => $m->mids->map(fn ($mid) => $mid->currency->value)->unique()->sort()->values(),
             'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->label()])->values(),
         ];
     }
