@@ -6,7 +6,9 @@ use App\Enums\MidStatus;
 use App\Enums\ProviderType;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
+use App\Models\Provider;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -24,9 +26,7 @@ class TerminalVolumes
      */
     public function rows(CarbonImmutable $from, CarbonImmutable $to, ?int $midId = null, ?array $merchantIds = null): Collection
     {
-        $stats = MerchantOperation::query()->toBase()
-            ->where('role', ProviderType::Gate->value)
-            ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
+        $stats = $this->withinDays(MerchantOperation::query()->toBase()->where('role', ProviderType::Gate->value), $from, $to)
             ->whereNotNull('merchant_mid_id')
             ->when($midId, fn ($q, int $id) => $q->where('merchant_mid_id', $id))
             ->when($merchantIds !== null, fn ($q) => $q->whereIn('merchant_id', $merchantIds))
@@ -85,16 +85,27 @@ class TerminalVolumes
      */
     public function series(int $midId, CarbonImmutable $from, CarbonImmutable $to): array
     {
+        $mid = MerchantMid::query()->with('gateProvider:id,timezone')->find($midId);
+        $zone = $this->zone($mid?->gateProvider?->timezone);
+
+        // Each day is a window of the gateway's local day, so a Fri–Sun bundle report still lands on its own days.
+        $cases = [];
+        $bindings = [];
+        for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+            [$start, $end] = $this->window($day, $day, $zone);
+            $cases[] = 'when transaction_at >= ? and transaction_at < ? then ?';
+            array_push($bindings, $start, $end, $day->toDateString());
+        }
+
         $perDay = MerchantOperation::query()->toBase()
             ->where('role', ProviderType::Gate->value)
             ->where('merchant_mid_id', $midId)
-            ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
-            ->selectRaw('report_date, '.$this->aggregates())
-            ->groupBy('report_date')
+            ->tap(fn ($q) => $this->betweenDays($q, $from, $to, $zone))
+            ->selectRaw('case '.implode(' ', $cases).' else report_date end as bucket, '.$this->aggregates(), $bindings)
+            ->groupBy('bucket')
             ->get()
-            ->keyBy(fn ($r) => CarbonImmutable::parse($r->report_date)->toDateString());
+            ->keyBy(fn ($r) => CarbonImmutable::parse($r->bucket)->toDateString());
 
-        $mid = MerchantMid::query()->find($midId);
         $limit = $mid ? $this->totalLimit($mid) : null;
 
         $running = 0.0;
@@ -179,10 +190,7 @@ class TerminalVolumes
         $through = $asOf->subDay();
 
         // Successful volume so far this month per terminal and card scheme.
-        $processed = MerchantOperation::query()->toBase()
-            ->where('role', ProviderType::Gate->value)
-            ->where('operation_type', 'sale')
-            ->whereBetween('report_date', [$from->toDateString(), $through->toDateString()])
+        $processed = $this->withinDays(MerchantOperation::query()->toBase()->where('role', ProviderType::Gate->value)->where('operation_type', 'sale'), $from, $through)
             ->whereNotNull('merchant_mid_id')
             ->selectRaw('merchant_mid_id, ips, sum(amount) as volume, count(*) as approved')
             ->groupBy('merchant_mid_id', 'ips')
@@ -241,6 +249,54 @@ class TerminalVolumes
             })
             ->filter(fn (array $r) => $r['buckets'] !== [])
             ->values();
+    }
+
+    /**
+     * Restricts the rows to days `$from`..`$to`, each gateway's days counted in its own timezone.
+     * Rows without a time fall back to their report date.
+     */
+    private function withinDays(Builder $query, CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        $zones = Provider::query()->ofType(ProviderType::Gate)->get(['id', 'timezone'])
+            ->groupBy(fn (Provider $p) => $this->zone($p->timezone));
+
+        return $query->where(function (Builder $q) use ($zones, $from, $to) {
+            foreach ($zones as $zone => $providers) {
+                [$start, $end] = $this->window($from, $to, $zone);
+                $q->orWhere(fn (Builder $z) => $z->whereIn('provider_id', $providers->pluck('id'))->where('transaction_at', '>=', $start)->where('transaction_at', '<', $end));
+            }
+            $q->orWhere(fn (Builder $z) => $z->whereNull('transaction_at')->whereBetween('report_date', [$from->toDateString(), $to->toDateString()]));
+        });
+    }
+
+    /**
+     * The same restriction for rows of one gateway timezone.
+     */
+    private function betweenDays(Builder $query, CarbonImmutable $from, CarbonImmutable $to, string $zone): Builder
+    {
+        [$start, $end] = $this->window($from, $to, $zone);
+
+        return $query->where(fn (Builder $q) => $q
+            ->where(fn (Builder $z) => $z->where('transaction_at', '>=', $start)->where('transaction_at', '<', $end))
+            ->orWhere(fn (Builder $z) => $z->whereNull('transaction_at')->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])));
+    }
+
+    /**
+     * UTC bounds [start, end) of the local days `$from`..`$to` in `$zone`.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function window(CarbonImmutable $from, CarbonImmutable $to, string $zone): array
+    {
+        $start = CarbonImmutable::createFromFormat('!Y-m-d', $from->toDateString(), $zone)->utc();
+        $end = CarbonImmutable::createFromFormat('!Y-m-d', $to->toDateString(), $zone)->addDay()->utc();
+
+        return [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')];
+    }
+
+    private function zone(?string $timezone): string
+    {
+        return filled($timezone) ? $timezone : config('sterling.timezone');
     }
 
     private function aggregates(): string
