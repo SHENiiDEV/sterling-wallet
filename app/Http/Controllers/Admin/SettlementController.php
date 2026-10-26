@@ -13,6 +13,7 @@ use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
 use App\Services\AuditLogger;
+use App\Settlements\SettlementSchedule;
 use App\Settlements\SettlementService;
 use App\Settlements\SettlementStatementPdf;
 use App\Support\ProductScope;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -29,7 +31,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SettlementController extends Controller
 {
-    public function __construct(private SettlementService $settlements) {}
+    public function __construct(private SettlementService $settlements, private SettlementSchedule $schedule) {}
 
     public function index(Request $request): Response
     {
@@ -48,37 +50,45 @@ class SettlementController extends Controller
             ->withQueryString()
             ->through(fn (Settlement $s) => $this->present($s));
 
-        // Merchants with money waiting to be settled.
-        $pending = DailyReportTask::query()->toBase()
-            ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
-            ->join('merchant_mids', 'merchant_mids.id', '=', 'daily_report_tasks.merchant_mid_id')
-            ->join('providers as bank', 'bank.id', '=', 'merchant_mids.bank_provider_id')
-            ->where('daily_report_tasks.status', 'completed')
-            ->whereNotIn('daily_report_tasks.id', SettlementLine::query()->select('daily_report_task_id')
-                ->where('type', 'report')->whereNotNull('daily_report_task_id')
-                ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
-            ->selectRaw('merchants.public_id, merchants.name, bank.product, daily_report_tasks.currency, count(*) as reports, sum(daily_report_tasks.net_payout) as payout')
-            ->groupBy('merchants.public_id', 'merchants.name', 'bank.product', 'daily_report_tasks.currency')
-            ->orderBy('merchants.name')
-            ->get()
-            ->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'product' => $r->product, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'payout' => round((float) $r->payout, 2)]);
+        // Unpaid reports by merchant / client, product and currency, with what is due by the merchants' T+N.
+        $today = $this->schedule->today();
+        $reports = $this->settlements->availableReportsFor(null)->load(['merchant.company.client', 'merchantMid.bankProvider:id,product']);
+        $group = function ($rows, callable $key) use ($today) {
+            return $rows->groupBy($key)->map(function ($items) use ($today) {
+                $states = $items->map(fn (DailyReportTask $r) => [$r, $this->schedule->state($r, $today)]);
+                $early = $states->filter(fn (array $x) => $x[1] === SettlementSchedule::NOT_DUE);
+                $first = $items->first();
 
-        // The same money by client: what one payout to the client would cover.
-        $pendingClients = DailyReportTask::query()->toBase()
-            ->join('merchants', 'merchants.id', '=', 'daily_report_tasks.merchant_id')
-            ->join('companies', 'companies.id', '=', 'merchants.company_id')
-            ->join('clients', 'clients.id', '=', 'companies.client_id')
-            ->join('merchant_mids', 'merchant_mids.id', '=', 'daily_report_tasks.merchant_mid_id')
-            ->join('providers as bank', 'bank.id', '=', 'merchant_mids.bank_provider_id')
-            ->where('daily_report_tasks.status', 'completed')
-            ->whereNotIn('daily_report_tasks.id', SettlementLine::query()->select('daily_report_task_id')
-                ->where('type', 'report')->whereNotNull('daily_report_task_id')
-                ->whereHas('settlement', fn (Builder $q) => $q->whereIn('status', SettlementStatus::active())))
-            ->selectRaw('clients.id, clients.name, bank.product, daily_report_tasks.currency, count(*) as reports, count(distinct companies.id) as companies, sum(daily_report_tasks.net_payout) as payout')
-            ->groupBy('clients.id', 'clients.name', 'bank.product', 'daily_report_tasks.currency')
-            ->orderBy('clients.name')
-            ->get()
-            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $r->name, 'product' => $r->product, 'currency' => $r->currency, 'reports' => (int) $r->reports, 'companies' => (int) $r->companies, 'payout' => round((float) $r->payout, 2)]);
+                return [
+                    'product' => ($first->merchantMid->bankProvider?->product ?? TariffProduct::Card)->value,
+                    'currency' => $first->currency,
+                    'reports' => $items->count(),
+                    'payout' => round((float) $items->sum(fn (DailyReportTask $r) => (float) $r->getRawOriginal('net_payout')), 2),
+                    'due_reports' => $items->count() - $early->count(),
+                    'due_payout' => round((float) $states->reject(fn (array $x) => $x[1] === SettlementSchedule::NOT_DUE)->sum(fn (array $x) => (float) $x[0]->getRawOriginal('net_payout')), 2),
+                    'overdue_reports' => $states->where(1, SettlementSchedule::OVERDUE)->count(),
+                    'next_due' => $early->map(fn (array $x) => $this->schedule->dueDate($x[0])?->toDateString())->filter()->min(),
+                    'scheduled' => $items->contains(fn (DailyReportTask $r) => $r->merchant->settlement_lag_days !== null),
+                    'items' => $items,
+                ];
+            });
+        };
+        $productOf = fn (DailyReportTask $r) => ($r->merchantMid->bankProvider?->product ?? TariffProduct::Card)->value;
+
+        $pending = $group($reports, fn (DailyReportTask $r) => $r->merchant->public_id.'|'.$productOf($r).'|'.$r->currency)
+            ->map(fn (array $row) => [
+                'public_id' => $row['items']->first()->merchant->public_id,
+                'name' => $row['items']->first()->merchant->name,
+                ...Arr::except($row, ['items']),
+            ])->sortBy('name')->values();
+
+        $pendingClients = $group($reports->filter(fn (DailyReportTask $r) => $r->merchant->company?->client_id !== null), fn (DailyReportTask $r) => $r->merchant->company->client_id.'|'.$productOf($r).'|'.$r->currency)
+            ->map(fn (array $row) => [
+                'id' => $row['items']->first()->merchant->company->client_id,
+                'name' => $row['items']->first()->merchant->company->client->name,
+                'companies' => $row['items']->map(fn (DailyReportTask $r) => $r->merchant->company_id)->unique()->count(),
+                ...Arr::except($row, ['items']),
+            ])->sortBy('name')->values();
 
         return Inertia::render('admin/settlements/index', [
             'settlements' => $list,
@@ -100,15 +110,18 @@ class SettlementController extends Controller
             'client' => ['nullable', 'required_without:merchant', 'integer', 'exists:clients,id'],
             'payout_currency' => ['nullable', Rule::in(array_keys(config('sterling.payout_currencies')))],
             'product' => ['nullable', Rule::enum(TariffProduct::class)],
+            'due_only' => ['nullable', 'boolean'],
         ]);
+        // Reports that are not due yet by the merchant's T+N stay out unless asked for.
+        $dueOnly = $request->boolean('due_only', true);
         // A restricted user cannot pick another product.
         $product = ProductScope::current() ?? TariffProduct::tryFrom($data['product'] ?? '') ?? TariffProduct::Card;
 
         if (! empty($data['client'])) {
-            $settlement = $this->settlements->createClientDraft(Client::query()->findOrFail($data['client']), $request->user(), $data['payout_currency'] ?? null, product: $product);
+            $settlement = $this->settlements->createClientDraft(Client::query()->findOrFail($data['client']), $request->user(), $data['payout_currency'] ?? null, product: $product, dueOnly: $dueOnly);
         } else {
             $merchant = Merchant::query()->where('public_id', $data['merchant'])->firstOrFail();
-            $settlement = $this->settlements->createDraft($merchant, $request->user(), payoutCurrency: $data['payout_currency'] ?? null, product: $product);
+            $settlement = $this->settlements->createDraft($merchant, $request->user(), payoutCurrency: $data['payout_currency'] ?? null, product: $product, dueOnly: $dueOnly);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Draft {$settlement->number} created with {$settlement->lines()->count()} line(s)."]);
@@ -118,7 +131,7 @@ class SettlementController extends Controller
 
     public function show(Settlement $settlement): Response
     {
-        $settlement->load(['merchant', 'client:id,name', 'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant:id,name,company_id', 'lines.dailyReport.merchant.company:id,name', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
+        $settlement->load(['merchant', 'client:id,name', 'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant:id,name,company_id,settlement_lag_days', 'lines.dailyReport.merchant.company:id,name', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
         $editable = $settlement->isEditable();
 
         return Inertia::render('admin/settlements/show', [
@@ -138,6 +151,7 @@ class SettlementController extends Controller
                 'cancel_reason' => $settlement->cancel_reason,
                 'missing_rates' => $this->settlements->missingRates($settlement),
                 'locked_scope' => $settlement->client_id !== null,
+                'early' => $this->settlements->earlyReports($settlement)->map(fn (DailyReportTask $r) => ['id' => $r->id, 'report_date' => $r->report_date->toDateString(), 'due' => $this->schedule->dueDate($r)?->toDateString()])->values(),
             ],
             'payoutCurrencies' => $this->payoutCurrencies(),
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
@@ -146,6 +160,7 @@ class SettlementController extends Controller
                 'type_label' => $l->type->label(),
                 'description' => $l->description,
                 'report_id' => $l->daily_report_task_id,
+                'due' => $l->type->value === 'report' && $l->dailyReport ? $this->due($l->dailyReport) : null,
                 'owner' => $l->dailyReport ? trim(($l->dailyReport->merchant->company?->name ?? '').' · '.$l->dailyReport->merchant->name, ' ·') : null,
                 'currency' => $l->currency,
                 'amount' => $l->amount,
@@ -163,6 +178,7 @@ class SettlementController extends Controller
             'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->map(fn (DailyReportTask $t) => [
                 'id' => $t->id,
                 'report_date' => $t->report_date->toDateString(),
+                'due' => $this->due($t),
                 'mid' => $t->merchantMid->mid,
                 'owner' => trim(($t->merchant->company?->name ?? '').' · '.$t->merchant->name, ' ·'),
                 'currency' => $t->currency,
@@ -249,7 +265,7 @@ class SettlementController extends Controller
 
     public function approve(Request $request, Settlement $settlement): RedirectResponse
     {
-        $this->settlements->approve($settlement, $request->user());
+        $this->settlements->approve($settlement, $request->user(), $request->boolean('confirm_early'));
         Inertia::flash('toast', ['type' => 'success', 'message' => "{$settlement->number} approved."]);
 
         return back();
@@ -327,6 +343,18 @@ class SettlementController extends Controller
     private function payoutCurrencies(): array
     {
         return collect(config('sterling.payout_currencies'))->map(fn (string $label, string $code) => ['value' => $code, 'label' => $label])->values()->all();
+    }
+
+    /**
+     * When a report is due for payout and whether that day has come.
+     *
+     * @return array{date: string, state: string}|null null when the merchant has no schedule
+     */
+    private function due(DailyReportTask $report): ?array
+    {
+        $date = $this->schedule->dueDate($report);
+
+        return $date === null ? null : ['date' => $date->toDateString(), 'state' => (string) $this->schedule->state($report)];
     }
 
     private function assertDraft(Settlement $settlement): void

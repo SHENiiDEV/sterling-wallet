@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\MerchantMidRequest;
 use App\Merchants\MidPurger;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
+use App\Services\AuditLogger;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ class MerchantMidController extends Controller
 {
     public function store(MerchantMidRequest $request, Merchant $merchant): RedirectResponse
     {
-        $merchant->mids()->create($request->validated());
+        $mid = $merchant->mids()->create($request->validated());
+        AuditLogger::log('merchant_mid.created', $mid, $mid->only(['mid', 'currency', 'status', 'bank_provider_id', 'gate_provider_id']));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'MID added.']);
 
@@ -34,7 +36,12 @@ class MerchantMidController extends Controller
             ]);
         }
 
-        $mid->update($data);
+        $changes = AuditLogger::diff($mid, $data);
+        $mid->save();
+
+        if ($changes !== []) {
+            AuditLogger::log('merchant_mid.updated', $mid, ['changes' => $changes]);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'MID saved.']);
 
@@ -49,6 +56,7 @@ class MerchantMidController extends Controller
             ]);
         }
 
+        AuditLogger::log('merchant_mid.deleted', $mid, ['mid' => $mid->mid]);
         $mid->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'MID removed.']);

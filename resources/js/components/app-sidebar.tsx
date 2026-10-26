@@ -13,7 +13,9 @@ import {
     Handshake,
     LayoutDashboard,
     Landmark,
+    ListChecks,
     PieChart,
+    ScrollText,
     Store,
     Tags,
     TrendingUp,
@@ -55,6 +57,12 @@ const navGroups: NavGroup[] = [
                 title: 'Merchants & MIDs',
                 href: admin.merchants.folders(),
                 icon: Store,
+                module: 'merchants',
+            },
+            {
+                title: 'Checklist',
+                href: admin.checklist.index(),
+                icon: ListChecks,
                 module: 'merchants',
             },
             {
@@ -162,6 +170,12 @@ const navGroups: NavGroup[] = [
                 href: admin.bankHolidays.index(),
                 icon: Landmark,
                 module: 'providers',
+            },
+            {
+                title: 'Audit log',
+                href: admin.audit.index(),
+                icon: ScrollText,
+                module: 'team',
             },
             {
                 title: 'Team & access',

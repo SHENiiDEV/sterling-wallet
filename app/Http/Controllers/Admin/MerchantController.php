@@ -15,10 +15,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\MerchantRequest;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\MerchantResource;
+use App\Merchants\AcquirerIntegration;
 use App\Merchants\BankFolders;
 use App\Merchants\MerchantFolders;
+use App\Merchants\MerchantHistory;
+use App\Merchants\MerchantMatrix;
 use App\Merchants\MerchantOverview;
 use App\Merchants\MerchantPurger;
+use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
@@ -63,6 +67,14 @@ class MerchantController extends Controller
             'banks' => $open === null ? $banks->banks() : [],
             'open' => $open,
         ]);
+    }
+
+    /**
+     * Companies and sites against banks: where each one stands, at a glance.
+     */
+    public function matrix(MerchantMatrix $matrix): Response
+    {
+        return Inertia::render('admin/merchants/matrix', $matrix->build());
     }
 
     public function index(Request $request): Response
@@ -156,6 +168,7 @@ class MerchantController extends Controller
             'acquirers' => $merchant->acquirers()->with('provider:id,name')->get()
                 ->sortBy(fn (MerchantAcquirer $a) => $a->provider->name)->values()
                 ->map(fn (MerchantAcquirer $a) => [
+                    ...$this->acquirerStanding($a),
                     'id' => $a->id,
                     'provider_id' => $a->provider_id,
                     'provider' => $a->provider->name,
@@ -166,9 +179,12 @@ class MerchantController extends Controller
                     'integration_status' => $a->integration_status->value,
                     'integration_label' => $a->integration_status->label(),
                     'psp' => $a->psp,
+                    'client_id' => $a->client_id,
                     'mcc' => $a->mcc,
                     'notes' => $a->notes,
                 ]),
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'history' => app(MerchantHistory::class)->for($merchant),
             'acquirerStatuses' => AcquirerStatus::options(),
             'integrationStatuses' => IntegrationStatus::options(),
             'documents' => ProductScope::current() !== null ? [] : $merchant->documents()->with(['status', 'owner'])->latest('updated_at')->limit(5)->get()
@@ -282,6 +298,26 @@ class MerchantController extends Controller
             'statuses' => MerchantStatus::options(),
             'defaults' => config('sterling.merchant_defaults'),
             'products' => array_map(fn (TariffProduct $p) => ['value' => $p->value, 'label' => $p->label()], TariffProduct::separate()),
+        ];
+    }
+
+    /**
+     * Integration (read from the gateway's payments) and onboarding age for one bank record.
+     *
+     * @return array<string, mixed>
+     */
+    private function acquirerStanding(MerchantAcquirer $acquirer): array
+    {
+        $integration = app(AcquirerIntegration::class)->for($acquirer);
+
+        return [
+            'integration_effective' => $integration['value'],
+            'integration_effective_label' => $integration['label'],
+            'integration_auto' => $integration['auto'],
+            'integration_last_at' => $integration['last_at'],
+            'status_since' => $acquirer->status_changed_at?->toDateString(),
+            'status_note' => $acquirer->status_note,
+            'stale_days' => AcquirerIntegration::staleDays($acquirer),
         ];
     }
 }

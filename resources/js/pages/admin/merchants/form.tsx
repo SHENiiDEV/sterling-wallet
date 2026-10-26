@@ -101,6 +101,10 @@ export default function MerchantForm({
         min_settlement_amount: str(merchant?.min_settlement_amount),
         rolling_reserve_cap: str(merchant?.rolling_reserve_cap),
         settlement_terms: merchant?.settlement_terms ?? '',
+        settlement_lag_days:
+            merchant?.settlement_lag_days != null
+                ? String(merchant.settlement_lag_days)
+                : '',
         fee_fiat_to_crypto_percent: str(
             merchant?.fee_fiat_to_crypto_percent,
             String(defaults.fee_fiat_to_crypto_percent),
@@ -568,6 +572,31 @@ export default function MerchantForm({
                         )}
 
                         {products.map(productSection)}
+
+                        <FormSection
+                            title="Payout schedule"
+                            description="Daily settlement: a report is paid N business days after its day (Saturday, Sunday and bank holidays do not count; the Friday–Sunday report counts from Friday). The Settlements page then shows what is due today."
+                        >
+                            <Field
+                                label="Settlement T+"
+                                htmlFor="settlement_lag_days"
+                                error={errors.settlement_lag_days}
+                                hint="Empty = no schedule, nothing is flagged as due"
+                            >
+                                <AffixInput
+                                    id="settlement_lag_days"
+                                    suffix="business days"
+                                    inputMode="numeric"
+                                    value={data.settlement_lag_days}
+                                    onChange={(e) =>
+                                        setData(
+                                            'settlement_lag_days',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                        </FormSection>
 
                         {!restricted && (
                             <FormSection

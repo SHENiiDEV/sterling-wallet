@@ -45,10 +45,30 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
+import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 import { settlementColors } from '@/components/admin/settlements';
 import type { SettlementItem } from '@/components/admin/settlements';
 import type { Option } from '@/types';
+
+type Due = { date: string; state: 'not_due' | 'due' | 'overdue' };
+
+/** Whether a report is due for payout by its merchant's T+N schedule. */
+function DueBadge({ due }: { due: Due | null }) {
+    if (due === null) {
+        return null;
+    }
+
+    const style = {
+        due: ['Due today', 'text-emerald-600'],
+        overdue: [`Overdue since ${formatDate(due.date)}`, 'text-amber-600'],
+        not_due: [`Not due until ${formatDate(due.date)}`, 'text-rose-600'],
+    }[due.state];
+
+    return (
+        <span className={cn('text-xs font-medium', style[1])}>{style[0]}</span>
+    );
+}
 
 type Line = {
     id: number;
@@ -56,6 +76,7 @@ type Line = {
     type_label: string;
     description: string;
     report_id: number | null;
+    due: Due | null;
     owner: string | null;
     currency: string;
     amount: string;
@@ -78,6 +99,7 @@ type Props = {
         cancel_reason: string | null;
         missing_rates: string[];
         locked_scope: boolean;
+        early: { id: number; report_date: string; due: string | null }[];
     };
     payoutCurrencies: Option[];
     lines: Line[];
@@ -92,6 +114,7 @@ type Props = {
     availableReports: {
         id: number;
         report_date: string;
+        due: Due | null;
         mid: string;
         owner: string;
         currency: string;
@@ -192,6 +215,9 @@ function AddLinesDialog({
                                             Report {formatDate(r.report_date)} ·{' '}
                                             <span className="font-mono text-xs">
                                                 {r.mid}
+                                            </span>
+                                            <span className="ml-2">
+                                                <DueBadge due={r.due} />
                                             </span>
                                         </span>
                                         <span className="tabular-nums">
@@ -458,6 +484,9 @@ function ApproveDialog({
     wallet: PayoutWallet | undefined;
     onClose: () => void;
 }) {
+    const [confirmEarly, setConfirmEarly] = useState(false);
+    const early = settlement.early;
+
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="sm:max-w-md">
@@ -468,6 +497,33 @@ function ApproveDialog({
                         money has to be sent.
                     </DialogDescription>
                 </DialogHeader>
+                {early.length > 0 && (
+                    <div className="grid gap-2 rounded-lg border border-rose-500/40 bg-rose-500/5 p-3 text-sm">
+                        <p className="font-medium text-rose-600">
+                            {early.length} report(s) are not due for payout yet
+                        </p>
+                        <ul className="text-xs text-muted-foreground">
+                            {early.map((r) => (
+                                <li key={r.id}>
+                                    Report {formatDate(r.report_date)}
+                                    {r.due && ` · due ${formatDate(r.due)}`}
+                                </li>
+                            ))}
+                        </ul>
+                        <label className="flex items-start gap-2">
+                            <Checkbox
+                                checked={confirmEarly}
+                                onCheckedChange={(on) =>
+                                    setConfirmEarly(on === true)
+                                }
+                            />
+                            <span>
+                                I understand: pay these reports before their
+                                date
+                            </span>
+                        </label>
+                    </div>
+                )}
                 <PayoutDestination settlement={settlement} wallet={wallet} />
                 <DialogFooter>
                     <DialogClose asChild>
@@ -476,10 +532,11 @@ function ApproveDialog({
                         </Button>
                     </DialogClose>
                     <Button
+                        disabled={early.length > 0 && !confirmEarly}
                         onClick={() =>
                             router.post(
                                 admin.settlements.approve.url(settlement.id),
-                                {},
+                                { confirm_early: confirmEarly },
                                 { preserveScroll: true, onFinish: onClose },
                             )
                         }
@@ -867,6 +924,7 @@ export default function SettlementShow({
                                                         {line.owner}
                                                     </div>
                                                 )}
+                                                <DueBadge due={line.due} />
                                             </TableCell>
                                             <TableCell className="text-right tabular-nums">
                                                 {formatMoney(

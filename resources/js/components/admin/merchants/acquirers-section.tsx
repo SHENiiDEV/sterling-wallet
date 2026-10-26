@@ -1,5 +1,12 @@
 import { router, useForm } from '@inertiajs/react';
-import { Landmark, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+    AlertTriangle,
+    History,
+    Landmark,
+    Pencil,
+    Plus,
+    Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { AffixInput, Field } from '@/components/admin/form';
@@ -32,6 +39,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
 import admin from '@/routes/admin';
 import type { Option, ProviderRef, StatusColor } from '@/types';
@@ -46,9 +54,28 @@ export type Acquirer = {
     limit_currency: string;
     integration_status: string;
     integration_label: string;
+    integration_effective: string;
+    integration_effective_label: string;
+    integration_auto: boolean;
+    integration_last_at: string | null;
+    status_since: string | null;
+    status_note: string | null;
+    stale_days: number | null;
+    client_id: number | null;
     psp: string | null;
     mcc: string | null;
     notes: string | null;
+};
+
+export type ClientRef = { id: number; name: string };
+
+export type HistoryEntry = {
+    id: number;
+    at: string | null;
+    user: string | null;
+    area: string;
+    title: string;
+    lines: string[];
 };
 
 export const acquirerStatusColors: Record<string, StatusColor> = {
@@ -71,6 +98,7 @@ function AcquirerDialog({
     merchantId,
     acquirer,
     banks,
+    clients,
     statuses,
     integrationStatuses,
     onClose,
@@ -78,6 +106,7 @@ function AcquirerDialog({
     merchantId: string;
     acquirer: Acquirer | null;
     banks: ProviderRef[];
+    clients: ClientRef[];
     statuses: Option[];
     integrationStatuses: Option[];
     onClose: () => void;
@@ -88,7 +117,8 @@ function AcquirerDialog({
         limit: acquirer?.limit ? String(Number(acquirer.limit)) : '',
         limit_currency: acquirer?.limit_currency ?? 'EUR',
         integration_status: acquirer?.integration_status ?? 'need_to_do',
-        psp: acquirer?.psp ?? '',
+        client_id: acquirer?.client_id ? String(acquirer.client_id) : '',
+        status_note: '',
         mcc: acquirer?.mcc ?? '',
         notes: acquirer?.notes ?? '',
     });
@@ -210,13 +240,50 @@ function AcquirerDialog({
                                 </SelectContent>
                             </Select>
                         </Field>
-                        <Field label="PSP" htmlFor="a-psp" error={errors.psp}>
-                            <Input
-                                id="a-psp"
-                                value={data.psp}
-                                onChange={(e) => setData('psp', e.target.value)}
-                            />
+                        <Field label="Client (PSP)" error={errors.client_id}>
+                            <Select
+                                value={data.client_id || 'none'}
+                                onValueChange={(v) =>
+                                    setData('client_id', v === 'none' ? '' : v)
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">
+                                        {acquirer?.psp && !acquirer.client_id
+                                            ? `${acquirer.psp} (not a client yet)`
+                                            : 'No client'}
+                                    </SelectItem>
+                                    {clients.map((c) => (
+                                        <SelectItem
+                                            key={c.id}
+                                            value={String(c.id)}
+                                        >
+                                            {c.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </Field>
+                        {acquirer && data.status !== acquirer.status && (
+                            <Field
+                                label="Why is the status changing?"
+                                htmlFor="a-status-note"
+                                error={errors.status_note}
+                                className="sm:col-span-2"
+                            >
+                                <Input
+                                    id="a-status-note"
+                                    placeholder="e.g. re-brand: new site"
+                                    value={data.status_note}
+                                    onChange={(e) =>
+                                        setData('status_note', e.target.value)
+                                    }
+                                />
+                            </Field>
+                        )}
                         <Field label="MCC" htmlFor="a-mcc" error={errors.mcc}>
                             <Input
                                 id="a-mcc"
@@ -266,12 +333,16 @@ export function AcquirersSection({
     merchantId,
     acquirers,
     banks,
+    clients,
+    history,
     statuses,
     integrationStatuses,
 }: {
     merchantId: string;
     acquirers: Acquirer[];
     banks: ProviderRef[];
+    clients: ClientRef[];
+    history: HistoryEntry[];
     statuses: Option[];
     integrationStatuses: Option[];
 }) {
@@ -334,6 +405,19 @@ export function AcquirersSection({
                                         name={a.status_label}
                                         color={acquirerColor(a.status)}
                                     />
+                                    {a.stale_days !== null && (
+                                        <span className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-600">
+                                            <AlertTriangle className="size-3.5" />
+                                            {a.stale_days} days in this status
+                                        </span>
+                                    )}
+                                    {a.status_since && (
+                                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                                            since {formatDate(a.status_since)}
+                                            {a.status_note &&
+                                                ` · ${a.status_note}`}
+                                        </span>
+                                    )}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
                                     {a.limit
@@ -345,7 +429,16 @@ export function AcquirersSection({
                                         : '—'}
                                 </TableCell>
                                 <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                                    {a.integration_label}
+                                    {a.integration_effective_label}
+                                    {a.integration_auto && (
+                                        <span
+                                            className="block text-xs text-emerald-600"
+                                            title="The gateway has reported payments on this merchant's terminals at this bank"
+                                        >
+                                            live · last payment{' '}
+                                            {formatDate(a.integration_last_at)}
+                                        </span>
+                                    )}
                                 </TableCell>
                                 <TableCell className="hidden text-sm tabular-nums md:table-cell">
                                     {a.mcc ?? (
@@ -355,7 +448,11 @@ export function AcquirersSection({
                                     )}
                                 </TableCell>
                                 <TableCell className="hidden text-sm md:table-cell">
-                                    {a.psp ?? (
+                                    {(a.client_id
+                                        ? clients.find(
+                                              (c) => c.id === a.client_id,
+                                          )?.name
+                                        : a.psp) ?? (
                                         <span className="text-muted-foreground">
                                             —
                                         </span>
@@ -391,6 +488,7 @@ export function AcquirersSection({
                     merchantId={merchantId}
                     acquirer={editing === 'new' ? null : editing}
                     banks={banks}
+                    clients={clients}
                     statuses={statuses}
                     integrationStatuses={integrationStatuses}
                     onClose={() => setEditing(null)}
@@ -415,6 +513,47 @@ export function AcquirersSection({
                     )
                 }
             />
+            <HistoryList history={history} />
         </section>
+    );
+}
+
+function HistoryList({ history }: { history: HistoryEntry[] }) {
+    return (
+        <div className="border-t px-5 py-4">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                <History className="size-4 text-muted-foreground" />
+                History
+            </h3>
+            {history.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                    Changes to banks and MIDs will be listed here.
+                </p>
+            ) : (
+                <ul className="space-y-3">
+                    {history.map((entry) => (
+                        <li key={entry.id} className="text-sm">
+                            <div className="flex flex-wrap items-baseline gap-x-2">
+                                <span className="font-medium">
+                                    {entry.title}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    {formatDateTime(entry.at)}
+                                    {entry.user && ` · ${entry.user}`}
+                                </span>
+                            </div>
+                            {entry.lines.map((line) => (
+                                <div
+                                    key={line}
+                                    className="text-xs text-muted-foreground"
+                                >
+                                    {line}
+                                </div>
+                            ))}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
     );
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\BankHolidayController;
 use App\Http\Controllers\Admin\BotController;
 use App\Http\Controllers\Admin\ClientController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Admin\MerchantAcquirerController;
 use App\Http\Controllers\Admin\MerchantController;
 use App\Http\Controllers\Admin\MerchantMidController;
 use App\Http\Controllers\Admin\MerchantWalletController;
+use App\Http\Controllers\Admin\MidChecklistController;
 use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\PortalUserController;
 use App\Http\Controllers\Admin\ProfitController;
@@ -51,6 +53,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::middleware('module:merchants')->group(function () {
         Route::get('merchants/folders', [MerchantController::class, 'folders'])->name('merchants.folders');
+        Route::get('checklist', [MidChecklistController::class, 'index'])->name('checklist.index');
+        Route::get('merchants/matrix', [MerchantController::class, 'matrix'])->name('merchants.matrix');
         Route::get('merchants/banks', [MerchantController::class, 'banks'])->name('merchants.banks');
         Route::resource('merchants', MerchantController::class);
         Route::scopeBindings()->group(function () {
@@ -87,6 +91,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::get('operations/create', [OperationController::class, 'create'])->name('operations.create');
         Route::post('operations', [OperationController::class, 'store'])->name('operations.store');
         Route::get('operations/{operation}', [OperationController::class, 'show'])->name('operations.show');
+        Route::post('operations/{operation}/pair', [OperationController::class, 'pair'])->name('operations.pair');
+        Route::delete('operations/{operation}/pair', [OperationController::class, 'unpair'])->name('operations.unpair');
         Route::get('operations/{operation}/edit', [OperationController::class, 'edit'])->name('operations.edit');
         Route::put('operations/{operation}', [OperationController::class, 'update'])->name('operations.update');
         Route::delete('operations/{operation}', [OperationController::class, 'destroy'])->name('operations.destroy');
@@ -170,6 +176,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     });
 
     Route::middleware('module:team')->group(function () {
+        Route::get('audit', [AuditLogController::class, 'index'])->name('audit.index');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team', [TeamController::class, 'store'])->name('team.store');
         Route::put('team/{member}', [TeamController::class, 'update'])->name('team.update');

@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Pairs the acquirer's operations of a MID with its gateway's operations,
@@ -97,6 +98,83 @@ class ReconciliationService
         });
 
         return count($pairs);
+    }
+
+    /**
+     * Unpaired operations of the other side the operation could be paired with by hand:
+     * the same terminal (or one sharing its gateway account), same type and currency,
+     * within the clearing window; same amount unless `$anyAmount`. Closest in time first.
+     *
+     * @return Collection<int, MerchantOperation>
+     */
+    public function candidates(MerchantOperation $op, int $limit = 10, bool $anyAmount = false): Collection
+    {
+        $mid = $op->merchantMid;
+        if ($op->matched_operation_id !== null || $mid === null || $mid->bank_provider_id === null || $mid->gate_provider_id === null) {
+            return collect();
+        }
+
+        $other = $op->role === ProviderType::Bank ? ProviderType::Gate : ProviderType::Bank;
+        $at = $op->transaction_at;
+
+        return MerchantOperation::query()
+            ->with('provider:id,name')
+            ->whereIn('merchant_mid_id', [$mid->id, ...$this->sharingGate($mid)])
+            ->where('role', $other)
+            ->whereNull('matched_operation_id')
+            ->where('operation_type', $op->operation_type)
+            ->where('currency', $op->currency)
+            ->when(! $anyAmount, fn ($q) => $q->where('amount', $op->amount))
+            ->when($at !== null, fn ($q) => $q->whereBetween('transaction_at', [$at->copy()->subDays(self::GATE_SLACK_DAYS), $at->copy()->addDays(self::GATE_SLACK_DAYS)]))
+            ->limit(200)
+            ->get()
+            ->sortBy(fn (MerchantOperation $c) => $at !== null && $c->transaction_at !== null ? abs($at->getTimestamp() - $c->transaction_at->getTimestamp()) : PHP_INT_MAX)
+            ->take($limit)
+            ->values();
+    }
+
+    /**
+     * Pairs two operations by hand, in the same way reconciliation does:
+     * ids on both sides and the gateway row on the acquirer row's terminal.
+     */
+    public function pair(MerchantOperation $a, MerchantOperation $b): void
+    {
+        if ($a->matched_operation_id !== null || $b->matched_operation_id !== null) {
+            throw ValidationException::withMessages(['pair' => 'One of the operations already has a pair; unpair it first.']);
+        }
+        if ($a->role === $b->role) {
+            throw ValidationException::withMessages(['pair' => 'A pair is one acquirer row and one gateway row.']);
+        }
+
+        [$bank, $gate] = $a->role === ProviderType::Bank ? [$a, $b] : [$b, $a];
+        $mid = $bank->merchantMid;
+        if ($mid === null || ! in_array($gate->merchant_mid_id, [$mid->id, ...$this->sharingGate($mid)], true)) {
+            throw ValidationException::withMessages(['pair' => 'The two operations are not on the same terminal or on terminals sharing a gateway account.']);
+        }
+
+        DB::transaction(function () use ($bank, $gate, $mid) {
+            $bank->update(['matched_operation_id' => $gate->id, 'sp_id' => $gate->payment_id]);
+            $gate->update(['matched_operation_id' => $bank->id, 'sp_id' => $bank->payment_id]);
+
+            if ((int) $gate->merchant_mid_id !== $mid->id) {
+                $gate->update(['merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id]);
+                if ($bank->report_date !== null) {
+                    app(ReportIngestionService::class)->ensureReport($mid->gateProvider, $mid, CarbonImmutable::parse($bank->report_date));
+                }
+            }
+        });
+    }
+
+    public function unpair(MerchantOperation $op): void
+    {
+        if ($op->matched_operation_id === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($op) {
+            MerchantOperation::query()->whereKey($op->matched_operation_id)->update(['matched_operation_id' => null, 'sp_id' => null]);
+            $op->update(['matched_operation_id' => null, 'sp_id' => null]);
+        });
     }
 
     /**

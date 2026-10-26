@@ -1,11 +1,12 @@
 import { Link } from '@inertiajs/react';
-import { Folder, Landmark, List } from 'lucide-react';
+import { Folder, Grid3x3, Landmark, List } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 
 const views = [
     { key: 'clients', label: 'Clients', icon: Folder },
     { key: 'banks', label: 'Banks', icon: Landmark },
+    { key: 'matrix', label: 'Matrix', icon: Grid3x3 },
     { key: 'list', label: 'List', icon: List },
 ] as const;
 
@@ -14,6 +15,7 @@ export type MerchantView = (typeof views)[number]['key'];
 const hrefs = {
     clients: () => admin.merchants.folders(),
     banks: () => admin.merchants.banks(),
+    matrix: () => admin.merchants.matrix(),
     list: () => admin.merchants.index(),
 };
 

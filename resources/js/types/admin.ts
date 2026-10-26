@@ -202,6 +202,7 @@ export type Merchant = {
     min_settlement_amount: string | null;
     rolling_reserve_cap: string | null;
     settlement_terms: string | null;
+    settlement_lag_days: number | null;
     rolling_reserve_percent: string;
     rolling_reserve_days: number;
     invoice_email: string | null;
@@ -257,6 +258,7 @@ export type Operation = {
     issuer_country: string | null;
     issuer_name: string | null;
     trn_type: string | null;
+    attempts: number | null;
     operation_type: OperationType;
     operation_type_label: string;
     resolution: string | null;

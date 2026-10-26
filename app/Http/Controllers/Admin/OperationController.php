@@ -18,6 +18,7 @@ use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Reports\Generation\Tariff;
 use App\Reports\Ingestion\ReportIngestionService;
+use App\Reports\Reconciliation\ReconciliationService;
 use App\Services\AuditLogger;
 use App\Support\ProductScope;
 use BackedEnum;
@@ -310,7 +311,7 @@ class OperationController extends Controller
         return $built ? ' The daily report for that day is already built: regenerate it in Reports.' : '';
     }
 
-    public function show(MerchantOperation $operation): Response
+    public function show(Request $request, MerchantOperation $operation, ReconciliationService $reconciler): Response
     {
         $operation->load(['provider', 'merchant', 'merchantMid.bankProvider', 'merchantMid.gateProvider', 'matchedOperation.provider']);
 
@@ -329,6 +330,9 @@ class OperationController extends Controller
             'fees' => ProductScope::current() !== null ? [] : array_filter($operation->only(['eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee']), fn ($v) => $v !== null),
             'charges' => $this->charges($operation),
             'pair' => $operation->matchedOperation ? OperationResource::make($operation->matchedOperation)->resolve() : null,
+            // Unpaired rows of the other side that could be its pair, for pairing by hand.
+            'candidates' => OperationResource::collection($reconciler->candidates($operation, 10, $request->boolean('all')))->resolve(),
+            'allAmounts' => $request->boolean('all'),
             'mid' => $operation->merchantMid ? [
                 'mid' => $operation->merchantMid->mid,
                 'currency' => $operation->merchantMid->currency->value,
@@ -337,6 +341,32 @@ class OperationController extends Controller
             ] : null,
             'report' => $report ? ['id' => $report->id, 'report_date' => $report->report_date->toDateString(), 'status' => $report->status->value] : null,
         ]);
+    }
+
+    /**
+     * Pair two operations by hand when reconciliation could not.
+     */
+    public function pair(Request $request, MerchantOperation $operation, ReconciliationService $reconciler): RedirectResponse
+    {
+        $data = $request->validate(['partner_id' => ['required', 'integer']]);
+        $partner = MerchantOperation::query()->findOrFail($data['partner_id']);
+
+        $reconciler->pair($operation->loadMissing('merchantMid'), $partner);
+        AuditLogger::log('operation.paired', $operation, ['with' => $partner->id, 'payment_ids' => [$operation->payment_id, $partner->payment_id]]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Paired.']);
+
+        return back();
+    }
+
+    public function unpair(MerchantOperation $operation, ReconciliationService $reconciler): RedirectResponse
+    {
+        $partnerId = $operation->matched_operation_id;
+        $reconciler->unpair($operation);
+        AuditLogger::log('operation.unpaired', $operation, ['was_paired_with' => $partnerId]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Pair removed.']);
+
+        return back();
     }
 
     /**

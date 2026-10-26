@@ -39,6 +39,8 @@ class OperationResource extends JsonResource
             'issuer_country' => $this->getAttribute('issuer_country'),
             'issuer_name' => $this->getAttribute('issuer_name'),
             'trn_type' => $this->getAttribute('trn_type'),
+            // Corefy: how many attempts (terminals) the payment went through; more than one is a cascade.
+            'attempts' => $this->attempts(),
             'operation_type' => $this->operation_type->value,
             'operation_type_label' => $this->operation_type->label(),
             'resolution' => $this->getAttribute('resolution'),
@@ -49,5 +51,16 @@ class OperationResource extends JsonResource
             'transaction_at' => $this->transaction_at?->toIso8601String(),
             'processing_at' => $this->getAttribute('processing_at')?->toIso8601String(),
         ];
+    }
+
+    private function attempts(): ?int
+    {
+        foreach ((array) $this->raw as $header => $value) {
+            if (preg_match('/tries/i', (string) $header) && is_numeric($value)) {
+                return (int) $value;
+            }
+        }
+
+        return null;
     }
 }

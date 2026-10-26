@@ -8,6 +8,7 @@ import { Pagination } from '@/components/admin/pagination';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { CurrencyBadge } from '@/components/admin/tone-badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogClose,
@@ -50,6 +51,11 @@ type Props = {
         currency: string;
         reports: number;
         payout: number;
+        due_reports: number;
+        due_payout: number;
+        overdue_reports: number;
+        next_due: string | null;
+        scheduled: boolean;
     }[];
     pendingClients: {
         id: number;
@@ -59,6 +65,11 @@ type Props = {
         reports: number;
         companies: number;
         payout: number;
+        due_reports: number;
+        due_payout: number;
+        overdue_reports: number;
+        next_due: string | null;
+        scheduled: boolean;
     }[];
     clients: { id: number; name: string }[];
     payoutCurrencies: Option[];
@@ -71,9 +82,52 @@ type Props = {
 type Target = (
     | { client: number; merchant?: undefined }
     | { merchant: string; client?: undefined }
-) & { product?: string };
+) & { product?: string; scheduled?: boolean };
 
 const ALL = 'all';
+
+type DueRow = {
+    reports: number;
+    due_reports: number;
+    due_payout: number;
+    payout: number;
+    overdue_reports: number;
+    next_due: string | null;
+    scheduled: boolean;
+    currency: string;
+};
+
+/** What of the unpaid reports is due for payout today by the merchant's T+N. */
+function DueInfo({ row }: { row: DueRow }) {
+    if (!row.scheduled) {
+        return <>{row.reports} report(s)</>;
+    }
+
+    return (
+        <div className="grid gap-0.5">
+            <span
+                className={
+                    row.due_reports > 0
+                        ? 'font-medium text-emerald-600'
+                        : 'text-muted-foreground'
+                }
+            >
+                {row.due_reports} due
+                {row.overdue_reports > 0 && (
+                    <span className="ml-1 text-amber-600">
+                        ({row.overdue_reports} overdue)
+                    </span>
+                )}
+            </span>
+            {row.reports > row.due_reports && (
+                <span className="text-xs text-muted-foreground">
+                    {row.reports - row.due_reports} not due yet
+                    {row.next_due && ` · from ${formatDate(row.next_due)}`}
+                </span>
+            )}
+        </div>
+    );
+}
 
 function NewSettlementDialog({
     merchants,
@@ -109,6 +163,7 @@ function NewSettlementDialog({
                 : (merchants[0]?.public_id ?? ''),
         payout_currency: payoutCurrencies[0]?.value ?? 'USDC',
         product: preset?.product ?? 'card',
+        include_early: false,
     });
 
     return (
@@ -121,6 +176,7 @@ function NewSettlementDialog({
                         form.transform((data) => ({
                             payout_currency: data.payout_currency,
                             product: data.product,
+                            due_only: !data.include_early,
                             ...(kind === 'client'
                                 ? { client: data.client }
                                 : { merchant: data.merchant }),
@@ -222,6 +278,23 @@ function NewSettlementDialog({
                                 </SelectContent>
                             </Select>
                         </Field>
+                    )}
+                    {preset?.scheduled && (
+                        <label className="flex items-start gap-2 text-sm">
+                            <Checkbox
+                                checked={form.data.include_early}
+                                onCheckedChange={(on) =>
+                                    form.setData('include_early', on === true)
+                                }
+                            />
+                            <span>
+                                Also include reports that are not due yet
+                                <span className="block text-xs text-muted-foreground">
+                                    By default only reports due today or overdue
+                                    go into the draft.
+                                </span>
+                            </span>
+                        </label>
                     )}
                     <Field
                         label="Pay out in"
@@ -348,13 +421,26 @@ export default function SettlementsIndex({
                                             />
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {row.reports} report(s)
+                                            <DueInfo row={row} />
                                         </TableCell>
                                         <TableCell className="text-right font-medium tabular-nums">
                                             {formatMoney(
-                                                row.payout,
+                                                row.scheduled
+                                                    ? row.due_payout
+                                                    : row.payout,
                                                 row.currency,
                                             )}
+                                            {row.scheduled &&
+                                                row.payout !==
+                                                    row.due_payout && (
+                                                    <div className="text-xs font-normal text-muted-foreground">
+                                                        of{' '}
+                                                        {formatMoney(
+                                                            row.payout,
+                                                            row.currency,
+                                                        )}
+                                                    </div>
+                                                )}
                                         </TableCell>
                                         <TableCell className="w-0 text-right">
                                             <Button
@@ -364,10 +450,14 @@ export default function SettlementsIndex({
                                                     setCreating({
                                                         client: row.id,
                                                         product: row.product,
+                                                        scheduled:
+                                                            row.scheduled,
                                                     })
                                                 }
                                             >
-                                                Settle client
+                                                {row.scheduled
+                                                    ? 'Settle due'
+                                                    : 'Settle client'}
                                             </Button>
                                         </TableCell>
                                     </TableRow>
@@ -392,13 +482,26 @@ export default function SettlementsIndex({
                                             />
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {row.reports} report(s)
+                                            <DueInfo row={row} />
                                         </TableCell>
                                         <TableCell className="text-right font-medium tabular-nums">
                                             {formatMoney(
-                                                row.payout,
+                                                row.scheduled
+                                                    ? row.due_payout
+                                                    : row.payout,
                                                 row.currency,
                                             )}
+                                            {row.scheduled &&
+                                                row.payout !==
+                                                    row.due_payout && (
+                                                    <div className="text-xs font-normal text-muted-foreground">
+                                                        of{' '}
+                                                        {formatMoney(
+                                                            row.payout,
+                                                            row.currency,
+                                                        )}
+                                                    </div>
+                                                )}
                                         </TableCell>
                                         <TableCell className="w-0 text-right">
                                             <Button
@@ -407,10 +510,15 @@ export default function SettlementsIndex({
                                                 onClick={() =>
                                                     setCreating({
                                                         merchant: row.public_id,
+                                                        product: row.product,
+                                                        scheduled:
+                                                            row.scheduled,
                                                     })
                                                 }
                                             >
-                                                Settle
+                                                {row.scheduled
+                                                    ? 'Settle due'
+                                                    : 'Settle'}
                                             </Button>
                                         </TableCell>
                                     </TableRow>
