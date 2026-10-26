@@ -82,6 +82,31 @@ class VolumesAndSourcesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('rows.0.volume', $near(999)));
     }
 
+    public function test_a_weekend_bundle_report_is_split_into_the_days_the_payments_were_made()
+    {
+        // One Fri–Sun report: every row carries the Sunday report date, the payments happened on three days (gateway time is Riga).
+        foreach ([
+            ['F1', '100.00', '2026-10-16 10:00:00'],
+            ['S1', '200.00', '2026-10-17 10:00:00'],
+            ['S2', '50.00', '2026-10-17 22:30:00'], // 01:30 on Sunday in Riga
+            ['U1', '400.00', '2026-10-18 10:00:00'],
+        ] as [$payment, $amount, $at]) {
+            MerchantOperation::query()->create([
+                'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->gate->id,
+                'role' => ProviderType::Gate, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => 'sale',
+                'trn_type' => 'sale', 'ips' => 'visa', 'amount' => $amount, 'currency' => 'EUR',
+                'transaction_at' => $at, 'report_date' => '2026-10-18',
+            ]);
+        }
+
+        $volume = fn (string $day) => $this->get(route('admin.volumes.index', ['day' => $day]))->viewData('page')['props']['rows'][0]['volume'];
+
+        $this->actingAs($this->admin);
+        $this->assertEqualsWithDelta(100, $volume('2026-10-16'), 0.01);
+        $this->assertEqualsWithDelta(200, $volume('2026-10-17'), 0.01);
+        $this->assertEqualsWithDelta(450, $volume('2026-10-18'), 0.01);
+    }
+
     public function test_a_single_day_is_compared_with_the_daily_norm()
     {
         $this->mid->update(['daily_norm' => 150]);
