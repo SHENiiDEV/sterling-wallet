@@ -169,6 +169,32 @@ class OperationsAndBotsTest extends TestCase
         ])->assertSessionHasErrors('settings');
     }
 
+    public function test_a_wallet_account_can_be_run_for_a_whole_range_of_days_but_a_report_bot_cannot()
+    {
+        Queue::fake();
+        $corefy = $this->corefy();
+        $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy);
+        $wallet = IntegrationAccount::query()->create([
+            'provider_id' => $corefy->id, 'connector' => 'finbridges-api', 'name' => 'FinBridges', 'username' => 'k', 'password' => 's',
+        ]);
+        $report = IntegrationAccount::query()->create([
+            'provider_id' => $corefy->id, 'connector' => 'corefy-export', 'name' => 'Corefy', 'username' => 'u', 'password' => 'p',
+        ]);
+
+        $this->actingAs($this->admin)->post(route('admin.bots.accounts.run', $wallet), ['from' => '2026-08-01', 'to' => '2026-09-12'])
+            ->assertSessionHasNoErrors();
+
+        $run = BotRun::query()->sole();
+        $this->assertSame(['2026-09-12', '2026-09-12:range:2026-08-01:2026-09-12'], [$run->report_date->toDateString(), $run->target_key]);
+        $this->assertSame('2026-08-01', $run->target['from']);
+
+        // The same range again is not queued twice; a backwards range and a report bot are refused.
+        $this->post(route('admin.bots.accounts.run', $wallet), ['from' => '2026-08-01', 'to' => '2026-09-12']);
+        $this->assertSame(1, BotRun::query()->count());
+        $this->post(route('admin.bots.accounts.run', $wallet), ['from' => '2026-09-12', 'to' => '2026-08-01'])->assertSessionHasErrors('from');
+        $this->post(route('admin.bots.accounts.run', $report), ['from' => '2026-08-01', 'to' => '2026-09-12'])->assertSessionHasErrors('from');
+    }
+
     public function test_run_now_and_retry_queue_runs()
     {
         Queue::fake();

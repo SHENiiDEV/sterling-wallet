@@ -5,8 +5,12 @@ namespace App\Bots;
 use App\Enums\BotRunStatus;
 use App\Jobs\RunConnectorJob;
 use App\Models\BotRun;
+use App\Models\IntegrationAccount;
 use App\Models\User;
+use App\Reports\ReportPeriod;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use InvalidArgumentException;
 
 /**
  * Turns due targets into queued bot runs — at most one active run per
@@ -70,6 +74,28 @@ class BotDispatcher
         RunConnectorJob::dispatch($run->id);
 
         return $run;
+    }
+
+    /**
+     * Fetch an arbitrary range of days in one run. Only for connectors that book every row to its own day
+     * (the wallet API), since the run's report date is just the last day of the range.
+     */
+    public function queueRange(IntegrationAccount $account, CarbonImmutable $from, CarbonImmutable $to, ?User $by = null): ?BotRun
+    {
+        $connector = $this->connectors->get($account->connector);
+        if (! $connector instanceof IngestsByRowDate) {
+            throw new InvalidArgumentException("{$account->connector} cannot fetch a range of days.");
+        }
+
+        $mids = $account->coveredMids()->get();
+        if ($mids->isEmpty()) {
+            throw new InvalidArgumentException('This account covers no MIDs yet.');
+        }
+
+        $period = new ReportPeriod($to, $from, $to);
+        $key = 'range:'.$from->toDateString().':'.$to->toDateString();
+
+        return $this->queue($connector, new Target($account, $period, $mids, ['key' => $key]), $by);
     }
 
     /**

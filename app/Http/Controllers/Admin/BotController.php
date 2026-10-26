@@ -16,12 +16,14 @@ use App\Models\MerchantMid;
 use App\Models\Provider;
 use App\Reports\ReportDateResolver;
 use App\Services\AuditLogger;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BotController extends Controller
@@ -111,6 +113,10 @@ class BotController extends Controller
      */
     public function run(Request $request, IntegrationAccount $account, BotDispatcher $dispatcher, ConnectorRegistry $connectors, ReportDateResolver $dates): RedirectResponse
     {
+        if ($request->filled('from') || $request->filled('to')) {
+            return $this->runRange($request, $account, $dispatcher);
+        }
+
         $data = $request->validate(['report_date' => ['required', 'date', 'before_or_equal:today']]);
         $period = $dates->periodFor($data['report_date']);
         $connector = $connectors->get($account->connector);
@@ -124,6 +130,27 @@ class BotController extends Controller
         $queued = $targets->map(fn (Target $t) => $dispatcher->queue($connector, $t, $request->user()))->filter()->count();
 
         Inertia::flash('toast', ['type' => $queued ? 'success' : 'info', 'message' => $queued ? "{$queued} run(s) queued for {$period->reportDate->toDateString()}." : 'A run for this date is already queued.']);
+
+        return to_route('admin.bots.index');
+    }
+
+    /**
+     * "Run now" for a whole range of days at once, e.g. to load a wallet's history.
+     */
+    private function runRange(Request $request, IntegrationAccount $account, BotDispatcher $dispatcher): RedirectResponse
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date', 'before_or_equal:to'],
+            'to' => ['required', 'date', 'before_or_equal:today'],
+        ]);
+
+        try {
+            $run = $dispatcher->queueRange($account, CarbonImmutable::parse($data['from']), CarbonImmutable::parse($data['to']), $request->user());
+        } catch (InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['from' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => $run ? 'success' : 'info', 'message' => $run ? "Run queued for {$data['from']} – {$data['to']}." : 'A run for this range is already queued.']);
 
         return to_route('admin.bots.index');
     }
