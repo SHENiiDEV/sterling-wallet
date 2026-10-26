@@ -30,7 +30,7 @@ import { parseReportDates } from './lib/dates.mjs';
 const REPORT_FILE = /\.(xlsx|xls|csv)$/i;
 
 const HOSTINGER = {
-    search: 'input[data-qa="mailbox-search-input"], input#headerSearchInput, input[name="searchPattern"], input[name="search"], input[placeholder="Search mail"]',
+    search: 'input[data-qa="mailbox-search-input"]:visible, input#headerSearchInput:visible, input[name="searchPattern"]:visible, input[name="search"]:visible, input[placeholder="Search mail"]:visible',
 };
 
 const PRIVATEEMAIL = {
@@ -39,8 +39,9 @@ const PRIVATEEMAIL = {
     password:
         'input#passwordfield-password, input[data-zid="passwordfield-password"], input[name="userPassword"]',
     submit: 'button[data-zid="login-btn"], button[type="submit"]',
-    search: 'input#headerSearchInput, input[name="searchPattern"], input[data-zid="headerSearchPanelInput"], input[name="headerSearchPanelInput"], input[placeholder="Search mail"]',
-    rows: 'div[data-zid*="mailListItem"], div[class*="spm-mail-list__item"], div[class*="mail-list-item"], div[class*="spm-message-item"], div.gb-card, div[role="listitem"]',
+    // The page holds a second, hidden copy for mobile (#mobileHeaderSearchInput, the same name): only the visible one.
+    search: 'input#headerSearchInput:visible, input[name="searchPattern"]:visible, input[data-zid="headerSearchPanelInput"]:visible, input[name="headerSearchPanelInput"]:visible, input[placeholder="Search mail"]:visible',
+    rows: 'div.msc-entry-card[role="listitem"], div.spm-card[role="listitem"], div[data-zid*="mailListItem"], div[class*="spm-mail-list__item"], div[class*="mail-list-item"], div[class*="spm-message-item"], div.gb-card, div[role="listitem"]',
     viewer: 'div.spm-email-viewer, div[class*="email-viewer"]',
     attachmentsToggle:
         'button[data-zid="emailViewerAttachmentsToggle"], button.spm-email-viewer__attachments__summary--trigger, button[title*="attachment" i]',
@@ -327,6 +328,51 @@ async function privateEmailLogin(page, input) {
     log('Logged in:', page.url());
 }
 
+/** Closes the cookie banner, it covers the lower part of the mailbox. */
+async function dismissCookies(page) {
+    const reject = page
+        .locator(
+            'button:has-text("Reject All"), button:has-text("Accept All Cookies")',
+        )
+        .first();
+    if (await reject.isVisible().catch(() => false)) {
+        log('Closing the cookie banner…');
+        await reject.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(800);
+    }
+}
+
+/** Waits for the result list: cards, or the "no results" state. */
+async function waitForResults(page) {
+    await page
+        .locator(PRIVATEEMAIL.rows)
+        .first()
+        .waitFor({ state: 'visible', timeout: 20000 })
+        .catch(() => log('No result cards appeared.'));
+}
+
+/** Opens a result card and waits for the message viewer; true when it opened. */
+async function openCard(page, row) {
+    await row.scrollIntoViewIfNeeded().catch(() => {});
+    const targets = [
+        row.locator('.spm-card__body').first(),
+        row.locator('.spm-card__subtitle').first(),
+        row,
+    ];
+    for (const target of targets) {
+        await target.click({ force: true }).catch(() => {});
+        const opened = await page
+            .locator(PRIVATEEMAIL.viewer)
+            .first()
+            .waitFor({ state: 'visible', timeout: 8000 })
+            .then(() => true)
+            .catch(() => false);
+        if (opened) return true;
+    }
+
+    return false;
+}
+
 async function privateEmailSearch(page, query, input) {
     const search = page.locator(PRIVATEEMAIL.search).first();
 
@@ -354,6 +400,9 @@ async function privateEmailSearch(page, query, input) {
         await page.keyboard.press('Enter');
         await randomDelay(3000, 4500);
     }
+
+    await dismissCookies(page);
+    await waitForResults(page);
 
     return page.locator(PRIVATEEMAIL.rows);
 }
@@ -391,9 +440,11 @@ async function fromPrivateEmail(input, page) {
         );
 
         // Open the message: the viewer shows the full subject and the attachments.
-        await row.scrollIntoViewIfNeeded().catch(() => {});
-        await row.click({ force: true });
-        await randomDelay(1500, 2500);
+        if (!(await openCard(page, row))) {
+            log(`Message ${i + 1} did not open, next…`);
+            continue;
+        }
+        await randomDelay(800, 1500);
 
         if (!found) {
             const viewer = await page
