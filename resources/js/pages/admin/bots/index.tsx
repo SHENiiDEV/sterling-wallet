@@ -78,7 +78,13 @@ function RunNowDialog({
     account: IntegrationAccount;
     onClose: () => void;
 }) {
-    const form = useForm({ report_date: yesterday() });
+    const canRange = account.connector === 'finbridges-api';
+    const [range, setRange] = useState(false);
+    const form = useForm({
+        report_date: yesterday(),
+        from: yesterday(),
+        to: new Date().toISOString().slice(0, 10),
+    });
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -87,7 +93,11 @@ function RunNowDialog({
                     className="grid gap-5"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        form.post(admin.bots.accounts.run.url(account.id), {
+                        form.transform((data) =>
+                            range
+                                ? { from: data.from, to: data.to }
+                                : { report_date: data.report_date },
+                        ).post(admin.bots.accounts.run.url(account.id), {
                             preserveScroll: true,
                             onSuccess: onClose,
                         });
@@ -101,20 +111,79 @@ function RunNowDialog({
                             it was fetched before.
                         </DialogDescription>
                     </DialogHeader>
-                    <Field
-                        label="Report date"
-                        htmlFor="report_date"
-                        error={form.errors.report_date}
-                    >
-                        <Input
-                            id="report_date"
-                            type="date"
-                            value={form.data.report_date}
-                            onChange={(e) =>
-                                form.setData('report_date', e.target.value)
-                            }
-                        />
-                    </Field>
+                    {canRange && (
+                        <div className="inline-flex w-fit rounded-lg border p-0.5 text-sm">
+                            {[
+                                [false, 'One day'],
+                                [true, 'Date range'],
+                            ].map(([value, label]) => (
+                                <button
+                                    key={String(value)}
+                                    type="button"
+                                    onClick={() => setRange(value as boolean)}
+                                    className={
+                                        range === value
+                                            ? 'rounded-md bg-primary px-3 py-1 text-primary-foreground'
+                                            : 'px-3 py-1 text-muted-foreground'
+                                    }
+                                >
+                                    {label as string}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {range ? (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field
+                                label="From"
+                                htmlFor="range_from"
+                                error={form.errors.from}
+                            >
+                                <Input
+                                    id="range_from"
+                                    type="date"
+                                    value={form.data.from}
+                                    onChange={(e) =>
+                                        form.setData('from', e.target.value)
+                                    }
+                                />
+                            </Field>
+                            <Field
+                                label="To"
+                                htmlFor="range_to"
+                                error={form.errors.to}
+                            >
+                                <Input
+                                    id="range_to"
+                                    type="date"
+                                    value={form.data.to}
+                                    onChange={(e) =>
+                                        form.setData('to', e.target.value)
+                                    }
+                                />
+                            </Field>
+                            <p className="text-xs text-muted-foreground sm:col-span-2">
+                                Loads every transaction of the wallet in this
+                                period in one run; each is booked to the day it
+                                happened. Ones already stored are skipped.
+                            </p>
+                        </div>
+                    ) : (
+                        <Field
+                            label="Report date"
+                            htmlFor="report_date"
+                            error={form.errors.report_date}
+                        >
+                            <Input
+                                id="report_date"
+                                type="date"
+                                value={form.data.report_date}
+                                onChange={(e) =>
+                                    form.setData('report_date', e.target.value)
+                                }
+                            />
+                        </Field>
+                    )}
                     <DialogFooter>
                         <DialogClose asChild>
                             <Button type="button" variant="outline">

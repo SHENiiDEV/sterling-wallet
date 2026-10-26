@@ -75,10 +75,12 @@ class FinBridgesApiConnector extends PlaywrightConnector implements IngestsByRow
             $data = json_decode((string) file_get_contents($path), true);
             $list = is_array($data) ? ($data['list'] ?? []) : [];
 
-            $known = MerchantOperation::query()
-                ->where('provider_id', $target->account->provider_id)
-                ->whereIn('payment_id', array_filter(array_map(fn ($tx) => $tx['transactionNumber'] ?? $tx['externalTransactionId'] ?? null, $list)))
-                ->pluck('payment_id')
+            // Chunked: a long range can hold more ids than one query may bind.
+            $known = collect(array_chunk(array_values(array_filter(array_map(fn ($tx) => $tx['transactionNumber'] ?? $tx['externalTransactionId'] ?? null, $list))), 1000))
+                ->flatMap(fn (array $ids) => MerchantOperation::query()
+                    ->where('provider_id', $target->account->provider_id)
+                    ->whereIn('payment_id', $ids)
+                    ->pluck('payment_id'))
                 ->flip();
 
             $fresh = array_values(array_filter($list, fn ($tx) => ! $known->has($tx['transactionNumber'] ?? $tx['externalTransactionId'] ?? '')));

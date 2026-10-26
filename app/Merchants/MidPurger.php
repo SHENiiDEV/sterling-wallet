@@ -98,6 +98,47 @@ class MidPurger
     }
 
     /**
+     * Empties a terminal of everything it produced and keeps the terminal itself, so its history can be loaded again
+     * from the provider. Same rules as a purge: reports in approved or paid settlements must be cancelled first.
+     *
+     * @return array<string, int> what was deleted
+     */
+    public function clear(MerchantMid $mid, ?User $by = null): array
+    {
+        if ($locked = $this->lockedSettlements($mid)) {
+            throw ValidationException::withMessages(['mid' => "MID {$mid->mid}: its reports are in approved or paid settlements (".implode(', ', $locked).'). Cancel those first.']);
+        }
+
+        $summary = $this->summary($mid);
+        $reportFiles = $mid->dailyReports()
+            ->get(['generated_xlsx_path', 'generated_pdf_path', 'generated_operations_path'])
+            ->flatMap(fn (DailyReportTask $t) => [$t->generated_xlsx_path, $t->generated_pdf_path, $t->generated_operations_path])
+            ->filter()->all();
+
+        DB::transaction(function () use ($mid) {
+            $settlementIds = $this->lines($mid)->pluck('settlement_id')->unique()->all();
+            $this->lines($mid)->delete();
+
+            MerchantOperation::query()->where('merchant_mid_id', $mid->id)->select('id')->chunkById(1000, function ($chunk) {
+                MerchantOperation::query()->whereIn('id', $chunk->pluck('id'))->delete();
+            });
+
+            $mid->reserveEntries()->delete();
+            $mid->dailyReports()->delete();
+
+            foreach (Settlement::query()->whereIn('id', $settlementIds)->get() as $settlement) {
+                $this->settlements->recalculate($settlement);
+            }
+        });
+
+        Storage::disk(config('sterling.reports.disk'))->delete($reportFiles);
+
+        AuditLogger::log('mid.cleared', $mid, ['mid' => $mid->mid, 'by' => $by?->id, ...$summary]);
+
+        return $summary;
+    }
+
+    /**
      * @return Builder<SettlementLine>
      */
     private function lines(MerchantMid $mid): Builder

@@ -14,6 +14,7 @@
  *   external_ids  list of externalTransactionId values; with a list_path that has
  *              {externalId} (the documented by-external-id endpoint) each one is
  *              fetched and the results are collected. Handy to test the signature.
+ *   max_pages  page cap per run (default 500 × take); a long range is read in one go
  *   ts_unit    's' (default) or 'ms' for x-app-access-ts
  *
  * Signature (assumed, see docs/finbridges.md): hex HMAC-SHA256(apiSecret,
@@ -146,7 +147,8 @@ try {
         const take = Number(settings.take) || 100;
         const glue = base.includes('?') ? '&' : '?';
         const seen = new Set();
-        for (let page = 0; page < 200; page++) {
+        const maxPages = Number(settings.max_pages) || 500;
+        for (let page = 0; page < maxPages; page++) {
             const skip = settings.skip_mode === 'page' ? page : page * take;
             const body = await signedGet(
                 input,
