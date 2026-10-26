@@ -12,6 +12,7 @@ enum OperationType: string
     case Refund = 'refund';
     case Decline = 'decline';
     case Chargeback = 'chargeback';
+    case Collab = 'collab';
 
     public function label(): string
     {
@@ -20,6 +21,7 @@ enum OperationType: string
             self::Refund => 'Refund',
             self::Decline => 'Decline',
             self::Chargeback => 'Chargeback',
+            self::Collab => 'Collab',
         };
     }
 }

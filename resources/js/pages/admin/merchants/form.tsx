@@ -92,6 +92,7 @@ export default function MerchantForm({
         fee_refund_fixed: str(merchant?.fee_refund_fixed, '0'),
         fee_chargeback_fixed: str(merchant?.fee_chargeback_fixed, '0'),
         fee_collab_fixed: str(merchant?.fee_collab_fixed),
+        collab_dispute_threshold: str(merchant?.collab_dispute_threshold),
         fee_wallet_percent: str(merchant?.fee_wallet_percent, '0'),
         fee_settlement_fx_percent: str(
             merchant?.fee_settlement_fx_percent,
@@ -566,6 +567,12 @@ export default function MerchantForm({
                                         'Collab',
                                         'per op',
                                         'Optional; leave empty if not agreed',
+                                    )}
+                                    {input(
+                                        'collab_dispute_threshold',
+                                        'Dispute collab from',
+                                        'per case',
+                                        'A Collab of this amount or more is marked "Dispute"; empty = never',
                                     )}
                                 </FormSection>
                             </>

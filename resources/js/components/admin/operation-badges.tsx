@@ -6,6 +6,7 @@ const operationColors: Record<OperationType, StatusColor> = {
     refund: 'blue',
     decline: 'slate',
     chargeback: 'rose',
+    collab: 'amber',
 };
 
 export function OperationTypeBadge({

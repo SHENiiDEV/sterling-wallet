@@ -127,7 +127,7 @@ class DashboardController extends Controller
             'product' => ['value' => $product->value, 'label' => $product->label()],
             'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
             'totals' => $reports()
-                ->selectRaw('currency, count(*) as reports, sum(sales_count) as sales, sum(turnover) as turnover, sum(refunds_amount + chargebacks_amount) as refunds, sum(total_merchant_fee + conversion_fee) as fees, sum(net_payout) as payout')
+                ->selectRaw('currency, count(*) as reports, sum(sales_count) as sales, sum(turnover) as turnover, sum(refunds_amount + chargebacks_amount + collabs_amount) as refunds, sum(total_merchant_fee + conversion_fee) as fees, sum(net_payout) as payout')
                 ->groupBy('currency')->orderBy('currency')->get()
                 ->map(fn ($r) => ['currency' => $r->currency, 'reports' => (int) $r->reports, 'sales' => (int) $r->sales, 'turnover' => round((float) $r->turnover, 2), 'refunds' => round((float) $r->refunds, 2), 'fees' => round((float) $r->fees, 2), 'payout' => round((float) $r->payout, 2)]),
             'daily' => $reports()
@@ -234,6 +234,20 @@ class DashboardController extends Controller
                 })->sortByDesc('count')->values()->take(15)->all();
 
                 $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair for more than two days', 'count' => $count, 'detail' => null, 'to' => $cutoff, 'rows' => $rows];
+            }
+        }
+
+        // Mastercard collaboration cases we dispute (at or above the merchant's threshold) that must be answered soon.
+        if ($withOperations) {
+            $soon = MerchantOperation::query()
+                ->where('operation_type', OperationType::Collab)
+                ->whereBetween('processing_at', [now(), now()->addDays(3)])
+                ->with('merchant:id,collab_dispute_threshold')
+                ->get()
+                ->filter(fn (MerchantOperation $op) => $op->merchant?->collab_dispute_threshold !== null && (float) $op->amount >= (float) $op->merchant->collab_dispute_threshold);
+
+            if ($soon->isNotEmpty()) {
+                $alerts[] = ['key' => 'collab_deadlines', 'label' => 'collab case(s) to dispute, answer within 3 days', 'count' => $soon->count(), 'detail' => 'earliest '.$soon->min('processing_at')?->format('d M H:i'), 'to' => null, 'rows' => []];
             }
         }
 

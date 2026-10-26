@@ -51,6 +51,7 @@ class DailyStatement
         $turnover = $this->dec($task->turnover);
         $refunds = $this->dec($task->refunds_amount);
         $chargebacks = $this->dec($task->chargebacks_amount);
+        $collabs = $this->dec($task->collabs_amount);
         $fee = $this->dec($task->total_merchant_fee);
         $percentFee = $this->dec($summary['merchant_fee']['percent'] ?? $task->total_merchant_fee);
         $fixedFee = $this->dec($summary['merchant_fee']['fixed'] ?? 0);
@@ -61,7 +62,7 @@ class DailyStatement
         $netVolume = $this->dec($task->net_volume);
         $conversion = $this->dec($task->conversion_fee);
         $payout = $this->dec($task->net_payout);
-        $afterFees = $turnover->minus($refunds)->minus($chargebacks)->minus($fee);
+        $afterFees = $turnover->minus($refunds)->minus($chargebacks)->minus($collabs)->minus($fee);
 
         $stored = $summary['merchant_fee'] ?? [];
         $transactionFees = $this->transactionFees($stored['fixed_lines'] ?? null, $tariff, $count);
@@ -85,6 +86,7 @@ class DailyStatement
             ...($fxFee->isZero() ? [] : [['kind' => 'minus', 'label' => 'Settlement FX markup', 'detail' => PdfRenderer::percent($fxPercent).' on the amount converted to '.config('sterling.settlement_currency'), 'amount' => $fxFee->negated()]]),
             ['kind' => 'minus', 'label' => 'Refunds', 'detail' => $count('refunds').' refunded', 'amount' => $refunds->negated()],
             ['kind' => 'minus', 'label' => 'Chargebacks', 'detail' => $count('chargebacks').' disputed', 'amount' => $chargebacks->negated()],
+            ...($count('collabs') === 0 && $collabs->isZero() ? [] : [['kind' => 'minus', 'label' => 'Collaborations', 'detail' => $count('collabs').' Mastercard collaboration '.($count('collabs') === 1 ? 'case' : 'cases'), 'amount' => $collabs->negated()]]),
             ['kind' => 'subtotal', 'label' => 'Net after fees', 'detail' => null, 'amount' => $afterFees],
             ['kind' => 'minus', 'label' => 'Rolling reserve', 'detail' => $reserveDetail, 'amount' => $reserve->negated()],
             ['kind' => 'subtotal', 'label' => 'Net volume', 'detail' => null, 'amount' => $netVolume],
@@ -119,6 +121,7 @@ class DailyStatement
                 'sales' => $count('sales'),
                 'refunds' => $count('refunds'),
                 'chargebacks' => $count('chargebacks'),
+                'collabs' => $count('collabs'),
                 'declines' => $count('declines'),
             ],
             'tiles' => [
@@ -241,6 +244,11 @@ class DailyStatement
             $rows[] = ['label' => $label, 'count' => $count($key), 'unit' => $unit, 'total' => $this->dec($unit->multipliedBy($count($key)))];
         }
 
+        if (isset($stored['collab'])) {
+            $line = $stored['collab'];
+            $rows[] = ['label' => 'Collab', 'count' => (int) $line['count'], 'unit' => BigDecimal::of($line['unit']), 'total' => $this->dec($line['total'])];
+        }
+
         return $rows;
     }
 
@@ -255,7 +263,7 @@ class DailyStatement
             ->where('merchant_mid_id', $task->merchant_mid_id)
             ->where('provider_id', $task->merchantMid->bank_provider_id)
             ->where('role', ProviderType::Bank)
-            ->whereIn('operation_type', [OperationType::Sale, OperationType::Refund, OperationType::Chargeback])
+            ->whereIn('operation_type', [OperationType::Sale, OperationType::Refund, OperationType::Chargeback, OperationType::Collab])
             ->whereBetween('report_date', [$task->period_from->toDateString(), $task->period_to->toDateString()]);
 
         $total = (clone $query)->count();

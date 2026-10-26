@@ -117,6 +117,8 @@ class DailyReportGenerator
         $sales = $bankOps->where('operation_type', OperationType::Sale);
         $refunds = $bankOps->where('operation_type', OperationType::Refund);
         $chargebacks = $bankOps->where('operation_type', OperationType::Chargeback);
+        // Mastercard Collaboration cases: charged to the merchant at the requested amount plus a fee per case.
+        $collabs = $bankOps->where('operation_type', OperationType::Collab);
         // Per-transaction fees follow the gateway when there is one: every
         // approved or declined attempt passes through it. Declines never
         // reach clearing at all. Refunds and chargebacks are acquirer events.
@@ -127,13 +129,18 @@ class DailyReportGenerator
         $turnover = $this->sum($sales);
         $refundsAmount = $this->sum($refunds);
         $chargebacksAmount = $this->sum($chargebacks);
+        $collabsAmount = $this->sum($collabs);
 
         // What the merchant pays us.
         $fee = Tariff::forMid($mid);
         $merchantPercentFee = $this->percentOf($sales, $fee);
         $fixedLines = [];
         $merchantFixedFee = BigDecimal::zero();
-        foreach (['success' => $approved, 'decline' => $declines, 'refund' => $refunds, 'chargeback' => $chargebacks] as $name => $ops) {
+        $feeGroups = ['success' => $approved, 'decline' => $declines, 'refund' => $refunds, 'chargeback' => $chargebacks];
+        if ($collabs->isNotEmpty()) {
+            $feeGroups['collab'] = $collabs;
+        }
+        foreach ($feeGroups as $name => $ops) {
             $unit = $fee->fixed($name);
             $total = $unit->multipliedBy($ops->count());
             $merchantFixedFee = $merchantFixedFee->plus($total);
@@ -144,7 +151,7 @@ class DailyReportGenerator
         // converted by the acquirer, on what it settles (sales less
         // refunds and chargebacks). We charge the merchant and the
         // acquirer charges us, both on the same amount.
-        $settled = BigDecimal::max(BigDecimal::zero(), $turnover->minus($refundsAmount)->minus($chargebacksAmount));
+        $settled = BigDecimal::max(BigDecimal::zero(), $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount));
         $fxApplies = $currency !== config('sterling.settlement_currency');
         $fxFee = $this->round($fxApplies ? $this->percentAmount($settled, $fee->percent('settlement_fx')) : BigDecimal::zero());
         $fxCost = $fxApplies && $mid->bankProvider
@@ -164,7 +171,7 @@ class DailyReportGenerator
         $gateCost = $mid->gateProvider ? $this->providerCost($mid->gateProvider, $gateOps) : BigDecimal::zero();
 
         // Rolling reserve, capped by what's left under the MID limit.
-        $reserveBase = $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($merchantFee);
+        $reserveBase = $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount)->minus($merchantFee);
         $reserve = $this->round(BigDecimal::max(BigDecimal::zero(), $reserveBase)
             ->multipliedBy($merchant->rolling_reserve_percent ?? 0)->dividedBy(100, 8, RoundingMode::HalfUp));
         $reserve = $this->capReserve($task, $reserve);
@@ -186,7 +193,7 @@ class DailyReportGenerator
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
@@ -197,6 +204,7 @@ class DailyReportGenerator
                 'turnover' => (string) $turnover,
                 'refunds_amount' => (string) $refundsAmount,
                 'chargebacks_amount' => (string) $chargebacksAmount,
+                'collabs_amount' => (string) $collabsAmount,
                 'total_merchant_fee' => (string) $merchantFee,
                 'total_provider_cost' => (string) $providerCost,
                 'reserve_amount' => (string) $reserve,
@@ -213,10 +221,11 @@ class DailyReportGenerator
                         'sales' => $sales->count(),
                         'refunds' => $refunds->count(),
                         'chargebacks' => $chargebacks->count(),
+                        'collabs' => $collabs->count(),
                         'declines' => $declines->count(),
                         'bank_operations' => $bankOps->count(),
                         'gate_operations' => $gateOps->count(),
-                        'unmatched_bank' => $bankOps->where('operation_type', '!=', OperationType::Decline)->whereNull('matched_operation_id')->count(),
+                        'unmatched_bank' => $bankOps->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab])->whereNull('matched_operation_id')->count(),
                         'unmatched_gate' => $gateOps->where('operation_type', '!=', OperationType::Decline)->whereNull('matched_operation_id')->count(),
                     ],
                     'merchant_fee' => [

@@ -35,7 +35,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'merchant_id', 'merchant_mid_id', 'report_date', 'period_from', 'period_to', 'currency', 'status',
     'generated_xlsx_path', 'generated_pdf_path', 'generated_operations_path', 'error_log',
-    'sales_count', 'turnover', 'refunds_amount', 'chargebacks_amount', 'total_merchant_fee', 'total_provider_cost',
+    'sales_count', 'turnover', 'refunds_amount', 'chargebacks_amount', 'collabs_amount', 'total_merchant_fee', 'total_provider_cost',
     'reserve_amount', 'net_volume', 'conversion_fee', 'net_payout', 'net_profit',
     'base_currency', 'fx_rate', 'turnover_base', 'net_profit_base', 'summary_data',
     'is_email_sent', 'email_sent_at', 'generated_at',
@@ -45,7 +45,7 @@ class DailyReportTask extends Model
     use RestrictedToProduct;
 
     public const MONEY_FIELDS = [
-        'turnover', 'refunds_amount', 'chargebacks_amount', 'total_merchant_fee', 'total_provider_cost',
+        'turnover', 'refunds_amount', 'chargebacks_amount', 'collabs_amount', 'total_merchant_fee', 'total_provider_cost',
         'reserve_amount', 'net_volume', 'conversion_fee', 'net_payout', 'net_profit', 'turnover_base', 'net_profit_base',
     ];
 

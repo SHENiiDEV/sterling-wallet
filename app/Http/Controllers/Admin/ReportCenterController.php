@@ -19,6 +19,7 @@ use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\ReserveLedgerEntry;
 use App\Models\SettlementLine;
+use App\Reports\Ingestion\CollabImporter;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Reports\ReportDateResolver;
 use App\Services\AuditLogger;
@@ -318,7 +319,7 @@ class ReportCenterController extends Controller
     /**
      * Manual upload of a provider file — same pipeline as the bots.
      */
-    public function upload(Request $request, ReportIngestionService $ingestion): RedirectResponse
+    public function upload(Request $request, ReportIngestionService $ingestion, CollabImporter $collabs): RedirectResponse
     {
         $data = $request->validate([
             'provider_id' => ['required', 'exists:providers,id'],
@@ -327,6 +328,12 @@ class ReportCenterController extends Controller
         ]);
 
         $provider = Provider::query()->findOrFail($data['provider_id']);
+
+        // The acquirer's Mastercard Collaboration list is not a clearing file: it becomes its own charge.
+        if ($provider->type === ProviderType::Bank && CollabImporter::looksLikeCollab($request->file('file'))) {
+            return $this->uploadCollab($request, $provider, $collabs);
+        }
+
         try {
             $result = $ingestion->ingest($provider, $request->file('file'), isset($data['report_date']) ? CarbonImmutable::parse($data['report_date']) : null);
         } catch (InvalidArgumentException $e) {
@@ -339,6 +346,20 @@ class ReportCenterController extends Controller
             $message .= ' New MIDs for review: '.implode(', ', $result->unknownMids).'.';
         }
         Inertia::flash('toast', ['type' => $result->rows > 0 ? 'success' : 'warning', 'message' => $message]);
+
+        return back();
+    }
+
+    private function uploadCollab(Request $request, Provider $provider, CollabImporter $collabs): RedirectResponse
+    {
+        $result = $collabs->import($provider, $request->file('file'));
+        AuditLogger::log('report.collab_uploaded', $provider, $result);
+
+        $message = "{$result['rows']} collaboration case(s) charged on {$result['tasks']} report(s).";
+        if ($result['unknown_mids']) {
+            $message .= ' Unknown MIDs, skipped: '.implode(', ', $result['unknown_mids']).'.';
+        }
+        Inertia::flash('toast', ['type' => $result['rows'] > 0 ? 'success' : 'warning', 'message' => $message]);
 
         return back();
     }

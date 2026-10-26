@@ -971,6 +971,14 @@ function TariffCard({ merchant }: { merchant: Merchant }) {
                             value={Number(merchant.fee_collab_fixed).toString()}
                         />
                     )}
+                    {merchant.collab_dispute_threshold !== null && (
+                        <Stat
+                            label="Dispute collab from"
+                            value={Number(
+                                merchant.collab_dispute_threshold,
+                            ).toString()}
+                        />
+                    )}
                 </dl>
                 <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
                     <Stat

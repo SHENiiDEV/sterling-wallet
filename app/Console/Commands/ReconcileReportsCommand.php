@@ -25,7 +25,7 @@ class ReconcileReportsCommand extends Command
             ->when($this->option('mid'), fn ($q, $mid) => $q->where('mid', $mid))
             ->whereHas('operations', fn ($q) => $q
                 ->whereNull('matched_operation_id')
-                ->where('operation_type', '!=', OperationType::Decline)
+                ->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab])
                 ->where('report_date', '>=', $from))
             ->get();
 

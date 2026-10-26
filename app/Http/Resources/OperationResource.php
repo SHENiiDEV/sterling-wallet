@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\OperationType;
+use App\Models\Merchant;
 use App\Models\MerchantOperation;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -41,6 +43,7 @@ class OperationResource extends JsonResource
             'trn_type' => $this->getAttribute('trn_type'),
             // Corefy: how many attempts (terminals) the payment went through; more than one is a cascade.
             'attempts' => $this->attempts(),
+            'collab' => $this->operation_type === OperationType::Collab ? $this->collab() : null,
             'operation_type' => $this->operation_type->value,
             'operation_type_label' => $this->operation_type->label(),
             'resolution' => $this->getAttribute('resolution'),
@@ -50,6 +53,28 @@ class OperationResource extends JsonResource
             'report_date' => $this->report_date?->toDateString(),
             'transaction_at' => $this->transaction_at?->toIso8601String(),
             'processing_at' => $this->getAttribute('processing_at')?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * A Mastercard Collaboration case: what it asks for, by when, and whether it is big enough that we dispute it.
+     *
+     * @return array<string, mixed>
+     */
+    private function collab(): array
+    {
+        $raw = (array) $this->raw;
+        $threshold = Merchant::query()->whereKey($this->merchant_id)->value('collab_dispute_threshold');
+
+        return [
+            'deadline' => $this->getAttribute('processing_at')?->toIso8601String(),
+            'claim_id' => $raw['CLAIM_ID'] ?? null,
+            'collaboration_id' => $raw['COLLABORATION_ID'] ?? null,
+            'original_payment_id' => $raw['PAYMENT_ID'] ?? null,
+            'original_date' => $raw['TR_DATE'] ?? null,
+            'original_amount' => $raw['TR_AMOUNT'] ?? null,
+            'threshold' => $threshold,
+            'dispute' => $threshold !== null && (float) $this->amount >= (float) $threshold,
         ];
     }
 
