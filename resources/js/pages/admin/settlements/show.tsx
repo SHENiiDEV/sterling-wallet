@@ -70,6 +70,54 @@ function DueBadge({ due }: { due: Due | null }) {
     );
 }
 
+/** One line above the table: how many reports are due, early or have no payout schedule. */
+function DueSummary({ lines }: { lines: Line[] }) {
+    const reports = lines.filter((l) => l.type === 'report');
+    if (reports.length === 0) {
+        return null;
+    }
+
+    const count = (state: Due['state']) =>
+        reports.filter((l) => l.due?.state === state).length;
+    const early = reports.filter((l) => l.due?.state === 'not_due');
+    const unscheduled = reports.filter((l) => l.due === null).length;
+    const ready = count('due') + count('overdue');
+    const latest = early
+        .map((l) => l.due!.date)
+        .sort()
+        .at(-1);
+
+    return (
+        <div
+            className={cn(
+                'rounded-lg border px-4 py-3 text-sm',
+                early.length > 0
+                    ? 'border-rose-500/40 bg-rose-500/5'
+                    : 'bg-card',
+            )}
+        >
+            <div className="font-medium">
+                {early.length > 0
+                    ? `Too early: ${early.length} of ${reports.length} reports are not due yet`
+                    : ready === reports.length
+                      ? 'All reports are due for payout'
+                      : 'Payout schedule'}
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+                {[
+                    ready > 0 && `${ready} due or overdue`,
+                    early.length > 0 &&
+                        `${early.length} not due until ${formatDate(latest)}`,
+                    unscheduled > 0 &&
+                        `${unscheduled} without a payout schedule (set T+N on the merchant)`,
+                ]
+                    .filter(Boolean)
+                    .join(' · ')}
+            </div>
+        </div>
+    );
+}
+
 type Line = {
     id: number;
     type: string;
@@ -845,6 +893,7 @@ export default function SettlementShow({
                     }
                 />
                 <PageErrors keys={['settlement', 'rates', 'wallet_id']} />
+                {draft && <DueSummary lines={lines} />}
 
                 {settlement.cancelled_at && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
@@ -925,6 +974,12 @@ export default function SettlementShow({
                                                     </div>
                                                 )}
                                                 <DueBadge due={line.due} />
+                                                {line.type === 'report' &&
+                                                    line.due === null && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            No payout schedule
+                                                        </span>
+                                                    )}
                                             </TableCell>
                                             <TableCell className="text-right tabular-nums">
                                                 {formatMoney(
