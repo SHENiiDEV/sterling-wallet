@@ -97,7 +97,8 @@ function RunNowDialog({
                             range
                                 ? { from: data.from, to: data.to }
                                 : { report_date: data.report_date },
-                        ).post(admin.bots.accounts.run.url(account.id), {
+                        );
+                        form.post(admin.bots.accounts.run.url(account.id), {
                             preserveScroll: true,
                             onSuccess: onClose,
                         });
