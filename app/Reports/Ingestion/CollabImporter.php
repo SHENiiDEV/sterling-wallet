@@ -3,10 +3,15 @@
 namespace App\Reports\Ingestion;
 
 use App\Enums\OperationType;
+use App\Enums\SettlementLineType;
+use App\Enums\SettlementStatus;
+use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
+use App\Models\SettlementLine;
 use App\Reports\Parsers\Values;
+use App\Reports\ReportDateResolver;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -23,7 +28,7 @@ class CollabImporter
 {
     private const REQUIRED = ['MERCHANT_ID', 'COLLABORATION_ID', 'COLLAB_AMOUNT'];
 
-    public function __construct(private ReportIngestionService $ingestion) {}
+    public function __construct(private ReportIngestionService $ingestion, private ReportDateResolver $dates) {}
 
     /**
      * Whether the file is a Collab list: its header names the collaboration columns.
@@ -75,14 +80,19 @@ class CollabImporter
                 }
 
                 $created = $this->time($row['COLLAB_CREATE_DATE'] ?? null, $timezone);
-                $day = ($created ?? CarbonImmutable::now($timezone))->setTimezone($timezone)->startOfDay();
-                $task = $this->ingestion->ensureReport($provider, $mid, CarbonImmutable::createFromFormat('!Y-m-d', $day->toDateString(), 'UTC'));
+                $key = ['provider_id' => $provider->id, 'payment_id' => 'collab:'.trim((string) $row['COLLABORATION_ID']), 'trn_type' => 'collab', 'amount' => $row['COLLAB_AMOUNT']];
+
+                // A case that is already booked stays where it is: a second upload must not move it.
+                $booked = MerchantOperation::query()->where($key)->first();
+                $task = $booked?->report_date !== null
+                    ? $this->ingestion->ensureReport($provider, $mid, CarbonImmutable::createFromFormat('!Y-m-d', $booked->report_date->toDateString(), 'UTC'))
+                    : $this->reportFor($provider, $mid, $this->time($row['TR_DATE'] ?? null, $timezone) ?? $created, $timezone);
                 $tasks[$task->id] = $task;
 
                 [$mask, $bin, $last4] = Values::card($row['CARD'] ?? null);
 
                 MerchantOperation::query()->updateOrCreate(
-                    ['provider_id' => $provider->id, 'payment_id' => 'collab:'.trim((string) $row['COLLABORATION_ID']), 'trn_type' => 'collab', 'amount' => $row['COLLAB_AMOUNT']],
+                    $key,
                     [
                         'merchant_id' => $mid->merchant_id,
                         'merchant_mid_id' => $mid->id,
@@ -120,6 +130,41 @@ class CollabImporter
         $result['unknown_mids'] = array_values(array_unique($result['unknown_mids']));
 
         return $result;
+    }
+
+    /**
+     * The report that carries the charge: the one of the original payment's day. When that report is already
+     * in a settlement (it is being paid, or was paid) the amounts there are fixed, so the charge moves on to the
+     * next report that is not in one yet, and so on up to today's.
+     */
+    private function reportFor(Provider $provider, MerchantMid $mid, ?CarbonImmutable $at, string $timezone): DailyReportTask
+    {
+        $today = CarbonImmutable::createFromFormat('!Y-m-d', CarbonImmutable::now($timezone)->toDateString(), 'UTC');
+        $day = $at !== null
+            ? CarbonImmutable::createFromFormat('!Y-m-d', $at->setTimezone($timezone)->toDateString(), 'UTC')
+            : $today;
+        $day = $day->greaterThan($today) ? $today : $day;
+
+        while ($day->lessThan($today)) {
+            $reportDate = $this->dates->periodFor($day)->reportDate;
+            $task = DailyReportTask::query()->where('merchant_mid_id', $mid->id)->where('report_date', $reportDate->toDateString())->first();
+
+            if ($task === null || ! $this->inSettlement($task)) {
+                break;
+            }
+            $day = $reportDate->addDay();
+        }
+
+        return $this->ingestion->ensureReport($provider, $mid, $day);
+    }
+
+    private function inSettlement(DailyReportTask $task): bool
+    {
+        return SettlementLine::query()
+            ->where('type', SettlementLineType::Report->value)
+            ->where('daily_report_task_id', $task->id)
+            ->whereHas('settlement', fn ($q) => $q->where('status', '!=', SettlementStatus::Cancelled->value))
+            ->exists();
     }
 
     private function time(mixed $value, string $timezone): ?CarbonImmutable

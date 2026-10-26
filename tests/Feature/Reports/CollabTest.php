@@ -8,6 +8,7 @@ use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\User;
 use App\Reports\Ingestion\ReportIngestionService;
+use App\Settlements\SettlementService;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,8 +44,8 @@ class CollabTest extends TestCase
     {
         $header = 'CARD,CARD_TYPE,ACQ_REF_NR,MERCHANT_NAME,MERCHANT_ID,MCC_CODE,COLLAB_CREATE_DATE,COLLAB_RESPONSE_DEADLINE,CLAIM_ID,COLLABORATION_ID,COLLAB_AMOUNT,COLLAB_CCY,TR_AMOUNT,TR_CCY,TR_DATE,PAYMENT_ID,TR_RET_REF_NR,MERCHANT_DECISION';
         $rows = [
-            "516794%6689,MC,7270497629500506126939,shop,{$this->mid->mid},7399,2026.09.15 10:10:16,2026.09.17 22:10:16,2015831996892,3015831996928,20.00,EUR,20.00,EUR,2026.09.12 14:06:35,1220113513,629411096993,",
-            "516794%2916,MC,7270497629600506317552,shop,{$this->mid->mid},7399,2026.09.15 10:44:59,2026.09.17 22:44:59,2015832230219,3015832230222,17.86,EUR,17.86,EUR,2026.09.13 21:40:08,1220745311,629518962139,",
+            "516794%6689,MC,7270497629500506126939,shop,{$this->mid->mid},7399,2026.09.15 10:10:16,2026.09.17 22:10:16,2015831996892,3015831996928,20.00,EUR,20.00,EUR,2026.09.15 14:06:35,1220113513,629411096993,",
+            "516794%2916,MC,7270497629600506317552,shop,{$this->mid->mid},7399,2026.09.15 10:44:59,2026.09.17 22:44:59,2015832230219,3015832230222,17.86,EUR,17.86,EUR,2026.09.15 21:40:08,1220745311,629518962139,",
             "-----mc_collab:footer-----,,,,,,,,,,,,,,,,,",
             'rows=2,timestamp=2026-09-16 13:10:30,,,,,,,,,,,,,,,,',
         ];
@@ -95,5 +96,31 @@ class CollabTest extends TestCase
         $this->assertTrue(BigDecimal::of((string) $task->total_merchant_fee)->isEqualTo('24.80'), (string) $task->total_merchant_fee);
         $this->assertSame(2, $task->summary_data['merchant_fee']['fixed_lines']['collab']['count']);
         $this->assertTrue(BigDecimal::of((string) $task->net_payout)->isLessThan((string) $before->net_payout));
+    }
+
+    public function test_a_collab_moves_to_the_next_report_when_its_own_report_is_already_in_a_settlement()
+    {
+        $ingestion = app(ReportIngestionService::class);
+        foreach (['2026-09-15', '2026-09-16'] as $day) {
+            $ingestion->ingest($this->mid->bankProvider, $this->cardaqCsv(day: $day), CarbonImmutable::parse($day));
+            $ingestion->ingest($this->mid->gateProvider, $this->corefyCsv($this->mid->gate_mid, 'EUR', $day), CarbonImmutable::parse($day));
+        }
+
+        $first = DailyReportTask::query()->where('report_date', '2026-09-15')->sole();
+        $admin = User::factory()->superAdmin()->create();
+        app(SettlementService::class)->createDraft($this->mid->merchant, $admin, [$first->id]);
+
+        $this->actingAs($admin)->post(route('admin.reports.upload'), ['provider_id' => $this->mid->bank_provider_id, 'file' => $this->collabCsv()])
+            ->assertSessionHasNoErrors();
+
+        // The 15th is in a settlement, so the cases are charged on the 16th.
+        $this->assertSame(0.0, (float) $first->fresh()->collabs_amount);
+        $second = DailyReportTask::query()->where('report_date', '2026-09-16')->sole()->fresh();
+        $this->assertTrue(BigDecimal::of((string) $second->collabs_amount)->isEqualTo('37.86'), (string) $second->collabs_amount);
+        $this->assertSame(['2026-09-16'], MerchantOperation::query()->where('operation_type', OperationType::Collab)->get()->map(fn ($op) => $op->report_date->toDateString())->unique()->values()->all());
+
+        // Uploading the file again does not move them back or on.
+        $this->post(route('admin.reports.upload'), ['provider_id' => $this->mid->bank_provider_id, 'file' => $this->collabCsv()]);
+        $this->assertSame(2, DailyReportTask::query()->where('report_date', '2026-09-16')->sole()->fresh()->summary_data['counts']['collabs']);
     }
 }
