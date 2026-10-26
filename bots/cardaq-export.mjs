@@ -28,7 +28,7 @@ import { parseReportDates } from './lib/dates.mjs';
 const REPORT_FILE = /\.(xlsx|xls|csv)$/i;
 
 const HOSTINGER = {
-    search: 'input[data-qa="mailbox-search-input"], input[name="search"], input[placeholder="Search mail"]',
+    search: 'input[data-qa="mailbox-search-input"], input#headerSearchInput, input[name="searchPattern"], input[name="search"], input[placeholder="Search mail"]',
 };
 
 const PRIVATEEMAIL = {
@@ -37,7 +37,7 @@ const PRIVATEEMAIL = {
     password:
         'input#passwordfield-password, input[data-zid="passwordfield-password"], input[name="userPassword"]',
     submit: 'button[data-zid="login-btn"], button[type="submit"]',
-    search: 'input[data-zid="headerSearchPanelInput"], input[name="headerSearchPanelInput"], input[placeholder="Search mail"]',
+    search: 'input#headerSearchInput, input[name="searchPattern"], input[data-zid="headerSearchPanelInput"], input[name="headerSearchPanelInput"], input[placeholder="Search mail"]',
     rows: 'div[data-zid*="mailListItem"], div[class*="spm-mail-list__item"], div[class*="mail-list-item"], div[class*="spm-message-item"], div.gb-card, div[role="listitem"]',
     viewer: 'div.spm-email-viewer, div[class*="email-viewer"]',
     attachmentsToggle:
@@ -347,7 +347,9 @@ async function fromPrivateEmail(input, page) {
     const template = '{query}, Processing period {date}';
     let rows = await privateEmailSearch(page, searchText(input, template));
     let count = await rows.count();
+    let exactDate = true;
     if (count === 0) {
+        exactDate = false;
         log('Nothing for the exact date, trying without it…');
         rows = await privateEmailSearch(
             page,
@@ -357,6 +359,8 @@ async function fromPrivateEmail(input, page) {
     }
     log(`${count} message(s) found`);
 
+    // The exact-date search already narrows the list down: the first message is the one, even when its date cannot be read.
+    const searchedWithDate = exactDate;
     let dates = null;
     for (let i = 0; i < count; i++) {
         const row = rows.nth(i);
@@ -381,6 +385,17 @@ async function fromPrivateEmail(input, page) {
         if (found && covers(found, input)) {
             dates = found;
             log(`Message ${i + 1} matches: ${found.formatted}`);
+            break;
+        }
+        if (!found && searchedWithDate && i === 0) {
+            dates = {
+                startDate: input.report_date,
+                endDate: input.report_date,
+                formatted: ddmmyyyy(input.report_date),
+            };
+            log(
+                'The first message has no readable date; taking it, the search was for the exact date.',
+            );
             break;
         }
         if (found) log(`Message ${i + 1} is for ${found.formatted}, next…`);
