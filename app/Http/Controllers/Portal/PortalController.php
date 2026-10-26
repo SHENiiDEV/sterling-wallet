@@ -388,7 +388,7 @@ class PortalController extends Controller
             'currency' => $r->currency,
             'sales_count' => $r->sales_count,
             'turnover' => $r->turnover,
-            'refunds' => (string) ((float) $r->refunds_amount + (float) $r->chargebacks_amount),
+            'refunds' => (string) ((float) $r->refunds_amount + (float) $r->chargebacks_amount + (float) $r->collabs_amount),
             'fees' => (string) round((float) $r->total_merchant_fee + (float) $r->conversion_fee, 2),
             'reserve' => $r->reserve_amount,
             'net_payout' => $r->net_payout,

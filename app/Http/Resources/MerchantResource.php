@@ -34,7 +34,7 @@ class MerchantResource extends JsonResource
             'company' => $this->whenLoaded('company', fn () => $this->company ? ['id' => $this->company->id, 'name' => $this->company->name] : null),
             'crypto_provider_id' => $this->crypto_provider_id,
             'crypto_provider' => $this->whenLoaded('cryptoProvider', fn () => $this->cryptoProvider?->name),
-            ...($restricted ? [] : Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap'])),
+            ...($restricted ? [] : Arr::only($this->resource->toArray(), [...Merchant::PERCENT_FIELDS, ...Merchant::FIXED_FIELDS, 'fee_collab_fixed', 'collab_dispute_threshold', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap'])),
             'settlement_terms' => $restricted ? null : $this->settlement_terms,
             'tariffs' => $this->whenLoaded('tariffs', fn () => (object) $this->tariffs->mapWithKeys(fn ($t) => [$t->product->value => [...$t->only(MerchantTariff::FIELDS), 'label' => $t->product->label()]])->all()),
             'settlement_lag_days' => $this->settlement_lag_days,

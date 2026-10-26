@@ -223,6 +223,8 @@ class ReconciliationService
             ->whereNull('matched_operation_id')
             // Declines never reach clearing, so by default they have nothing to pair with.
             ->when(! $withDeclines, fn ($q) => $q->where('operation_type', '!=', OperationType::Decline))
+            // Collaboration cases are acquirer notices, not payments: nothing to pair them with.
+            ->where('operation_type', '!=', OperationType::Collab)
             ->whereBetween('report_date', [$from, $to])
             ->orderBy('transaction_at')
             ->orderBy('id')

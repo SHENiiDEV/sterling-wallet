@@ -475,6 +475,11 @@ export default function OperationsIndex({
                                                 type={op.operation_type}
                                                 label={op.operation_type_label}
                                             />
+                                            {op.collab?.dispute && (
+                                                <div className="mt-1 text-xs font-medium text-rose-600">
+                                                    Dispute
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="font-mono text-xs">

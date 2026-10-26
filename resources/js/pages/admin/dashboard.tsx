@@ -203,6 +203,16 @@ export default function Dashboard({
                                             ))}
                                         </ul>
                                     )}
+                                    {alert.key === 'collab_deadlines' && (
+                                        <Link
+                                            href={admin.operations.index({
+                                                query: { type: 'collab' },
+                                            })}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Open collabs
+                                        </Link>
+                                    )}
                                     {alert.key === 'settlements_due' && (
                                         <Link
                                             href={admin.settlements.index()}

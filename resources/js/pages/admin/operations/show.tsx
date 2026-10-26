@@ -148,6 +148,39 @@ function OperationFacts({ op }: { op: Operation }) {
                     .filter(Boolean)
                     .join(' · ') || null}
             </Row>
+            {op.collab && (
+                <>
+                    <Row label="Collab">
+                        {op.collab.dispute ? (
+                            <span className="font-medium text-rose-600">
+                                Dispute: at or above{' '}
+                                {Number(op.collab.threshold).toString()}
+                            </span>
+                        ) : (
+                            <span className="text-muted-foreground">
+                                Charged
+                                {op.collab.threshold === null
+                                    ? ''
+                                    : `, below ${Number(op.collab.threshold)}`}
+                            </span>
+                        )}
+                    </Row>
+                    <Row label="Answer by">
+                        {op.collab.deadline &&
+                            formatDateTime(op.collab.deadline)}
+                    </Row>
+                    <Row label="Claim">{op.collab.claim_id}</Row>
+                    <Row label="Original payment">
+                        {[
+                            op.collab.original_payment_id,
+                            op.collab.original_date,
+                            op.collab.original_amount,
+                        ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                    </Row>
+                </>
+            )}
             {op.attempts !== null && op.attempts > 1 && (
                 <Row label="Attempts">
                     {op.attempts}{' '}

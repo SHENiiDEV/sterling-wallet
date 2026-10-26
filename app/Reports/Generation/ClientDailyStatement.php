@@ -69,7 +69,7 @@ class ClientDailyStatement
                 'refunds' => (int) ($task->summary_data['counts']['refunds'] ?? 0),
                 'chargebacks' => (int) ($task->summary_data['counts']['chargebacks'] ?? 0),
                 'turnover' => $this->dec($task->turnover),
-                'deductions' => $this->dec($task->refunds_amount)->plus($this->dec($task->chargebacks_amount)),
+                'deductions' => $this->dec($task->refunds_amount)->plus($this->dec($task->chargebacks_amount))->plus($this->dec($task->collabs_amount)),
                 'fees' => $this->dec($task->total_merchant_fee)->plus($this->dec($task->conversion_fee)),
                 'reserve' => $this->dec($task->reserve_amount),
                 'payout' => $this->dec($task->net_payout),
@@ -172,13 +172,14 @@ class ClientDailyStatement
             'fx' => $this->dec($fee['fx_markup'] ?? 0),
             'refunds' => $this->dec($task->refunds_amount),
             'chargebacks' => $this->dec($task->chargebacks_amount),
+            'collabs' => $this->dec($task->collabs_amount),
             'fee' => $this->dec($task->total_merchant_fee),
             'reserve' => $this->dec($task->reserve_amount),
             'net_volume' => $this->dec($task->net_volume),
             'conversion' => $this->dec($task->conversion_fee),
             'payout' => $this->dec($task->net_payout),
         ];
-        $sum ??= [...array_map(fn () => BigDecimal::zero(), $values), 'sales' => 0, 'refunds_count' => 0, 'chargebacks_count' => 0];
+        $sum ??= [...array_map(fn () => BigDecimal::zero(), $values), 'sales' => 0, 'refunds_count' => 0, 'chargebacks_count' => 0, 'collabs_count' => 0];
 
         foreach ($values as $key => $value) {
             $sum[$key] = $sum[$key]->plus($value);
@@ -186,6 +187,7 @@ class ClientDailyStatement
         $sum['sales'] += (int) ($counts['sales'] ?? $task->sales_count);
         $sum['refunds_count'] += (int) ($counts['refunds'] ?? 0);
         $sum['chargebacks_count'] += (int) ($counts['chargebacks'] ?? 0);
+        $sum['collabs_count'] += (int) ($counts['collabs'] ?? 0);
     }
 
     /**
@@ -196,7 +198,7 @@ class ClientDailyStatement
      */
     private function steps(array $sum): array
     {
-        $afterFees = $sum['gross']->minus($sum['refunds'])->minus($sum['chargebacks'])->minus($sum['fee']);
+        $afterFees = $sum['gross']->minus($sum['refunds'])->minus($sum['chargebacks'])->minus($sum['collabs'])->minus($sum['fee']);
 
         return [
             ['kind' => 'plus', 'label' => 'Gross sales', 'detail' => $sum['sales'].' approved '.($sum['sales'] === 1 ? 'sale' : 'sales'), 'amount' => $sum['gross']],
@@ -205,6 +207,7 @@ class ClientDailyStatement
             ...($sum['fx']->isZero() ? [] : [['kind' => 'minus', 'label' => 'Settlement FX markup', 'detail' => 'On the amount converted to '.config('sterling.settlement_currency'), 'amount' => $sum['fx']->negated()]]),
             ['kind' => 'minus', 'label' => 'Refunds', 'detail' => $sum['refunds_count'].' refunded', 'amount' => $sum['refunds']->negated()],
             ['kind' => 'minus', 'label' => 'Chargebacks', 'detail' => $sum['chargebacks_count'].' disputed', 'amount' => $sum['chargebacks']->negated()],
+            ...($sum['collabs_count'] === 0 && $sum['collabs']->isZero() ? [] : [['kind' => 'minus', 'label' => 'Collaborations', 'detail' => $sum['collabs_count'].' Mastercard collaboration cases', 'amount' => $sum['collabs']->negated()]]),
             ['kind' => 'subtotal', 'label' => 'Net after fees', 'detail' => null, 'amount' => $afterFees],
             ['kind' => 'minus', 'label' => 'Rolling reserve', 'detail' => 'Held per the merchant terms', 'amount' => $sum['reserve']->negated()],
             ['kind' => 'subtotal', 'label' => 'Net volume', 'detail' => null, 'amount' => $sum['net_volume']],

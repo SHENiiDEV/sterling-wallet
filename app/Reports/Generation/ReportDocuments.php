@@ -62,6 +62,7 @@ class ReportDocuments
             ['Turnover', $money('turnover')],
             ['Refunds', $money('refunds_amount').' ('.($counts['refunds'] ?? 0).')'],
             ['Chargebacks', $money('chargebacks_amount').' ('.($counts['chargebacks'] ?? 0).')'],
+            ...((float) ($task->collabs_amount ?? 0) > 0 ? [['Collaborations', $money('collabs_amount').' ('.($counts['collabs'] ?? 0).')']] : []),
             ['Declines', (string) ($counts['declines'] ?? 0)],
             ['Processing fee', $money('total_merchant_fee')],
             ['Rolling reserve', $money('reserve_amount')],

@@ -333,6 +333,14 @@ class ReportIngestionService
             'provider_id' => $provider->id,
         ]);
 
+        // A second file of the same run with no operation rows (Cardaq also mails a payout statement
+        // next to the operations CSV) must not wipe out what the first file brought.
+        if ($path !== null && $rows === 0 && $source->exists && $run !== null && $source->bot_run_id === $run->id && $source->rows_count > 0) {
+            $source->forceFill(['received_at' => now()])->save();
+
+            return $task->setRelation('merchantMid', $mid);
+        }
+
         // Re-uploads of the same day add up only within one file; a new file replaces the count.
         $source->fill([
             'role' => $mid->roleOf($provider) ?? $provider->type,

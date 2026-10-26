@@ -445,7 +445,7 @@ class OperationController extends Controller
             ->when($filters['to'] ?? null, fn (Builder $q, string $to) => $q->where('report_date', '<=', $to))
             ->when($filters['unmatched'] ?? false, fn (Builder $q) => $q
                 ->whereNull('matched_operation_id')
-                ->where('operation_type', '!=', OperationType::Decline)
+                ->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab])
                 ->whereHas('merchantMid', fn (Builder $q) => $q->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id')));
     }
 }

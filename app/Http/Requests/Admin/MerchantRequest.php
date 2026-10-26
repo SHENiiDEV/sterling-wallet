@@ -70,6 +70,7 @@ class MerchantRequest extends FormRequest
             'tariffs' => ['sometimes', 'array'],
             ...$this->tariffRules(),
             'fee_collab_fixed' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'collab_dispute_threshold' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             ...array_fill_keys(Merchant::FIXED_FIELDS, ['required', 'numeric', 'min:0', 'max:1000000']),
             'rolling_reserve_days' => ['required', 'integer', 'min:0', 'max:3650'],
             'invoice_email' => ['nullable', 'email', 'max:255'],

@@ -194,6 +194,7 @@ export type Merchant = {
     fee_refund_fixed: string;
     fee_chargeback_fixed: string;
     fee_collab_fixed: string | null;
+    collab_dispute_threshold: string | null;
     tariffs?: Record<string, ProductTariff>;
     fee_fiat_to_crypto_percent: string;
     fee_wallet_percent: string;
@@ -233,7 +234,23 @@ export type MerchantRef = {
     company_id: number | null;
 };
 
-export type OperationType = 'sale' | 'refund' | 'decline' | 'chargeback';
+export type OperationType =
+    | 'sale'
+    | 'refund'
+    | 'decline'
+    | 'chargeback'
+    | 'collab';
+
+export type CollabInfo = {
+    deadline: string | null;
+    claim_id: string | null;
+    collaboration_id: string | null;
+    original_payment_id: string | null;
+    original_date: string | null;
+    original_amount: string | null;
+    threshold: string | null;
+    dispute: boolean;
+};
 
 export type Operation = {
     id: number;
@@ -259,6 +276,7 @@ export type Operation = {
     issuer_name: string | null;
     trn_type: string | null;
     attempts: number | null;
+    collab: CollabInfo | null;
     operation_type: OperationType;
     operation_type_label: string;
     resolution: string | null;

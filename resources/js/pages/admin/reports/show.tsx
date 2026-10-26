@@ -35,6 +35,7 @@ type Report = {
     turnover: string;
     refunds_amount: string;
     chargebacks_amount: string;
+    collabs_amount: string;
     total_merchant_fee: string;
     total_provider_cost: string | null;
     reserve_amount: string;
@@ -310,6 +311,12 @@ export default function ReportShow({
                                 label={`Chargebacks (${report.summary?.counts?.chargebacks ?? 0})`}
                                 value={`− ${m(report.chargebacks_amount)}`}
                             />
+                            {Number(report.collabs_amount) > 0 && (
+                                <Line
+                                    label={`Collaborations (${report.summary?.counts?.collabs ?? 0})`}
+                                    value={`− ${m(report.collabs_amount)}`}
+                                />
+                            )}
                             <Line
                                 label={`Processing fee${report.summary?.merchant_fee ? ` (${m(report.summary.merchant_fee.percent)} by rate + ${m(report.summary.merchant_fee.fixed)} fixed)` : ''}`}
                                 value={`− ${m(report.total_merchant_fee)}`}

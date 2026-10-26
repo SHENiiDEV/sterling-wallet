@@ -114,7 +114,7 @@ class SettlementStatementPdf
                 'owner' => $withOwner && $report?->merchant ? trim(($report->merchant->company?->name ?? '').' · '.$report->merchant->name, ' ·') : null,
                 'sales' => (int) ($report?->sales_count ?? 0),
                 'turnover' => $this->dec($report?->turnover),
-                'refunds' => $this->dec($report?->refunds_amount)->plus($this->dec($report?->chargebacks_amount)),
+                'refunds' => $this->dec($report?->refunds_amount)->plus($this->dec($report?->chargebacks_amount))->plus($this->dec($report?->collabs_amount)),
                 'fees' => $this->dec($report?->total_merchant_fee)->plus($this->dec($report?->conversion_fee)),
                 'reserve' => $this->dec($report?->reserve_amount),
                 'payout' => $this->dec($line->amount),
