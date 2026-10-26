@@ -11,6 +11,8 @@
  *   - hostinger:    searches `search_query` and picks the message by the date in its subject.
  *   - privateemail: searches "{search_query}, Processing period {dd.mm.yyyy}", then the same
  *                   phrase without the date, and opens each result to read its date.
+ * `search_url_template` (optional, PrivateEmail) is the link opened to search, default
+ * "{base}/spm/mail/INBOX/?search={search}"; the mailbox fills its search box from it.
  * `search_template` (optional) sets what is searched: {query} is `search_query`,
  * {date} the report date as dd.mm.yyyy, e.g. "{query}, Processing period {date}".
  * Chargeback attachments are not clearing data: they are skipped here.
@@ -325,18 +327,33 @@ async function privateEmailLogin(page, input) {
     log('Logged in:', page.url());
 }
 
-async function privateEmailSearch(page, query) {
+async function privateEmailSearch(page, query, input) {
     const search = page.locator(PRIVATEEMAIL.search).first();
+
+    // Open the search as a link: the mailbox puts the text into the search box and lists the matches by itself.
+    const base = String(input.mail_base_url).replace(/\/+$/, '');
+    const template =
+        input.search_url_template || '{base}/spm/mail/INBOX/?search={search}';
+    const url = template
+        .replaceAll('{base}', base)
+        .replaceAll('{search}', encodeURIComponent(query).replace(/%20/g, '+'));
+    log(`Searching "${query}" via ${url}`);
+    await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await search.waitFor({ state: 'visible', timeout: 30000 });
-    log(`Searching "${query}"…`);
-    await search.click({ force: true });
-    await search.fill('');
-    await search.fill(query);
-    await search.dispatchEvent('input').catch(() => {});
-    await search.dispatchEvent('change').catch(() => {});
-    await randomDelay(400, 800);
-    await page.keyboard.press('Enter');
-    await randomDelay(3000, 4500);
+    await randomDelay(2500, 4000);
+
+    // The box should now hold the text; type it in when the link did not fill it.
+    if ((await search.inputValue().catch(() => '')) !== query) {
+        log('The search box is not filled by the link, typing the text…');
+        await search.click({ force: true });
+        await search.fill('');
+        await search.fill(query);
+        await search.dispatchEvent('input').catch(() => {});
+        await search.dispatchEvent('change').catch(() => {});
+        await randomDelay(400, 800);
+        await page.keyboard.press('Enter');
+        await randomDelay(3000, 4500);
+    }
 
     return page.locator(PRIVATEEMAIL.rows);
 }
@@ -345,7 +362,11 @@ async function fromPrivateEmail(input, page) {
     await privateEmailLogin(page, input);
 
     const template = '{query}, Processing period {date}';
-    let rows = await privateEmailSearch(page, searchText(input, template));
+    let rows = await privateEmailSearch(
+        page,
+        searchText(input, template),
+        input,
+    );
     let count = await rows.count();
     let exactDate = true;
     if (count === 0) {
@@ -354,6 +375,7 @@ async function fromPrivateEmail(input, page) {
         rows = await privateEmailSearch(
             page,
             searchText(input, template, false),
+            input,
         );
         count = await rows.count();
     }
