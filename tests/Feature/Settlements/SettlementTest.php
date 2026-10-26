@@ -171,6 +171,14 @@ class SettlementTest extends TestCase
 
         $third = $service->createDraft($this->merchant, $this->admin);
         $this->assertSame(1, $third->lines()->count());
+
+        // The list hides the cancelled one until it is asked for.
+        $this->get(route('admin.settlements.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('cancelledCount', 1)->has('settlements.data', 2));
+        $this->get(route('admin.settlements.index', ['cancelled' => 1]))
+            ->assertInertia(fn (Assert $page) => $page->has('settlements.data', 3));
+        $this->get(route('admin.settlements.index', ['status' => 'cancelled']))
+            ->assertInertia(fn (Assert $page) => $page->has('settlements.data', 1));
     }
 
     public function test_approval_needs_rates_and_a_wallet()
