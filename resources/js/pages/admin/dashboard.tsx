@@ -80,6 +80,17 @@ type Props = {
         label: string;
         count: number;
         detail: string | null;
+        to?: string;
+        rows?: {
+            mid_id: number;
+            mid: string | null;
+            merchant: string | null;
+            company: string | null;
+            pair: string;
+            bank: number;
+            gate: number;
+            count: number;
+        }[];
     }[];
 };
 
@@ -150,12 +161,47 @@ export default function Dashboard({
                                     {alert.key === 'unpaired_operations' && (
                                         <Link
                                             href={admin.operations.index({
-                                                query: { unmatched: 1 },
+                                                query: {
+                                                    unmatched: 1,
+                                                    type: 'sale',
+                                                    to: alert.to,
+                                                },
                                             })}
                                             className="text-primary hover:underline"
                                         >
                                             Open operations
                                         </Link>
+                                    )}
+                                    {alert.rows && alert.rows.length > 0 && (
+                                        <ul className="mt-1 mb-2 grid w-full gap-0.5 border-l-2 pl-3 text-xs text-muted-foreground">
+                                            {alert.rows.map((row) => (
+                                                <li key={row.mid_id}>
+                                                    <Link
+                                                        href={admin.operations.index(
+                                                            {
+                                                                query: {
+                                                                    unmatched: 1,
+                                                                    type: 'sale',
+                                                                    mid: row.mid_id,
+                                                                    to: alert.to,
+                                                                },
+                                                            },
+                                                        )}
+                                                        className="hover:underline"
+                                                    >
+                                                        <span className="font-medium text-foreground tabular-nums">
+                                                            {row.count}
+                                                        </span>{' '}
+                                                        {row.company ??
+                                                            row.merchant}{' '}
+                                                        · {row.merchant} · MID{' '}
+                                                        {row.mid} · {row.pair}{' '}
+                                                        (bank {row.bank}, gate{' '}
+                                                        {row.gate})
+                                                    </Link>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     )}
                                     {alert.key === 'settlements_due' && (
                                         <Link
