@@ -74,7 +74,8 @@ type Props = {
     clients: { id: number; name: string }[];
     payoutCurrencies: Option[];
     products: Option[];
-    filters: { status?: string; merchant?: string };
+    filters: { status?: string; merchant?: string; cancelled?: string };
+    cancelledCount: number;
     statuses: Option[];
     merchants: { public_id: string; name: string }[];
 };
@@ -353,6 +354,7 @@ export default function SettlementsIndex({
     filters,
     statuses,
     merchants,
+    cancelledCount,
 }: Props) {
     const [creating, setCreating] = useState<Target | null | false>(false);
     const apply = (next: Props['filters']) =>
@@ -571,6 +573,26 @@ export default function SettlementsIndex({
                                 ))}
                             </SelectContent>
                         </Select>
+                        {cancelledCount > 0 &&
+                            filters.status !== 'cancelled' && (
+                                <Button
+                                    variant={
+                                        filters.cancelled
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                    onClick={() =>
+                                        apply({
+                                            cancelled: filters.cancelled
+                                                ? ''
+                                                : '1',
+                                        })
+                                    }
+                                >
+                                    {filters.cancelled ? 'Hide' : 'Show'}{' '}
+                                    cancelled ({cancelledCount})
+                                </Button>
+                            )}
                     </div>
                     {settlements.data.length === 0 ? (
                         <EmptyState

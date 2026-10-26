@@ -38,12 +38,17 @@ class SettlementController extends Controller
         $filters = $request->validate([
             'status' => ['nullable', Rule::enum(SettlementStatus::class)],
             'merchant' => ['nullable', 'string'],
+            'cancelled' => ['nullable', 'boolean'],
         ]);
+
+        // Cancelled settlements are hidden unless asked for, or picked as the status itself.
+        $showCancelled = ($filters['status'] ?? null) === SettlementStatus::Cancelled->value || (bool) ($filters['cancelled'] ?? false);
 
         $list = Settlement::query()
             ->with(['merchant:id,public_id,name', 'client:id,name'])
             ->withCount('lines')
             ->when($filters['status'] ?? null, fn (Builder $q, string $s) => $q->where('status', $s))
+            ->unless($showCancelled, fn (Builder $q) => $q->where('status', '!=', SettlementStatus::Cancelled->value))
             ->when($filters['merchant'] ?? null, fn (Builder $q, string $m) => $q->whereHas('merchant', fn (Builder $q) => $q->where('public_id', $m)))
             ->latest('id')
             ->paginate(25)
@@ -98,6 +103,7 @@ class SettlementController extends Controller
             'payoutCurrencies' => $this->payoutCurrencies(),
             'products' => ProductScope::current() === null ? TariffProduct::options() : [],
             'filters' => (object) $filters,
+            'cancelledCount' => Settlement::query()->where('status', SettlementStatus::Cancelled->value)->count(),
             'statuses' => SettlementStatus::options(),
             'merchants' => Merchant::query()->orderBy('name')->get(['public_id', 'name']),
         ]);
