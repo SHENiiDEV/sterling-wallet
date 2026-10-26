@@ -12,6 +12,7 @@ use App\Models\MerchantAcquirer;
 use App\Models\MerchantMid;
 use App\Models\Provider;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * Who changed what on a merchant's banks and terminals, newest first, in words.
@@ -51,11 +52,15 @@ final class MerchantHistory
         $acquirers = MerchantAcquirer::query()->where('merchant_id', $merchant->id)->pluck('id')->all();
         $mids = MerchantMid::query()->where('merchant_id', $merchant->id)->pluck('id')->all();
 
+        $acquirerType = (new MerchantAcquirer)->getMorphClass();
+        $midType = (new MerchantMid)->getMorphClass();
+
         $logs = AdminAuditLog::query()
             ->with('user:id,name')
-            ->where(fn (Builder $q) => $q
-                ->where(fn (Builder $q) => $q->where('subject_type', (new MerchantAcquirer)->getMorphClass())->whereIn('subject_id', $acquirers))
-                ->orWhere(fn (Builder $q) => $q->where('subject_type', (new MerchantMid)->getMorphClass())->whereIn('subject_id', $mids)))
+            ->where(function (Builder $query) use ($acquirerType, $acquirers, $midType, $mids) {
+                $query->where(fn (Builder $q) => $q->where('subject_type', $acquirerType)->whereIn('subject_id', $acquirers))
+                    ->orWhere(fn (Builder $q) => $q->where('subject_type', $midType)->whereIn('subject_id', $mids));
+            })
             ->latest('id')
             ->limit($limit)
             ->get();
@@ -68,15 +73,7 @@ final class MerchantHistory
             $isMid = str_starts_with($log->action, 'merchant_mid');
             $verb = explode('.', $log->action)[1] ?? '';
 
-            $name = fn (string $field, mixed $value) => match (true) {
-                $value === null || $value === '' => '—',
-                $field === 'client_id' => $clients[$value] ?? "#{$value}",
-                in_array($field, ['bank_provider_id', 'gate_provider_id', 'provider_id'], true) => $providers[$value] ?? "#{$value}",
-                $field === 'status' && ! $isMid => AcquirerStatus::tryFrom((string) $value)?->label() ?? $value,
-                $field === 'status' => MidStatus::tryFrom((string) $value)?->label() ?? $value,
-                $field === 'integration_status' => IntegrationStatus::tryFrom((string) $value)?->label() ?? $value,
-                default => (string) $value,
-            };
+            $name = fn (string $field, mixed $value) => $this->describe($field, $value, $isMid, $providers, $clients);
 
             $lines = [];
             foreach ($meta['changes'] ?? [] as $field => [$before, $after]) {
@@ -95,9 +92,39 @@ final class MerchantHistory
                 'at' => $log->created_at?->toIso8601String(),
                 'user' => $log->user?->name,
                 'area' => $isMid ? 'MID' : 'Bank',
-                'title' => ($isMid ? 'MID' : 'Bank record').' '.match ($verb) { 'created' => 'added', 'updated' => 'changed', 'deleted' => 'removed', default => $verb },
+                'title' => ($isMid ? 'MID' : 'Bank record').' '.$this->verb($verb),
                 'lines' => $lines,
             ];
         })->all();
+    }
+
+    private function verb(string $verb): string
+    {
+        return match ($verb) {
+            'created' => 'added',
+            'updated' => 'changed',
+            'deleted' => 'removed',
+            default => $verb,
+        };
+    }
+
+    /**
+     * @param  Collection<int, string>  $providers
+     * @param  Collection<int, string>  $clients
+     */
+    private function describe(string $field, mixed $value, bool $isMid, Collection $providers, Collection $clients): string
+    {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        return match (true) {
+            $field === 'client_id' => $clients[$value] ?? "#{$value}",
+            in_array($field, ['bank_provider_id', 'gate_provider_id', 'provider_id'], true) => $providers[$value] ?? "#{$value}",
+            $field === 'status' && $isMid => MidStatus::tryFrom((string) $value)?->label() ?? (string) $value,
+            $field === 'status' => AcquirerStatus::tryFrom((string) $value)?->label() ?? (string) $value,
+            $field === 'integration_status' => IntegrationStatus::tryFrom((string) $value)?->label() ?? (string) $value,
+            default => (string) $value,
+        };
     }
 }
