@@ -185,7 +185,7 @@ class OperationsAndBotsTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $run = BotRun::query()->sole();
-        $this->assertSame(['2026-09-12', 'range:2026-08-01:2026-09-12'], [$run->report_date->toDateString(), $run->target_key]);
+        $this->assertSame(['2026-09-12', '2026-09-12:range:2026-08-01:2026-09-12'], [$run->report_date->toDateString(), $run->target_key]);
         $this->assertSame('2026-08-01', $run->target['from']);
 
         // The same range again is not queued twice; a backwards range and a report bot are refused.
