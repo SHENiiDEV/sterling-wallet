@@ -196,14 +196,44 @@ class DashboardController extends Controller
 
         // Rows that should have a pair by now (two days after their day) but have none: pair them by hand.
         if ($withOperations) {
+            $cutoff = now(config('sterling.timezone'))->subDays(2)->toDateString();
             $unpaired = MerchantOperation::query()
                 ->whereNull('matched_operation_id')
                 ->where('operation_type', OperationType::Sale)
-                ->where('report_date', '<=', now(config('sterling.timezone'))->subDays(2)->toDateString())
-                ->whereHas('merchantMid', fn (Builder $q) => $q->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id'))
-                ->count();
-            if ($unpaired > 0) {
-                $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair for more than two days', 'count' => $unpaired, 'detail' => null];
+                ->where('report_date', '<=', $cutoff)
+                ->whereHas('merchantMid', fn (Builder $q) => $q->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id'));
+
+            $count = (clone $unpaired)->count();
+            if ($count > 0) {
+                // Which terminals they sit on: the places to look first.
+                $byMid = (clone $unpaired)->toBase()
+                    ->selectRaw('merchant_mid_id, role, count(*) as total')
+                    ->groupBy('merchant_mid_id', 'role')
+                    ->get()
+                    ->groupBy('merchant_mid_id');
+
+                $mids = MerchantMid::query()
+                    ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
+                    ->whereIn('id', $byMid->keys())
+                    ->get()
+                    ->keyBy('id');
+
+                $rows = $byMid->map(function ($group, $midId) use ($mids) {
+                    $mid = $mids->get($midId);
+
+                    return [
+                        'mid_id' => (int) $midId,
+                        'mid' => $mid?->mid,
+                        'merchant' => $mid?->merchant->name,
+                        'company' => $mid?->merchant->company?->name,
+                        'pair' => ($mid?->bankProvider?->name ?? '—').' ↔ '.($mid?->gateProvider?->name ?? '—'),
+                        'bank' => (int) ($group->firstWhere('role', 'bank')->total ?? 0),
+                        'gate' => (int) ($group->firstWhere('role', 'gate')->total ?? 0),
+                        'count' => (int) $group->sum('total'),
+                    ];
+                })->sortByDesc('count')->values()->take(15)->all();
+
+                $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair for more than two days', 'count' => $count, 'detail' => null, 'to' => $cutoff, 'rows' => $rows];
             }
         }
 
