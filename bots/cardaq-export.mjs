@@ -30,7 +30,7 @@ import { parseReportDates } from './lib/dates.mjs';
 const REPORT_FILE = /\.(xlsx|xls|csv)$/i;
 
 const HOSTINGER = {
-    search: 'input[data-qa="mailbox-search-input"], input#headerSearchInput, input[name="searchPattern"], input[name="search"], input[placeholder="Search mail"]',
+    search: 'input[data-qa="mailbox-search-input"]:visible, input#headerSearchInput:visible, input[name="searchPattern"]:visible, input[name="search"]:visible, input[placeholder="Search mail"]:visible',
 };
 
 const PRIVATEEMAIL = {
@@ -39,7 +39,8 @@ const PRIVATEEMAIL = {
     password:
         'input#passwordfield-password, input[data-zid="passwordfield-password"], input[name="userPassword"]',
     submit: 'button[data-zid="login-btn"], button[type="submit"]',
-    search: 'input#headerSearchInput, input[name="searchPattern"], input[data-zid="headerSearchPanelInput"], input[name="headerSearchPanelInput"], input[placeholder="Search mail"]',
+    // The page holds a second, hidden copy for mobile (#mobileHeaderSearchInput, the same name): only the visible one.
+    search: 'input#headerSearchInput:visible, input[name="searchPattern"]:visible, input[data-zid="headerSearchPanelInput"]:visible, input[name="headerSearchPanelInput"]:visible, input[placeholder="Search mail"]:visible',
     rows: 'div.msc-entry-card[role="listitem"], div.spm-card[role="listitem"], div[data-zid*="mailListItem"], div[class*="spm-mail-list__item"], div[class*="mail-list-item"], div[class*="spm-message-item"], div.gb-card, div[role="listitem"]',
     viewer: 'div.spm-email-viewer, div[class*="email-viewer"]',
     attachmentsToggle:
