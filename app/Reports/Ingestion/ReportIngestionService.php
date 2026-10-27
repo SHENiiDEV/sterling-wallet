@@ -14,8 +14,10 @@ use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
+use App\Reports\Parsers\CardaqParser;
 use App\Reports\Parsers\OperationRow;
 use App\Reports\Parsers\ParserRegistry;
+use App\Reports\Parsers\ReportParser;
 use App\Reports\ReportDateResolver;
 use App\Reports\ReportPeriod;
 use App\Services\AuditLogger;
@@ -59,7 +61,10 @@ class ReportIngestionService
         $parser = $this->parsers->for($provider);
         $timezone = $provider->timezone ?: config('sterling.timezone');
         $fileDate = $parser->reportDate($file);
-        $anchor = $fileDate ?? $hintDate;
+        // A Cardaq file is one clearing batch: it ends a little after midnight, so it holds a few payments of the next
+        // day and misses a few of its own. Its total is what the bank pays, so the whole file belongs to one day,
+        // the one most of its payments were made on, however it was uploaded.
+        $anchor = $fileDate ?? $hintDate ?? ($parser instanceof CardaqParser ? $this->dominantDay($parser, $file, $timezone) : null);
         $filePeriod = $anchor ? $this->dates->periodFor($anchor) : null;
 
         $result = new IngestionResult($this->store($provider, $file, $filePeriod), $filePeriod?->reportDate);
@@ -159,6 +164,28 @@ class ReportIngestionService
         if ($task->status !== ReportStatus::Completed) {
             $task->update(['status' => ReportStatus::Partial]);
         }
+    }
+
+    /**
+     * The day most of the file's payments were made on.
+     */
+    private function dominantDay(ReportParser $parser, SplFileInfo $file, string $timezone): ?CarbonImmutable
+    {
+        $days = [];
+        foreach ($parser->rows($file, $timezone) as $row) {
+            if ($row->transactedOn !== null) {
+                $day = $row->transactedOn->toDateString();
+                $days[$day] = ($days[$day] ?? 0) + 1;
+            }
+        }
+
+        if ($days === []) {
+            return null;
+        }
+
+        arsort($days);
+
+        return CarbonImmutable::parse(array_key_first($days));
     }
 
     private function store(Provider $provider, SplFileInfo $file, ?ReportPeriod $period): string
