@@ -30,4 +30,20 @@ class FileDiffTest extends TestCase
 
         $this->artisan('reports:file-diff', ['--only-diff' => true])->expectsOutputToContain('50.00')->assertSuccessful();
     }
+
+    public function test_stored_acquirer_files_can_be_read_again_and_stay_on_their_day()
+    {
+        Storage::fake('local');
+        Mail::fake();
+
+        $mid = $this->mid($this->merchantWithTariff(), $this->cardaq(), null);
+        app(ReportIngestionService::class)->ingest($mid->bankProvider, $this->cardaqCsv(), CarbonImmutable::parse('2026-09-15'));
+
+        $this->artisan('reports:reingest-bank')->expectsOutputToContain('1 file(s)')->assertSuccessful();
+        $this->artisan('reports:reingest-bank', ['--apply' => true])->expectsOutputToContain('row(s) read')->assertSuccessful();
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame('2026-09-15', $task->report_date->toDateString());
+        $this->assertSame(4, $task->fresh()->sources()->sole()->rows_count);
+    }
 }
