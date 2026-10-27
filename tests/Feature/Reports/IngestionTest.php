@@ -127,6 +127,25 @@ class IngestionTest extends TestCase
         $this->assertSame('2026-09-16', DailyReportTask::query()->sole()->report_date->toDateString());
     }
 
+    public function test_a_cardaq_file_belongs_wholly_to_the_day_most_of_its_payments_were_made_on()
+    {
+        $cardaq = $this->cardaq();
+        $this->mid($this->merchantWithTariff(), $cardaq, null);
+
+        // The clearing batch ends just after midnight: three payments of the 15th and one of the 16th at 00:05.
+        $this->ingest($cardaq, $this->csvFile([
+            ['Merchant name', 'MID', 'Transaction ID', 'ARN', 'Card number', 'Card brand', 'Region', 'Trn type', 'Amount', 'Currency', 'Trn date'],
+            ['SHOP LTD', '4400000001', 'CQ-1', '74000000000000000000001', '411111******1111', 'VISA', 'EU', '5', '100.00', 'EUR', '2026-09-15 10:00:00'],
+            ['SHOP LTD', '4400000001', 'CQ-2', '74000000000000000000002', '555555******4444', 'MASTERCARD', 'NON-EU', '5', '200.00', 'EUR', '2026-09-15 11:00:00'],
+            ['SHOP LTD', '4400000001', 'CQ-3', '74000000000000000000003', '422222******2222', 'VISA', 'NON-EU', '5', '50.00', 'EUR', '2026-09-15 23:59:00'],
+            ['SHOP LTD', '4400000001', 'CQ-4', '74000000000000000000004', '411111******1111', 'VISA', 'EU', '5', '25.00', 'EUR', '2026-09-16 00:05:00'],
+        ], 'cardaq.csv'));
+
+        $task = DailyReportTask::query()->sole();
+        $this->assertSame('2026-09-15', $task->report_date->toDateString());
+        $this->assertSame(4, $task->sources()->sole()->rows_count);
+    }
+
     public function test_an_empty_export_marks_covered_mids_as_received()
     {
         [$cardaq, $corefy] = [$this->cardaq(), $this->corefy()];
