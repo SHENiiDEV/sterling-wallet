@@ -352,42 +352,67 @@ export default function AuthenticatorIndex({ codes, targets }: Props) {
                         description="Add the secret of a platform's authenticator to get its code here."
                     />
                 ) : (
-                    <div className="grid gap-2 lg:grid-cols-2">
-                        {shown.map((meta) => (
-                            <div
-                                key={meta.id}
-                                className="flex items-center gap-2"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    {meta.is_active ? (
-                                        <AuthenticatorCodeCard
-                                            meta={meta}
-                                            live={live[meta.id]}
-                                        />
-                                    ) : (
-                                        <div className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
-                                            {meta.name} · inactive
-                                        </div>
-                                    )}
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                        {shown.map((meta) =>
+                            meta.is_active ? (
+                                <AuthenticatorCodeCard
+                                    key={meta.id}
+                                    meta={meta}
+                                    live={live[meta.id]}
+                                    actions={
+                                        <>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-7"
+                                                aria-label="Edit"
+                                                onClick={() => setEditing(meta)}
+                                            >
+                                                <Pencil />
+                                            </Button>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-7"
+                                                aria-label="Remove"
+                                                onClick={() =>
+                                                    setDeleting(meta)
+                                                }
+                                            >
+                                                <Trash2 />
+                                            </Button>
+                                        </>
+                                    }
+                                />
+                            ) : (
+                                <div
+                                    key={meta.id}
+                                    className="flex items-center justify-between gap-2 rounded-xl border border-dashed p-3 text-sm text-muted-foreground"
+                                >
+                                    <span>{meta.name} · inactive</span>
+                                    <span className="flex">
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="size-7"
+                                            aria-label="Edit"
+                                            onClick={() => setEditing(meta)}
+                                        >
+                                            <Pencil />
+                                        </Button>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="size-7"
+                                            aria-label="Remove"
+                                            onClick={() => setDeleting(meta)}
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </span>
                                 </div>
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    aria-label="Edit"
-                                    onClick={() => setEditing(meta)}
-                                >
-                                    <Pencil />
-                                </Button>
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    aria-label="Remove"
-                                    onClick={() => setDeleting(meta)}
-                                >
-                                    <Trash2 />
-                                </Button>
-                            </div>
-                        ))}
+                            ),
+                        )}
                     </div>
                 )}
 
