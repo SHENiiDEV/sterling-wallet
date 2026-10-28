@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\MidStatus;
 use App\Enums\Module;
 use App\Enums\OperationType;
+use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\SettlementStatus;
 use App\Enums\UserRole;
@@ -20,7 +21,9 @@ use App\Models\MerchantOperation;
 use App\Models\SettlementLine;
 use App\Models\User;
 use App\Profit\ProfitQuery;
+use App\Reports\BankFileSchedule;
 use App\Settlements\DueSettlements;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -194,46 +197,81 @@ class DashboardController extends Controller
             }
         }
 
-        // Rows that should have a pair by now (two days after their day) but have none: pair them by hand.
+        // Sales that have no pair. A gateway sale whose acquirer file has not come yet is not unpaired, it is waiting:
+        // the file is due T+2 in business days. Past that day the missing file is the problem, not the pairing.
         if ($withOperations) {
-            $cutoff = now(config('sterling.timezone'))->subDays(2)->toDateString();
-            $unpaired = MerchantOperation::query()
+            $schedule = app(BankFileSchedule::class);
+            $cutoff = now(config('sterling.timezone'))->toDateString();
+            $cells = MerchantOperation::query()->toBase()
                 ->whereNull('matched_operation_id')
-                ->where('operation_type', OperationType::Sale)
+                ->where('operation_type', OperationType::Sale->value)
                 ->where('report_date', '<=', $cutoff)
-                ->whereHas('merchantMid', fn (Builder $q) => $q->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id'));
+                ->whereIn('merchant_mid_id', MerchantMid::query()->whereNotNull('bank_provider_id')->whereNotNull('gate_provider_id')->select('id'))
+                ->selectRaw('merchant_mid_id, report_date, role, count(*) as total')
+                ->groupBy('merchant_mid_id', 'report_date', 'role')
+                ->get();
 
-            $count = (clone $unpaired)->count();
+            // Days whose acquirer file is in.
+            $received = $cells->isEmpty() ? collect() : DailyReportTask::query()
+                ->whereIn('merchant_mid_id', $cells->pluck('merchant_mid_id')->unique())
+                ->whereHas('sources', fn (Builder $q) => $q->where('role', ProviderType::Bank->value)->where('rows_count', '>', 0))
+                ->get(['merchant_mid_id', 'report_date'])
+                ->mapWithKeys(fn (DailyReportTask $t) => [$t->merchant_mid_id.'|'.$t->report_date->toDateString() => true]);
+
+            $paired = [];
+            $overdue = [];
+            foreach ($cells as $cell) {
+                $date = CarbonImmutable::parse($cell->report_date)->toDateString();
+                if ($received->has($cell->merchant_mid_id.'|'.$date)) {
+                    $paired[$cell->merchant_mid_id][] = $cell;
+                } elseif ($cell->role === ProviderType::Gate->value && $schedule->isOverdue($date)) {
+                    $overdue[$cell->merchant_mid_id][] = [$date, (int) $cell->total];
+                }
+            }
+
+            $mids = MerchantMid::query()
+                ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
+                ->whereIn('id', array_keys($paired + $overdue))
+                ->get()
+                ->keyBy('id');
+            $describe = function (int $midId) use ($mids) {
+                $mid = $mids->get($midId);
+
+                return [
+                    'mid_id' => $midId,
+                    'mid' => $mid?->mid,
+                    'merchant' => $mid?->merchant->name,
+                    'company' => $mid?->merchant->company?->name,
+                    'pair' => ($mid?->bankProvider?->name ?? '—').' ↔ '.($mid?->gateProvider?->name ?? '—'),
+                ];
+            };
+
+            $count = collect($paired)->flatten()->sum('total');
             if ($count > 0) {
-                // Which terminals they sit on: the places to look first.
-                $byMid = (clone $unpaired)->toBase()
-                    ->selectRaw('merchant_mid_id, role, count(*) as total')
-                    ->groupBy('merchant_mid_id', 'role')
-                    ->get()
-                    ->groupBy('merchant_mid_id');
+                $rows = collect($paired)->map(fn (array $group, int $midId) => [
+                    ...$describe($midId),
+                    'bank' => (int) collect($group)->where('role', 'bank')->sum('total'),
+                    'gate' => (int) collect($group)->where('role', 'gate')->sum('total'),
+                    'count' => (int) collect($group)->sum('total'),
+                ])->sortByDesc('count')->values()->take(15)->all();
 
-                $mids = MerchantMid::query()
-                    ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'bankProvider:id,name', 'gateProvider:id,name'])
-                    ->whereIn('id', $byMid->keys())
-                    ->get()
-                    ->keyBy('id');
+                $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair although the bank file is in', 'count' => (int) $count, 'detail' => null, 'to' => $cutoff, 'rows' => $rows];
+            }
 
-                $rows = $byMid->map(function ($group, $midId) use ($mids) {
-                    $mid = $mids->get($midId);
+            if ($overdue !== []) {
+                $rows = collect($overdue)->map(function (array $days, int $midId) use ($describe) {
+                    sort($days);
 
                     return [
-                        'mid_id' => (int) $midId,
-                        'mid' => $mid?->mid,
-                        'merchant' => $mid?->merchant->name,
-                        'company' => $mid?->merchant->company?->name,
-                        'pair' => ($mid?->bankProvider?->name ?? '—').' ↔ '.($mid?->gateProvider?->name ?? '—'),
-                        'bank' => (int) ($group->firstWhere('role', 'bank')->total ?? 0),
-                        'gate' => (int) ($group->firstWhere('role', 'gate')->total ?? 0),
-                        'count' => (int) $group->sum('total'),
+                        ...$describe($midId),
+                        'bank' => 0,
+                        'gate' => (int) collect($days)->sum(1),
+                        'count' => (int) collect($days)->sum(1),
+                        'note' => 'no bank file for '.implode(', ', array_map(fn (array $d) => CarbonImmutable::parse($d[0])->format('d M'), array_slice($days, 0, 4))).(count($days) > 4 ? ' …' : ''),
                     ];
                 })->sortByDesc('count')->values()->take(15)->all();
 
-                $alerts[] = ['key' => 'unpaired_operations', 'label' => 'sale(s) without a pair for more than two days', 'count' => $count, 'detail' => null, 'to' => $cutoff, 'rows' => $rows];
+                $alerts[] = ['key' => 'bank_files_missing', 'label' => 'report day(s) with gateway sales and no bank file past its due day', 'count' => (int) collect($overdue)->sum(fn (array $days) => count($days)), 'detail' => null, 'to' => null, 'rows' => $rows];
             }
         }
 

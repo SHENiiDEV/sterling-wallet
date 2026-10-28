@@ -87,6 +87,11 @@ return [
     ],
 
     /*
+    | Business days after a report day by which the acquirer's file for it should have arrived (Cardaq: T+2).
+    */
+    'bank_file_lag_days' => (int) env('STERLING_BANK_FILE_LAG_DAYS', 2),
+
+    /*
     | An onboarding that sits in one in-flight status longer than this many days is flagged as stalled.
     */
     'onboarding_stale_days' => (int) env('STERLING_ONBOARDING_STALE_DAYS', 14),

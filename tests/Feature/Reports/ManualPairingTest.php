@@ -7,8 +7,12 @@ use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\User;
+use App\Reports\Ingestion\ReportIngestionService;
 use App\Reports\Reconciliation\ReconciliationService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsReportFixtures;
 use Tests\TestCase;
@@ -118,5 +122,25 @@ class ManualPairingTest extends TestCase
         }
 
         $this->assertSame(1, app(ReconciliationService::class)->reconcile($this->mid, '2026-10-20', '2026-10-20'));
+    }
+
+    public function test_a_gateway_sale_without_its_bank_file_is_waiting_until_the_file_is_due_then_it_is_a_missing_file()
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $this->travelTo(CarbonImmutable::parse('2026-09-22 10:00:00', 'Europe/Riga'));
+
+        // Tuesday the 15th: its bank file was due on Thursday the 17th (T+2). Monday the 21st: due Wednesday the 23rd.
+        $this->operation($this->gate, 'G-OLD', '10.00', '10:00:00')->update(['report_date' => '2026-09-15']);
+        $this->operation($this->gate, 'G-NEW', '11.00', '10:00:00')->update(['report_date' => '2026-09-21']);
+
+        $keys = fn () => collect($this->actingAs($this->admin)->get(route('admin.dashboard'))->viewData('page')['props']['reportAlerts'])->keyBy('key');
+
+        $this->assertSame(1, $keys()['bank_files_missing']['count']);
+        $this->assertArrayNotHasKey('unpaired_operations', $keys()->all());
+
+        // Once the bank file is in, a sale still without a pair is a pairing problem.
+        app(ReportIngestionService::class)->ingest($this->bank, $this->cardaqCsv(day: '2026-09-15'), CarbonImmutable::parse('2026-09-15'));
+        $this->assertArrayHasKey('unpaired_operations', $keys()->all());
     }
 }

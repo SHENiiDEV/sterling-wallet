@@ -90,6 +90,7 @@ type Props = {
             bank: number;
             gate: number;
             count: number;
+            note?: string;
         }[];
     }[];
 };
@@ -198,10 +199,24 @@ export default function Dashboard({
                                                         {row.mid} · {row.pair}{' '}
                                                         (bank {row.bank}, gate{' '}
                                                         {row.gate})
+                                                        {row.note && (
+                                                            <span className="text-amber-600">
+                                                                {' '}
+                                                                · {row.note}
+                                                            </span>
+                                                        )}
                                                     </Link>
                                                 </li>
                                             ))}
                                         </ul>
+                                    )}
+                                    {alert.key === 'bank_files_missing' && (
+                                        <Link
+                                            href={admin.reports.index()}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Open reports
+                                        </Link>
                                     )}
                                     {alert.key === 'collab_deadlines' && (
                                         <Link
