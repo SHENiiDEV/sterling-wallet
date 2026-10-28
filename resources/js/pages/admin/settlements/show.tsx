@@ -10,6 +10,10 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+    AuthenticatorCodesBlock,
+    type AuthenticatorCodeMeta,
+} from '@/components/admin/authenticator-codes';
 import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { PageErrors } from '@/components/admin/page-errors';
@@ -126,6 +130,18 @@ type Overview = {
         invoice_address: string | null;
         invoice_email: string | null;
         notes: string | null;
+        companies: { id: number; name: string; merchants: number }[];
+        portal_users: {
+            name: string;
+            email: string;
+            is_active: boolean;
+            last_login_at: string | null;
+        }[];
+        settlements: {
+            count: number;
+            settled: number;
+            last_settled_at: string | null;
+        };
     } | null;
     wallet: {
         label: string;
@@ -195,24 +211,49 @@ function SettlementParties({
                             >
                                 {client.name}
                             </Link>
-                            {client.invoice_name !== client.name && (
-                                <div>{client.invoice_name}</div>
-                            )}
-                            {client.invoice_address && (
-                                <div className="text-xs whitespace-pre-line text-muted-foreground">
-                                    {client.invoice_address}
-                                </div>
-                            )}
-                            {client.invoice_email && (
-                                <div className="text-xs text-muted-foreground">
-                                    {client.invoice_email}
-                                </div>
-                            )}
+                            <div>Invoice name: {client.invoice_name}</div>
+                            <div className="text-xs whitespace-pre-line text-muted-foreground">
+                                {client.invoice_address ||
+                                    'No invoice address yet'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                                {client.invoice_email ||
+                                    'No invoice e-mail yet'}
+                            </div>
                             {client.notes && (
                                 <div className="mt-1 text-xs whitespace-pre-line text-amber-600">
                                     {client.notes}
                                 </div>
                             )}
+                            <div className="mt-2 grid gap-1 border-t pt-2 text-xs text-muted-foreground">
+                                <div>
+                                    Companies:{' '}
+                                    {client.companies.length === 0
+                                        ? 'none'
+                                        : client.companies
+                                              .map(
+                                                  (c) =>
+                                                      `${c.name} (${c.merchants})`,
+                                              )
+                                              .join(', ')}
+                                </div>
+                                <div>
+                                    Portal access:{' '}
+                                    {client.portal_users.length === 0
+                                        ? 'no portal users'
+                                        : client.portal_users
+                                              .map(
+                                                  (u) =>
+                                                      `${u.name} <${u.email}>${u.is_active ? '' : ' (off)'}${u.last_login_at ? ` · last in ${formatDate(u.last_login_at)}` : ''}`,
+                                              )
+                                              .join('; ')}
+                                </div>
+                                <div>
+                                    Settlements: {client.settlements.count}
+                                    {client.settlements.settled > 0 &&
+                                        ` · ${client.settlements.settled} paid, last ${formatDate(client.settlements.last_settled_at)}`}
+                                </div>
+                            </div>
                         </>
                     ) : (
                         <span className="text-muted-foreground">
@@ -434,6 +475,7 @@ type Props = {
         early: { id: number; report_date: string; due: string | null }[];
     };
     overview: Overview;
+    authenticatorCodes: AuthenticatorCodeMeta[];
     payoutCurrencies: Option[];
     lines: Line[];
     wallets: {
@@ -1037,6 +1079,7 @@ function CancelDialog({
 export default function SettlementShow({
     settlement,
     overview,
+    authenticatorCodes,
     lines,
     wallets,
     payoutCurrencies,
@@ -1180,6 +1223,13 @@ export default function SettlementShow({
                 />
                 <PageErrors keys={['settlement', 'rates', 'wallet_id']} />
                 {draft && <DueSummary lines={lines} />}
+                {settlement.status !== 'cancelled' &&
+                    settlement.status !== 'settled' && (
+                        <AuthenticatorCodesBlock
+                            codes={authenticatorCodes}
+                            title="Log-in codes for this payout"
+                        />
+                    )}
                 <SettlementParties
                     overview={overview}
                     payoutCurrency={settlement.payout_currency}

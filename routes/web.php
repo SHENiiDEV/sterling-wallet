@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\AuthenticatorController;
 use App\Http\Controllers\Admin\BankHolidayController;
 use App\Http\Controllers\Admin\BotController;
 use App\Http\Controllers\Admin\ClientController;
@@ -173,6 +174,14 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('offers/{offer}/status', [CommercialOfferController::class, 'status'])->name('offers.status');
         Route::post('offers/{offer}/accept', [CommercialOfferController::class, 'accept'])->name('offers.accept');
         Route::get('offers/{offer}/pdf', [CommercialOfferController::class, 'pdf'])->name('offers.pdf');
+    });
+
+    Route::middleware('module:authenticator')->group(function () {
+        Route::get('authenticator', [AuthenticatorController::class, 'index'])->name('authenticator.index');
+        Route::get('authenticator/codes', [AuthenticatorController::class, 'codes'])->middleware('throttle:120,1')->name('authenticator.codes');
+        Route::post('authenticator', [AuthenticatorController::class, 'store'])->name('authenticator.store');
+        Route::put('authenticator/{code}', [AuthenticatorController::class, 'update'])->name('authenticator.update');
+        Route::delete('authenticator/{code}', [AuthenticatorController::class, 'destroy'])->name('authenticator.destroy');
     });
 
     Route::middleware('module:team')->group(function () {

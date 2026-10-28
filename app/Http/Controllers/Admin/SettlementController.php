@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Authenticator\AuthenticatorCodes;
+use App\Enums\Module;
 use App\Enums\SettlementStatus;
 use App\Enums\TariffProduct;
 use App\Http\Controllers\Controller;
@@ -161,6 +163,10 @@ class SettlementController extends Controller
                 'early' => $this->settlements->earlyReports($settlement)->map(fn (DailyReportTask $r) => ['id' => $r->id, 'report_date' => $r->report_date->toDateString(), 'due' => $this->schedule->dueDate($r)?->toDateString()])->values(),
             ],
             'overview' => app(SettlementOverview::class)->for($settlement),
+            // The authenticator codes of the parties and providers of this payout, when the user may use them.
+            'authenticatorCodes' => auth()->user()?->canAccess(Module::Authenticator)
+                ? app(AuthenticatorCodes::class)->present(app(AuthenticatorCodes::class)->forSettlement($settlement))
+                : [],
             'payoutCurrencies' => $this->payoutCurrencies(),
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
                 'id' => $l->id,

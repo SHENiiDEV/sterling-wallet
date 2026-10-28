@@ -24,3 +24,20 @@ export async function postJson<T>(url: string, body: unknown = {}): Promise<T> {
 
     return (await response.json()) as T;
 }
+
+/** JSON GET for endpoints that are polled rather than visited. */
+export async function getJson<T>(url: string): Promise<T> {
+    const response = await fetch(url, {
+        credentials: 'same-origin',
+        headers: {
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`Request failed with ${response.status}`);
+    }
+
+    return (await response.json()) as T;
+}
