@@ -3,12 +3,14 @@
 namespace App\Settlements;
 
 use App\Enums\SettlementLineType;
+use App\Enums\SettlementStatus;
 use App\Models\Client;
 use App\Models\DailyReportTask;
 use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
+use App\Models\User;
 use Illuminate\Support\Collection;
 
 /**
@@ -55,6 +57,8 @@ class SettlementOverview
      */
     private function client(Client $client): array
     {
+        $settlements = Settlement::query()->where('client_id', $client->id)->where('status', '!=', SettlementStatus::Cancelled->value);
+
         return [
             'id' => $client->id,
             'name' => $client->name,
@@ -62,6 +66,15 @@ class SettlementOverview
             'invoice_address' => $client->invoice_address,
             'invoice_email' => $client->invoice_email,
             'notes' => $client->notes,
+            'companies' => $client->companies()->withCount('merchants')->orderBy('name')->get()
+                ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name, 'merchants' => $c->merchants_count])->values()->all(),
+            'portal_users' => User::query()->where('client_id', $client->id)->orderBy('name')->get()
+                ->map(fn (User $u) => ['name' => $u->name, 'email' => $u->email, 'is_active' => $u->is_active, 'last_login_at' => $u->last_login_at?->toIso8601String()])->all(),
+            'settlements' => [
+                'count' => (clone $settlements)->count(),
+                'settled' => (clone $settlements)->where('status', SettlementStatus::Settled->value)->count(),
+                'last_settled_at' => (clone $settlements)->where('status', SettlementStatus::Settled->value)->max('settled_at'),
+            ],
         ];
     }
 
