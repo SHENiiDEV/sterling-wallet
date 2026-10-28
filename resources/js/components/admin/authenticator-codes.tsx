@@ -1,5 +1,6 @@
-import { Check, Copy, ShieldCheck } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { useClipboard } from '@/hooks/use-clipboard';
 import { getJson } from '@/lib/http';
@@ -105,71 +106,107 @@ function group(code: string): string {
           : code;
 }
 
+/**
+ * One code as a tile: the platform on top, then the name and what it is linked to, then the code with copy and a
+ * progress bar. The eye hides the digits (they are shown at first); copying works either way.
+ */
 export function AuthenticatorCodeCard({
     meta,
     live,
+    actions,
 }: {
     meta: AuthenticatorCodeMeta;
     live: Live[number] | undefined;
+    actions?: ReactNode;
 }) {
     const [copied, copy] = useClipboard();
+    const [hidden, setHidden] = useState(false);
     const remaining = live ? Math.max(0, live.remaining) : null;
     const justCopied = live !== undefined && copied === live.code;
+    const links = meta.links.map((l) => l.name);
 
     return (
-        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
-            <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{meta.name}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                    {[meta.service, ...meta.links.map((l) => l.name)]
-                        .filter(Boolean)
-                        .join(' · ')}
+        <div className="flex h-full min-h-44 flex-col gap-2 rounded-xl border bg-card p-3 shadow-xs">
+            <div className="flex items-start justify-between gap-2">
+                <span className="max-w-full truncate rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-primary uppercase">
+                    {meta.service || 'Authenticator'}
+                </span>
+                <div className="-mt-1 -mr-1 flex shrink-0 items-center">
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        aria-label={hidden ? 'Show code' : 'Hide code'}
+                        onClick={() => setHidden((v) => !v)}
+                    >
+                        {hidden ? <EyeOff /> : <Eye />}
+                    </Button>
+                    {actions}
                 </div>
+            </div>
+
+            <div className="min-w-0">
+                <div className="text-sm leading-tight font-medium">
+                    {meta.name}
+                </div>
+                {links.length > 0 && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                        {links.join(' · ')}
+                    </div>
+                )}
                 {meta.notes && (
-                    <div className="truncate text-xs text-amber-600">
+                    <div className="mt-0.5 text-xs text-amber-600">
                         {meta.notes}
                     </div>
                 )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-                <div className="text-right">
-                    <div className="font-mono text-xl font-semibold tracking-wider tabular-nums">
-                        {live ? group(live.code) : '··· ···'}
+
+            <div className="mt-auto grid gap-1.5 rounded-lg bg-muted/40 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                    <div
+                        className={cn(
+                            'font-mono text-2xl font-semibold tracking-wider tabular-nums',
+                            hidden && 'tracking-[0.3em] text-muted-foreground',
+                        )}
+                    >
+                        {!live || hidden ? '••• •••' : group(live.code)}
                     </div>
+                    <Button
+                        size="icon"
+                        variant="outline"
+                        aria-label="Copy code"
+                        disabled={!live}
+                        onClick={() => live && void copy(live.code)}
+                    >
+                        {justCopied ? <Check /> : <Copy />}
+                    </Button>
+                </div>
+                <div
+                    className="h-1 w-full overflow-hidden rounded bg-muted"
+                    aria-label={
+                        remaining !== null ? `${remaining} seconds left` : ''
+                    }
+                >
                     {remaining !== null && (
                         <div
-                            className="mt-0.5 h-1 w-full overflow-hidden rounded bg-muted"
-                            aria-label={`${remaining} seconds left`}
-                        >
-                            <div
-                                className={cn(
-                                    'h-full transition-[width] duration-1000 ease-linear',
-                                    remaining <= 5
-                                        ? 'bg-rose-500'
-                                        : 'bg-emerald-500',
-                                )}
-                                style={{
-                                    width: `${(remaining / (live?.period ?? 30)) * 100}%`,
-                                }}
-                            />
-                        </div>
+                            className={cn(
+                                'h-full transition-[width] duration-1000 ease-linear',
+                                remaining <= 5
+                                    ? 'bg-rose-500'
+                                    : 'bg-emerald-500',
+                            )}
+                            style={{
+                                width: `${(remaining / (live?.period ?? 30)) * 100}%`,
+                            }}
+                        />
                     )}
                 </div>
-                <Button
-                    size="icon"
-                    variant="outline"
-                    aria-label="Copy code"
-                    disabled={!live}
-                    onClick={() => live && void copy(live.code)}
-                >
-                    {justCopied ? <Check /> : <Copy />}
-                </Button>
             </div>
         </div>
     );
 }
 
-/** A block of cards for the codes linked to the page's client, company, merchant or provider. */
+/** A block of tiles for the codes linked to the page's client, company, merchant or provider. */
 export function AuthenticatorCodesBlock({
     codes,
     title = 'Authenticator codes',
@@ -184,12 +221,12 @@ export function AuthenticatorCodesBlock({
     }
 
     return (
-        <section className="grid gap-2 rounded-xl border bg-card p-4 shadow-xs">
+        <section className="grid gap-3 rounded-xl border bg-card p-4 shadow-xs">
             <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase">
                 <ShieldCheck className="size-4" />
                 {title}
             </div>
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
                 {codes.map((meta) => (
                     <AuthenticatorCodeCard
                         key={meta.id}
