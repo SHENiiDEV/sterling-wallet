@@ -29,7 +29,7 @@ use Illuminate\Validation\ValidationException;
 class ReconciliationService
 {
     /** Hour shifts tried when a provider's file time zone is unreliable. */
-    private const TIMEZONE_SHIFTS_HOURS = [1, -1, 2, -2, 3, -3];
+    private const TIMEZONE_SHIFTS_HOURS = [1, -1, 2, -2, 3, -3, 4, -4];
 
     private const GATE_SLACK_DAYS = 5;
 

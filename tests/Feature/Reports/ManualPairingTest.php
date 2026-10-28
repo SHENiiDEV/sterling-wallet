@@ -7,6 +7,7 @@ use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\User;
+use App\Reports\Reconciliation\ReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsReportFixtures;
@@ -102,5 +103,20 @@ class ManualPairingTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('operation.attempts', 2));
         $this->get(route('admin.operations.show', $plain))
             ->assertInertia(fn (Assert $page) => $page->where('operation.attempts', 1));
+    }
+
+    public function test_rows_four_hours_apart_still_pair_by_card_and_amount()
+    {
+        // The clocks changed in the Riga night: the bank's times are an hour further off than usual.
+        foreach ([[$this->bank, 'B-1', '2026-10-20 14:00:30'], [$this->gate, 'G-1', '2026-10-20 10:00:00']] as [$provider, $payment, $at]) {
+            MerchantOperation::query()->create([
+                'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $provider->id,
+                'role' => $provider->type, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => OperationType::Sale,
+                'trn_type' => 'sale', 'ips' => 'visa', 'amount' => '75.00', 'currency' => 'EUR', 'card_bin' => '535456', 'card_last4' => '8431',
+                'transaction_at' => $at, 'report_date' => '2026-10-20',
+            ]);
+        }
+
+        $this->assertSame(1, app(ReconciliationService::class)->reconcile($this->mid, '2026-10-20', '2026-10-20'));
     }
 }
