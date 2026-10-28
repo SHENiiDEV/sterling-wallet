@@ -46,4 +46,20 @@ class FileDiffTest extends TestCase
         $this->assertSame('2026-09-15', $task->report_date->toDateString());
         $this->assertSame(4, $task->fresh()->sources()->sole()->rows_count);
     }
+
+    public function test_the_pairing_report_lists_unpaired_sales_per_day()
+    {
+        Storage::fake('local');
+        Mail::fake();
+
+        $mid = $this->mid($this->merchantWithTariff(), $this->cardaq(), $this->corefy());
+        $ingestion = app(ReportIngestionService::class);
+        $ingestion->ingest($mid->bankProvider, $this->cardaqCsv(), CarbonImmutable::parse('2026-09-15'));
+
+        // Only the bank side so far: its three sales have no pair.
+        $this->artisan('reports:pairing', ['--days' => 365])
+            ->expectsOutputToContain('MID '.$mid->mid)
+            ->expectsOutputToContain('2026-09-15')
+            ->assertSuccessful();
+    }
 }
