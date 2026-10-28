@@ -11,6 +11,7 @@ import {
     FileText,
     FolderKanban,
     Handshake,
+    KeyRound,
     LayoutDashboard,
     Landmark,
     ListChecks,
@@ -164,6 +165,12 @@ const navGroups: NavGroup[] = [
                 href: admin.bots.index(),
                 icon: Bot,
                 module: 'bots',
+            },
+            {
+                title: 'Authenticator codes',
+                href: admin.authenticator.index(),
+                icon: KeyRound,
+                module: 'authenticator',
             },
             {
                 title: 'Bank holidays',

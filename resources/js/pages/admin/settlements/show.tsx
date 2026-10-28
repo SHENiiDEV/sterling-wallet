@@ -10,6 +10,10 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+    AuthenticatorCodesBlock,
+    type AuthenticatorCodeMeta,
+} from '@/components/admin/authenticator-codes';
 import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { PageErrors } from '@/components/admin/page-errors';
@@ -471,6 +475,7 @@ type Props = {
         early: { id: number; report_date: string; due: string | null }[];
     };
     overview: Overview;
+    authenticatorCodes: AuthenticatorCodeMeta[];
     payoutCurrencies: Option[];
     lines: Line[];
     wallets: {
@@ -1074,6 +1079,7 @@ function CancelDialog({
 export default function SettlementShow({
     settlement,
     overview,
+    authenticatorCodes,
     lines,
     wallets,
     payoutCurrencies,
@@ -1217,6 +1223,13 @@ export default function SettlementShow({
                 />
                 <PageErrors keys={['settlement', 'rates', 'wallet_id']} />
                 {draft && <DueSummary lines={lines} />}
+                {settlement.status !== 'cancelled' &&
+                    settlement.status !== 'settled' && (
+                        <AuthenticatorCodesBlock
+                            codes={authenticatorCodes}
+                            title="Log-in codes for this payout"
+                        />
+                    )}
                 <SettlementParties
                     overview={overview}
                     payoutCurrency={settlement.payout_currency}

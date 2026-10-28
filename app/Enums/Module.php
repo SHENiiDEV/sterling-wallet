@@ -21,6 +21,7 @@ enum Module: string
     case Documents = 'documents';
     case Offers = 'offers';
     case Bots = 'bots';
+    case Authenticator = 'authenticator';
     case Team = 'team';
 
     /**
@@ -46,6 +47,7 @@ enum Module: string
             self::Documents => 'Document Center',
             self::Offers => 'Commercial offers',
             self::Bots => 'Bots',
+            self::Authenticator => 'Authenticator codes',
             self::Team => 'Team & access',
         };
     }
