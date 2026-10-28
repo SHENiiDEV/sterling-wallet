@@ -255,7 +255,13 @@ class SettlementTest extends TestCase
         $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
         $this->actingAs($this->admin)->get(route('admin.settlements.show', $settlement))
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->component('admin/settlements/show')->has('lines', 1)->has('wallets', 1));
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/settlements/show')
+                ->has('lines', 1)
+                ->has('wallets', 1)
+                ->has('overview.companies', 1)
+                ->where('overview.companies.0.merchants.0.mids.0.reports', 1)
+                ->where('overview.wallet.currency', 'USDC'));
     }
 
     public function test_report_center_grid_and_actions()
