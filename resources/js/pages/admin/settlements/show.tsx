@@ -118,6 +118,290 @@ function DueSummary({ lines }: { lines: Line[] }) {
     );
 }
 
+type Overview = {
+    client: {
+        id: number;
+        name: string;
+        invoice_name: string;
+        invoice_address: string | null;
+        invoice_email: string | null;
+        notes: string | null;
+    } | null;
+    wallet: {
+        label: string;
+        type: string;
+        currency: string;
+        network: string | null;
+        address: string;
+        owner: string | null;
+        notes: string | null;
+    } | null;
+    companies: {
+        name: string;
+        merchants: {
+            public_id: string;
+            name: string;
+            website: string | null;
+            lag_days: number | null;
+            mids: {
+                mid: string;
+                label: string | null;
+                currency: string;
+                bank: string | null;
+                bank_status: string | null;
+                gate: string | null;
+                reports: number;
+                amount: string;
+                from: string | null;
+                to: string | null;
+            }[];
+        }[];
+    }[];
+    other_lines: {
+        type: string;
+        description: string;
+        currency: string;
+        amount: string;
+    }[];
+};
+
+/** Who is paid and for what: the client and its requisites, the wallet, then companies → merchants → terminals. */
+function SettlementParties({
+    overview,
+    payoutCurrency,
+    product,
+}: {
+    overview: Overview;
+    payoutCurrency: string;
+    product: string;
+}) {
+    const { client, wallet, companies, other_lines } = overview;
+    const merchants = companies.flatMap((c) => c.merchants);
+    const mids = merchants.flatMap((m) => m.mids);
+    const reports = mids.reduce((n, m) => n + m.reports, 0);
+
+    return (
+        <section className="grid gap-4 rounded-xl border bg-card p-4 shadow-xs">
+            <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid content-start gap-1 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground uppercase">
+                        Client
+                    </div>
+                    {client ? (
+                        <>
+                            <Link
+                                href={admin.clients.show(client.id)}
+                                className="font-medium hover:underline"
+                            >
+                                {client.name}
+                            </Link>
+                            {client.invoice_name !== client.name && (
+                                <div>{client.invoice_name}</div>
+                            )}
+                            {client.invoice_address && (
+                                <div className="text-xs whitespace-pre-line text-muted-foreground">
+                                    {client.invoice_address}
+                                </div>
+                            )}
+                            {client.invoice_email && (
+                                <div className="text-xs text-muted-foreground">
+                                    {client.invoice_email}
+                                </div>
+                            )}
+                            {client.notes && (
+                                <div className="mt-1 text-xs whitespace-pre-line text-amber-600">
+                                    {client.notes}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <span className="text-muted-foreground">
+                            The merchant is not in a client.
+                        </span>
+                    )}
+                </div>
+                <div className="grid content-start gap-1 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground uppercase">
+                        Pays to
+                    </div>
+                    {wallet ? (
+                        <>
+                            <div className="font-medium">
+                                {wallet.label}
+                                {wallet.owner && (
+                                    <span className="font-normal text-muted-foreground">
+                                        {' '}
+                                        · {wallet.owner}
+                                    </span>
+                                )}
+                            </div>
+                            <div>
+                                {wallet.currency}
+                                {wallet.network && ` · ${wallet.network}`}
+                                {wallet.currency.toUpperCase() !==
+                                    payoutCurrency && (
+                                    <span className="text-xs text-amber-600">
+                                        {' '}
+                                        (settlement is paid in {payoutCurrency})
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-start gap-1">
+                                <span className="font-mono text-xs break-all">
+                                    {wallet.address}
+                                </span>
+                                <CopyValue value={wallet.address} />
+                            </div>
+                            {wallet.notes && (
+                                <div className="text-xs text-muted-foreground">
+                                    {wallet.notes}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <span className="text-destructive">
+                            No wallet chosen yet.
+                        </span>
+                    )}
+                </div>
+                <div className="grid content-start gap-1 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground uppercase">
+                        Scope
+                    </div>
+                    <div>
+                        {companies.length} compan
+                        {companies.length === 1 ? 'y' : 'ies'} ·{' '}
+                        {merchants.length} merchant
+                        {merchants.length === 1 ? '' : 's'} · {mids.length} MID
+                        {mids.length === 1 ? '' : 's'}
+                    </div>
+                    <div className="text-muted-foreground">
+                        {reports} daily report{reports === 1 ? '' : 's'} ·{' '}
+                        {product} · paid in {payoutCurrency}
+                    </div>
+                </div>
+            </div>
+
+            {companies.map((company) => (
+                <div key={company.name} className="grid gap-2 border-t pt-3">
+                    <div className="text-sm font-semibold">{company.name}</div>
+                    {company.merchants.map((merchant) => (
+                        <div
+                            key={merchant.public_id}
+                            className="overflow-x-auto rounded-lg border"
+                        >
+                            <div className="flex flex-wrap items-baseline gap-x-2 border-b bg-muted/30 px-3 py-2 text-sm">
+                                <Link
+                                    href={admin.merchants.show(
+                                        merchant.public_id,
+                                    )}
+                                    className="font-medium hover:underline"
+                                >
+                                    {merchant.name}
+                                </Link>
+                                {merchant.website && (
+                                    <span className="text-xs text-muted-foreground">
+                                        {merchant.website}
+                                    </span>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                    {merchant.lag_days === null
+                                        ? 'no payout schedule'
+                                        : `T+${merchant.lag_days}`}
+                                </span>
+                            </div>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-left text-xs text-muted-foreground">
+                                        <th className="px-3 py-1.5 font-medium">
+                                            MID
+                                        </th>
+                                        <th className="px-3 py-1.5 font-medium">
+                                            Acquirer
+                                        </th>
+                                        <th className="px-3 py-1.5 font-medium">
+                                            Gateway
+                                        </th>
+                                        <th className="px-3 py-1.5 font-medium">
+                                            Reports
+                                        </th>
+                                        <th className="px-3 py-1.5 text-right font-medium">
+                                            Amount
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {merchant.mids.map((mid) => (
+                                        <tr key={mid.mid} className="border-t">
+                                            <td className="px-3 py-1.5">
+                                                <span className="font-mono text-xs">
+                                                    {mid.mid}
+                                                </span>
+                                                {mid.label && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {' '}
+                                                        · {mid.label}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-1.5">
+                                                {mid.bank ?? '—'}
+                                                {mid.bank_status && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {' '}
+                                                        · {mid.bank_status}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-1.5">
+                                                {mid.gate ?? '—'}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-xs text-muted-foreground">
+                                                {mid.reports} ·{' '}
+                                                {mid.from === mid.to
+                                                    ? formatDate(mid.from)
+                                                    : `${formatDate(mid.from)} – ${formatDate(mid.to)}`}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right tabular-nums">
+                                                {formatMoney(
+                                                    mid.amount,
+                                                    mid.currency,
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ))}
+                </div>
+            ))}
+
+            {other_lines.length > 0 && (
+                <div className="grid gap-1 border-t pt-3 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground uppercase">
+                        Not tied to a terminal
+                    </div>
+                    {other_lines.map((line, i) => (
+                        <div key={i} className="flex justify-between gap-3">
+                            <span>
+                                {line.type}
+                                <span className="text-muted-foreground">
+                                    {' '}
+                                    · {line.description}
+                                </span>
+                            </span>
+                            <span className="tabular-nums">
+                                {formatMoney(line.amount, line.currency)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
 type Line = {
     id: number;
     type: string;
@@ -149,6 +433,7 @@ type Props = {
         locked_scope: boolean;
         early: { id: number; report_date: string; due: string | null }[];
     };
+    overview: Overview;
     payoutCurrencies: Option[];
     lines: Line[];
     wallets: {
@@ -751,6 +1036,7 @@ function CancelDialog({
 
 export default function SettlementShow({
     settlement,
+    overview,
     lines,
     wallets,
     payoutCurrencies,
@@ -894,6 +1180,11 @@ export default function SettlementShow({
                 />
                 <PageErrors keys={['settlement', 'rates', 'wallet_id']} />
                 {draft && <DueSummary lines={lines} />}
+                <SettlementParties
+                    overview={overview}
+                    payoutCurrency={settlement.payout_currency}
+                    product={settlement.product_label}
+                />
 
                 {settlement.cancelled_at && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">

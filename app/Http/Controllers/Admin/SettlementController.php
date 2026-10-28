@@ -13,6 +13,7 @@ use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
 use App\Services\AuditLogger;
+use App\Settlements\SettlementOverview;
 use App\Settlements\SettlementSchedule;
 use App\Settlements\SettlementService;
 use App\Settlements\SettlementStatementPdf;
@@ -159,6 +160,7 @@ class SettlementController extends Controller
                 'locked_scope' => $settlement->client_id !== null,
                 'early' => $this->settlements->earlyReports($settlement)->map(fn (DailyReportTask $r) => ['id' => $r->id, 'report_date' => $r->report_date->toDateString(), 'due' => $this->schedule->dueDate($r)?->toDateString()])->values(),
             ],
+            'overview' => app(SettlementOverview::class)->for($settlement),
             'payoutCurrencies' => $this->payoutCurrencies(),
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
                 'id' => $l->id,
