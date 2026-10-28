@@ -25,8 +25,14 @@ type Live = Record<number, { code: string; remaining: number; period: number }>;
  */
 export function useLiveCodes(ids: number[]): Live {
     const [live, setLive] = useState<Live>({});
+    const latest = useRef<Live>({});
     const key = ids.join(',');
     const loading = useRef(false);
+
+    const apply = useCallback((next: Live) => {
+        latest.current = next;
+        setLive(next);
+    }, []);
 
     const load = useCallback(async () => {
         if (ids.length === 0 || loading.current) {
@@ -35,7 +41,7 @@ export function useLiveCodes(ids: number[]): Live {
         loading.current = true;
         try {
             const query = ids.map((id) => `ids[]=${id}`).join('&');
-            setLive(
+            apply(
                 await getJson<Live>(
                     `${admin.authenticator.codes.url()}?${query}`,
                 ),
@@ -46,36 +52,47 @@ export function useLiveCodes(ids: number[]): Live {
             loading.current = false;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key]);
+    }, [key, apply]);
 
     useEffect(() => {
         void load();
     }, [load]);
 
+    // Count the seconds down here, and ask for fresh codes the moment one runs out (or is a few seconds from it).
     useEffect(() => {
         if (ids.length === 0) {
             return;
         }
         const timer = setInterval(() => {
+            const next: Live = {};
             let expired = false;
-            setLive((current) => {
-                const next: Live = {};
-                for (const [id, value] of Object.entries(current)) {
-                    const remaining = value.remaining - 1;
-                    expired = expired || remaining <= 0;
-                    next[Number(id)] = { ...value, remaining };
-                }
+            for (const [id, value] of Object.entries(latest.current)) {
+                const remaining = value.remaining - 1;
+                expired = expired || remaining <= 0;
+                next[Number(id)] = { ...value, remaining };
+            }
+            apply(next);
 
-                return next;
-            });
-            if (expired) {
+            if (expired || Object.keys(next).length < ids.length) {
                 void load();
             }
         }, 1000);
 
         return () => clearInterval(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [load, key]);
+    }, [load, key, apply]);
+
+    // Coming back to the tab: the countdown may have stood still while it was hidden.
+    useEffect(() => {
+        const refresh = () => {
+            if (document.visibilityState === 'visible') {
+                void load();
+            }
+        };
+        document.addEventListener('visibilitychange', refresh);
+
+        return () => document.removeEventListener('visibilitychange', refresh);
+    }, [load]);
 
     return live;
 }
