@@ -83,7 +83,7 @@ export function AccountDialog({
             : '',
         mid_ids: (account?.mid_ids ?? []).map(String),
         is_active: account?.is_active ?? true,
-        schedule_mode: account?.schedule_mode ?? 'auto',
+        schedule_mode: (account?.schedule_mode ?? 'auto') as string,
         schedule_every_minutes: account?.schedule_every_minutes
             ? String(account.schedule_every_minutes)
             : '60',
