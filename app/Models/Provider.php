@@ -100,11 +100,11 @@ class Provider extends Model
     /**
      * Reconciliation rules for this provider, falling back to the defaults.
      *
-     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool}
+     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool, pair_leftovers?: bool}
      */
     public function matchingRules(): array
     {
-        /** @var array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool} $defaults */
+        /** @var array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool, pair_leftovers?: bool} $defaults */
         $defaults = config('sterling.matching');
 
         return array_replace($defaults, array_intersect_key($this->matching ?? [], $defaults));
