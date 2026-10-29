@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * Re-renders PDF / XLSX / CSV of completed reports from their stored
  * numbers — nothing is recalculated, so locked (settled) reports are safe.
  */
-#[Signature('reports:rebuild-documents {--from= : First report date (Y-m-d)} {--to= : Last report date (Y-m-d)}')]
+#[Signature('reports:rebuild-documents {--from= : First report date (Y-m-d)} {--to= : Last report date (Y-m-d)} {--mid= : Only this MID (merchant_mids.mid)}')]
 #[Description('Re-render the files of completed daily reports without recalculating them')]
 class RebuildReportDocumentsCommand extends Command
 {
@@ -22,6 +22,7 @@ class RebuildReportDocumentsCommand extends Command
         $query = DailyReportTask::query()
             ->with('merchant', 'merchantMid')
             ->where('status', ReportStatus::Completed)
+            ->when($this->option('mid'), fn ($q, $mid) => $q->whereHas('merchantMid', fn ($m) => $m->where('mid', $mid)))
             ->when($this->option('from'), fn ($q, $from) => $q->where('report_date', '>=', $from))
             ->when($this->option('to'), fn ($q, $to) => $q->where('report_date', '<=', $to))
             ->orderBy('id');
