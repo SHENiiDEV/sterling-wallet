@@ -152,7 +152,7 @@ export default function DocumentShow({
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                    <div className="grid content-start gap-6">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6">
                         <DetailsCard document={document} />
                         <FilesCard document={document} files={files} />
                         <TimelineCard
@@ -160,7 +160,7 @@ export default function DocumentShow({
                             activities={activities}
                         />
                     </div>
-                    <div className="grid content-start gap-6">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6">
                         <StatusCard document={document} statuses={statuses} />
                     </div>
                 </div>
@@ -194,7 +194,10 @@ function Card({
 }) {
     return (
         <section
-            className={cn('rounded-xl border bg-card shadow-xs', className)}
+            className={cn(
+                'min-w-0 rounded-xl border bg-card shadow-xs',
+                className,
+            )}
         >
             <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
                 <h2 className="flex items-center gap-2 text-sm font-semibold">
