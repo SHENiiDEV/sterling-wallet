@@ -245,6 +245,20 @@ class SettlementTest extends TestCase
         $this->artisan('reserve:release')->assertSuccessful();
     }
 
+    public function test_a_settlement_can_be_recounted_from_the_operations()
+    {
+        $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+
+        $this->artisan('settlements:verify', ['settlement' => $settlement->number])
+            ->expectsOutputToContain('Everything checks out.')
+            ->assertSuccessful();
+
+        // A report that moved after it was put in the settlement is shown as a difference.
+        DailyReportTask::query()->sole()->update(['net_payout' => '1.00']);
+        $this->artisan('settlements:verify', ['settlement' => (string) $settlement->id])->assertFailed();
+    }
+
     public function test_settlement_screens_render()
     {
         $this->report();
