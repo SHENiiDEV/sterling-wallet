@@ -49,6 +49,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { formatDate, formatRelative } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 import type { BotRun, IntegrationAccount, Option, Paginated } from '@/types';
 
@@ -440,6 +441,30 @@ export default function BotsIndex({
     const connectorLabel = (code: string) =>
         connectors.find((c) => c.value === code)?.label ?? code;
 
+    // The accounts list is short, so it is filtered here: by bot, by state and by a word.
+    const [botFilter, setBotFilter] = useState('all');
+    const [stateFilter, setStateFilter] = useState<
+        'all' | 'active' | 'paused' | 'problems'
+    >('all');
+    const [accountSearch, setAccountSearch] = useState('');
+    const hasProblem = (a: IntegrationAccount) =>
+        a.is_active &&
+        (a.last_run?.status === 'failed' || a.failures_in_row > 0);
+    const shownAccounts = accounts.filter((a) => {
+        const needle = accountSearch.trim().toLowerCase();
+
+        return (
+            (botFilter === 'all' || a.connector === botFilter) &&
+            (stateFilter === 'all' ||
+                (stateFilter === 'active' && a.is_active) ||
+                (stateFilter === 'paused' && !a.is_active) ||
+                (stateFilter === 'problems' && hasProblem(a))) &&
+            (needle === '' ||
+                `${a.name} ${a.provider.name}`.toLowerCase().includes(needle))
+        );
+    });
+    const bots = [...new Set(accounts.map((a) => a.connector))];
+
     const filter = (next: { status?: string; account?: string }) =>
         router.get(
             admin.bots.index.url(),
@@ -455,7 +480,7 @@ export default function BotsIndex({
             <PageBody>
                 <PageHeader
                     title="Bots"
-                    description="Bots fetch provider reports every 30 minutes for every MID and date still missing a file, then hand them to the report pipeline."
+                    description="Bots fetch provider reports for every MID and date still missing a file, each account on its own schedule, then hand them to the report pipeline."
                     actions={
                         <Button onClick={() => setEditing('new')}>
                             <Plus />
@@ -463,6 +488,90 @@ export default function BotsIndex({
                         </Button>
                     }
                 />
+
+                {accounts.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap gap-1.5">
+                            {[
+                                {
+                                    value: 'all',
+                                    label: 'All bots',
+                                    count: accounts.length,
+                                },
+                                ...bots.map((code) => ({
+                                    value: code,
+                                    label: connectorLabel(code).replace(
+                                        /\s*\(.*\)$/,
+                                        '',
+                                    ),
+                                    count: accounts.filter(
+                                        (a) => a.connector === code,
+                                    ).length,
+                                })),
+                            ].map((chip) => (
+                                <button
+                                    key={chip.value}
+                                    type="button"
+                                    onClick={() => setBotFilter(chip.value)}
+                                    className={cn(
+                                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition',
+                                        botFilter === chip.value
+                                            ? 'border-primary bg-primary text-primary-foreground'
+                                            : 'bg-card text-muted-foreground hover:text-foreground',
+                                    )}
+                                >
+                                    {chip.label}
+                                    <span
+                                        className={cn(
+                                            'rounded-full px-1.5 text-xs tabular-nums',
+                                            botFilter === chip.value
+                                                ? 'bg-primary-foreground/20'
+                                                : 'bg-muted',
+                                        )}
+                                    >
+                                        {chip.count}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="inline-flex rounded-lg border bg-card p-0.5 text-sm">
+                            {(
+                                [
+                                    ['all', 'Any state'],
+                                    ['active', 'Active'],
+                                    ['paused', 'Paused'],
+                                    ['problems', 'Problems'],
+                                ] as const
+                            ).map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => setStateFilter(value)}
+                                    className={cn(
+                                        'rounded-md px-2.5 py-1',
+                                        stateFilter === value
+                                            ? value === 'problems'
+                                                ? 'bg-destructive text-white'
+                                                : 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:text-foreground',
+                                    )}
+                                >
+                                    {label}
+                                    {value === 'problems' &&
+                                        accounts.filter(hasProblem).length >
+                                            0 &&
+                                        ` (${accounts.filter(hasProblem).length})`}
+                                </button>
+                            ))}
+                        </div>
+                        <Input
+                            value={accountSearch}
+                            onChange={(e) => setAccountSearch(e.target.value)}
+                            placeholder="Find an account…"
+                            className="w-48"
+                        />
+                    </div>
+                )}
 
                 <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                     {accounts.length === 0 ? (
@@ -483,7 +592,7 @@ export default function BotsIndex({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {accounts.map((account) => (
+                                {shownAccounts.map((account) => (
                                     <TableRow key={account.id}>
                                         <TableCell>
                                             <div className="font-medium">
@@ -583,6 +692,16 @@ export default function BotsIndex({
                                         </TableCell>
                                     </TableRow>
                                 ))}
+                                {shownAccounts.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={5}
+                                            className="py-8 text-center text-sm text-muted-foreground"
+                                        >
+                                            No account matches these filters.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     )}
