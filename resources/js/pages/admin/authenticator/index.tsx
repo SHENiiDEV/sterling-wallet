@@ -6,6 +6,8 @@ import {
     useLiveCodes,
 } from '@/components/admin/authenticator-codes';
 import type { AuthenticatorCodeMeta } from '@/components/admin/authenticator-codes';
+import { AuthenticatorLinkPicker } from '@/components/admin/authenticator-link-picker';
+import type { LinkTargets } from '@/components/admin/authenticator-link-picker';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { EmptyState } from '@/components/admin/empty-state';
 import { Field } from '@/components/admin/form';
@@ -22,18 +24,11 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import admin from '@/routes/admin';
 
-type Targets = Record<string, { id: number; name: string }[]>;
+type Targets = LinkTargets;
 
 type Props = {
     codes: AuthenticatorCodeMeta[];
@@ -64,25 +59,14 @@ function CodeDialog({
         is_active: code?.is_active ?? true,
         links: (code?.links ?? []).map((l) => ({ type: l.type, id: l.id })),
     });
-    const [type, setType] = useState('merchant');
-    const [pick, setPick] = useState('');
     const { data, setData, errors } = form;
 
     const nameOf = (linkType: string, id: number) =>
         targets[linkType]?.find((t) => t.id === id)?.name ?? `#${id}`;
 
-    const add = () => {
-        const id = Number(pick);
-        if (!id || data.links.some((l) => l.type === type && l.id === id)) {
-            return;
-        }
-        setData('links', [...data.links, { type, id }]);
-        setPick('');
-    };
-
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
                 <form
                     className="grid gap-4"
                     onSubmit={(e) => {
@@ -219,55 +203,11 @@ function CodeDialog({
                                 ))}
                             </div>
                         )}
-                        <div className="flex gap-2">
-                            <Select
-                                value={type}
-                                onValueChange={(v) => {
-                                    setType(v);
-                                    setPick('');
-                                }}
-                            >
-                                <SelectTrigger className="w-32">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(TARGET_LABELS).map(
-                                        ([value, label]) => (
-                                            <SelectItem
-                                                key={value}
-                                                value={value}
-                                            >
-                                                {label}
-                                            </SelectItem>
-                                        ),
-                                    )}
-                                </SelectContent>
-                            </Select>
-                            <Select value={pick} onValueChange={setPick}>
-                                <SelectTrigger className="min-w-0 flex-1">
-                                    <SelectValue placeholder="Choose…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(targets[type] ?? []).map((t) => (
-                                        <SelectItem
-                                            key={t.id}
-                                            value={String(t.id)}
-                                        >
-                                            {t.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={add}
-                                disabled={!pick}
-                            >
-                                <Plus />
-                                Add
-                            </Button>
-                        </div>
+                        <AuthenticatorLinkPicker
+                            targets={targets}
+                            value={data.links}
+                            onChange={(links) => setData('links', links)}
+                        />
                         {errors.links && (
                             <p className="text-xs text-destructive">
                                 {errors.links}

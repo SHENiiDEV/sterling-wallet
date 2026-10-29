@@ -34,8 +34,8 @@ class AuthenticatorController extends Controller
             'codes' => $codes->present(AuthenticatorCode::query()->orderBy('name')->get()),
             'targets' => [
                 'client' => Client::query()->orderBy('name')->get(['id', 'name'])->map(fn (Client $c) => ['id' => $c->id, 'name' => $c->name])->all(),
-                'company' => Company::query()->orderBy('name')->get(['id', 'name'])->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name])->all(),
-                'merchant' => Merchant::query()->orderBy('name')->get(['id', 'name', 'website'])->map(fn (Merchant $m) => ['id' => $m->id, 'name' => $m->name])->all(),
+                'company' => Company::query()->orderBy('name')->get(['id', 'name', 'client_id'])->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->name, 'parent_id' => $c->client_id])->all(),
+                'merchant' => Merchant::query()->orderBy('name')->get(['id', 'name', 'website', 'company_id'])->map(fn (Merchant $m) => ['id' => $m->id, 'name' => $m->name, 'parent_id' => $m->company_id, 'hint' => $m->website])->all(),
                 'provider' => Provider::query()->orderBy('name')->get(['id', 'name'])->map(fn (Provider $p) => ['id' => $p->id, 'name' => $p->name])->all(),
             ],
         ]);
