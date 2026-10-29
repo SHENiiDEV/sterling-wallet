@@ -33,6 +33,9 @@ class ReconciliationService
 
     private const GATE_SLACK_DAYS = 5;
 
+    /** Leftover rows with the same card and amount are paired when no more than this far apart. */
+    private const LEFTOVER_MAX_GAP_SECONDS = 86400;
+
     /**
      * @return int number of new pairs
      */
@@ -82,6 +85,12 @@ class ReconciliationService
             }
         }
 
+        // What is left: the same card and amount on both sides, as many rows on one side as on the other, but hours apart
+        // (a payment retried later, a clearing time far from the authorisation). Paired in time order, up to a day apart.
+        if ($rules['pair_leftovers'] ?? true) {
+            [$pairs, $taken] = $this->pairLeftovers($bank, $gate, $pairs, $taken);
+        }
+
         DB::transaction(function () use ($pairs, $mid) {
             foreach ($pairs as [$bankOp, $gateOp]) {
                 $bankOp->update(['matched_operation_id' => $gateOp->id, 'sp_id' => $gateOp->payment_id]);
@@ -98,6 +107,64 @@ class ReconciliationService
         });
 
         return count($pairs);
+    }
+
+    /**
+     * @param  Collection<int, MerchantOperation>  $bank
+     * @param  Collection<int, MerchantOperation>  $gate
+     * @param  array<int, array{0: MerchantOperation, 1: MerchantOperation}>  $pairs
+     * @param  array<int, bool>  $taken
+     * @return array{0: array<int, array{0: MerchantOperation, 1: MerchantOperation}>, 1: array<int, bool>}
+     */
+    private function pairLeftovers(Collection $bank, Collection $gate, array $pairs, array $taken): array
+    {
+        $fields = ['card_bin', 'card_last4', 'amount', 'currency'];
+        $group = function (Collection $ops, callable $left) use ($fields) {
+            $groups = [];
+            foreach ($ops->filter($left) as $op) {
+                if (($k = $this->key($op, $fields)) !== null && $op->transaction_at !== null) {
+                    $groups[$k][] = $op;
+                }
+            }
+            foreach ($groups as &$rows) {
+                usort($rows, fn (MerchantOperation $a, MerchantOperation $b) => $a->transaction_at->getTimestamp() <=> $b->transaction_at->getTimestamp() ?: $a->id <=> $b->id);
+            }
+
+            return $groups;
+        };
+
+        $bankGroups = $group($bank, fn (MerchantOperation $op) => ! isset($pairs[$op->id]));
+        $gateGroups = $group($gate, fn (MerchantOperation $op) => ! isset($taken[$op->id]));
+
+        foreach ($bankGroups as $k => $bankRows) {
+            $gateRows = $gateGroups[$k] ?? [];
+            if (count($gateRows) !== count($bankRows)) {
+                continue;
+            }
+
+            $close = true;
+            foreach ($bankRows as $i => $op) {
+                $close = $close && $this->nearestGap($op, $gateRows[$i]) <= self::LEFTOVER_MAX_GAP_SECONDS;
+            }
+            if (! $close) {
+                continue;
+            }
+
+            foreach ($bankRows as $i => $op) {
+                $pairs[$op->id] = [$op, $gateRows[$i]];
+                $taken[$gateRows[$i]->id] = true;
+            }
+        }
+
+        return [$pairs, $taken];
+    }
+
+    /**
+     * Seconds apart after the whole-hour shift that brings the two closest.
+     */
+    private function nearestGap(MerchantOperation $bank, MerchantOperation $gate): int
+    {
+        return min(array_map(fn (int $shift) => $this->distance($bank, $gate, $shift), [0, ...self::TIMEZONE_SHIFTS_HOURS]));
     }
 
     /**
@@ -178,7 +245,7 @@ class ReconciliationService
     }
 
     /**
-     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool}
+     * @return array{keys: list<list<string>>, window_minutes: int, try_timezone_shift: bool, tie_breakers: list<string>, include_declines: bool, pair_leftovers?: bool}
      */
     public function rulesFor(?Provider $bank, ?Provider $gate): array
     {

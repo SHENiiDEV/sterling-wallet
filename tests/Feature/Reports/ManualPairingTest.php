@@ -143,4 +143,26 @@ class ManualPairingTest extends TestCase
         app(ReportIngestionService::class)->ingest($this->bank, $this->cardaqCsv(day: '2026-09-15'), CarbonImmutable::parse('2026-09-15'));
         $this->assertArrayHasKey('unpaired_operations', $keys()->all());
     }
+
+    public function test_leftovers_with_the_same_card_and_amount_pair_even_hours_apart_but_only_when_the_counts_agree()
+    {
+        $row = fn ($provider, string $payment, string $at, string $amount) => MerchantOperation::query()->create([
+            'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $provider->id,
+            'role' => $provider->type, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => OperationType::Sale,
+            'trn_type' => 'sale', 'ips' => 'visa', 'amount' => $amount, 'currency' => 'EUR', 'card_bin' => '516872', 'card_last4' => '0624',
+            'transaction_at' => $at, 'report_date' => '2026-10-20',
+        ]);
+
+        // One payment on each side, the bank's time six hours after the gateway's: beyond the shifts and the window.
+        $bank = $row($this->bank, 'B-1', '2026-10-20 14:00:30', '20.00');
+        $gate = $row($this->gate, 'G-1', '2026-10-20 08:00:00', '20.00');
+        // Two on the bank side, one on the gateway's: which is which is not known, so they stay apart.
+        $row($this->bank, 'B-2', '2026-10-20 15:00:00', '30.00');
+        $row($this->bank, 'B-3', '2026-10-20 16:00:00', '30.00');
+        $lone = $row($this->gate, 'G-2', '2026-10-20 09:00:00', '30.00');
+
+        $this->assertSame(1, app(ReconciliationService::class)->reconcile($this->mid, '2026-10-20', '2026-10-20'));
+        $this->assertSame($gate->id, $bank->fresh()->matched_operation_id);
+        $this->assertNull($lone->fresh()->matched_operation_id);
+    }
 }
