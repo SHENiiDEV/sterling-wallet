@@ -25,7 +25,7 @@ class BotScheduleTest extends TestCase
         ]);
     }
 
-    private function run(IntegrationAccount $account, BotRunStatus $status, string $at): void
+    private function botRun(IntegrationAccount $account, BotRunStatus $status, string $at): void
     {
         $run = BotRun::query()->create([
             'connector' => 'corefy-export', 'integration_account_id' => $account->id, 'report_date' => '2026-10-28',
@@ -48,11 +48,11 @@ class BotScheduleTest extends TestCase
         $this->assertTrue($schedule->due($account, $this->at('00:10')));
 
         // The file was not there yet: tried again an hour later, and so on until it succeeds.
-        $this->run($account, BotRunStatus::Skipped, '2026-10-29 00:06');
+        $this->botRun($account, BotRunStatus::Skipped, '2026-10-29 00:06');
         $this->assertFalse($schedule->due($account, $this->at('00:30')));
         $this->assertTrue($schedule->due($account, $this->at('01:10')));
 
-        $this->run($account, BotRunStatus::Succeeded, '2026-10-29 01:11');
+        $this->botRun($account, BotRunStatus::Succeeded, '2026-10-29 01:11');
         $this->assertFalse($schedule->due($account, $this->at('09:00')));
         $this->assertFalse($schedule->due($account, $this->at('23:59')));
 
@@ -67,7 +67,7 @@ class BotScheduleTest extends TestCase
 
         $this->assertTrue($schedule->due($account, $this->at('12:00')));
 
-        $this->run($account, BotRunStatus::Succeeded, '2026-10-29 12:00');
+        $this->botRun($account, BotRunStatus::Succeeded, '2026-10-29 12:00');
         $this->assertFalse($schedule->due($account, $this->at('12:20')));
         $this->assertTrue($schedule->due($account, $this->at('12:31')));
     }
