@@ -87,6 +87,18 @@ return [
     ],
 
     /*
+    | What search engines and social networks show for the public pages: the title and description of a link
+    | preview (Google, Telegram, LinkedIn, WhatsApp, X, Slack) and its picture (1200×630).
+    */
+    'seo' => [
+        'title' => 'Sterling Pay — multi-currency merchant settlements',
+        'description' => 'Sterling Pay automates merchant settlements: acquirer and gateway reports collected for you, clearing reconciliation, rolling reserve and USDC payouts in one platform.',
+        'image' => '/images/og-image.png',
+        'image_alt' => 'Sterling Pay: multi-currency merchant settlements',
+        'theme_color' => '#1b2a6b',
+    ],
+
+    /*
     | Business days after a report day by which the acquirer's file for it should have arrived (Cardaq: T+2).
     */
     'bank_file_lag_days' => (int) env('STERLING_BANK_FILE_LAG_DAYS', 2),

@@ -21,9 +21,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<string, mixed>|null $settings
  * @property list<int>|null $mid_ids
  * @property bool $is_active
+ * @property string $schedule_mode
+ * @property int|null $schedule_every_minutes
+ * @property string|null $schedule_at
  * @property-read Provider $provider
  */
-#[Fillable(['provider_id', 'connector', 'name', 'login_url', 'username', 'password', 'totp_secret', 'settings', 'mid_ids', 'is_active'])]
+#[Fillable(['provider_id', 'connector', 'name', 'login_url', 'username', 'password', 'totp_secret', 'settings', 'mid_ids', 'is_active', 'schedule_mode', 'schedule_every_minutes', 'schedule_at'])]
 #[Hidden(['username', 'password', 'totp_secret'])]
 class IntegrationAccount extends Model
 {

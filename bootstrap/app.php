@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureModuleAccess;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\KeepPrivatePagesOutOfSearch;
 use App\Http\Middleware\VerifyBotReportToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        // Global, so a redirect to the login (an exception on the way) carries the header too.
+        $middleware->append(KeepPrivatePagesOutOfSearch::class);
 
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,

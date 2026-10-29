@@ -23,14 +23,19 @@ class BotDispatcher
     /**
      * @return list<BotRun>
      */
-    public function dispatchDue(?string $connectorCode = null): array
+    public function dispatchDue(?string $connectorCode = null, bool $custom = false): array
     {
+        $schedule = app(BotSchedule::class);
         $runs = [];
         foreach ($this->connectors->all() as $code => $connector) {
             if ($connectorCode !== null && $code !== $connectorCode) {
                 continue;
             }
             foreach ($connector->pendingTargets() as $target) {
+                // Accounts with their own rhythm are started by the every-minute pass, the rest by their connector's schedule.
+                if (BotSchedule::isCustom($target->account) !== $custom || ($custom && ! $schedule->due($target->account))) {
+                    continue;
+                }
                 if ($run = $this->queue($connector, $target)) {
                     $runs[] = $run;
                 }

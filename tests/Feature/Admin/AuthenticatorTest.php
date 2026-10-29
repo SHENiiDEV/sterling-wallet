@@ -111,4 +111,18 @@ class AuthenticatorTest extends TestCase
                 ->where('authenticatorCodes.0.name', 'Oxen COSMIC')
                 ->where('authenticatorCodes.0.links.0.name', 'COSMIC BAGEL LTD'));
     }
+
+    public function test_the_link_picker_gets_companies_under_their_client_and_merchants_under_their_company()
+    {
+        $client = Client::query()->create(['name' => 'Kudret']);
+        $company = Company::query()->create(['name' => 'COSMIC BAGEL LTD', 'client_id' => $client->id]);
+        $merchant = Merchant::factory()->create(['company_id' => $company->id, 'website' => 'cosmic.example']);
+
+        $this->actingAs($this->admin)->get(route('admin.authenticator.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('targets.company.0.parent_id', $client->id)
+                ->where('targets.merchant.0.parent_id', $company->id)
+                ->where('targets.merchant.0.hint', 'cosmic.example')
+                ->where('targets.merchant.0.id', $merchant->id));
+    }
 }

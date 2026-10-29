@@ -335,6 +335,10 @@ export type IntegrationAccount = {
     settings: Record<string, unknown> | null;
     mid_ids: number[];
     is_active: boolean;
+    schedule_mode: 'auto' | 'interval' | 'daily';
+    schedule_every_minutes: number | null;
+    schedule_at: string | null;
+    schedule_label: string;
     last_run: BotRun | null;
     failures_in_row: number;
 };

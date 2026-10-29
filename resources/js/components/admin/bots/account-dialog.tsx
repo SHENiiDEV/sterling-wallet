@@ -1,7 +1,7 @@
 import { useForm } from '@inertiajs/react';
 import { MidPicker } from '@/components/admin/bots/mid-picker';
 import type { BotMid } from '@/components/admin/bots/mid-picker';
-import { Field } from '@/components/admin/form';
+import { AffixInput, Field } from '@/components/admin/form';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -83,6 +83,11 @@ export function AccountDialog({
             : '',
         mid_ids: (account?.mid_ids ?? []).map(String),
         is_active: account?.is_active ?? true,
+        schedule_mode: (account?.schedule_mode ?? 'auto') as string,
+        schedule_every_minutes: account?.schedule_every_minutes
+            ? String(account.schedule_every_minutes)
+            : '60',
+        schedule_at: account?.schedule_at ?? '00:05',
     });
     const { data, setData, errors } = form;
     const isCardaq = data.connector === 'cardaq-export';
@@ -325,6 +330,75 @@ export function AccountDialog({
                                 }
                                 className="font-mono text-xs"
                             />
+                        </Field>
+                        <Field
+                            label="Schedule"
+                            error={
+                                errors.schedule_mode ??
+                                errors.schedule_every_minutes ??
+                                errors.schedule_at
+                            }
+                            hint="When the scheduler starts this bot. A run only fetches what is still missing, so a run with nothing to fetch costs nothing."
+                            className="sm:col-span-2"
+                        >
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Select
+                                    value={data.schedule_mode}
+                                    onValueChange={(v) =>
+                                        setData('schedule_mode', v)
+                                    }
+                                >
+                                    <SelectTrigger className="w-64">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="auto">
+                                            Automatic (the bot's own rhythm)
+                                        </SelectItem>
+                                        <SelectItem value="interval">
+                                            Every … minutes
+                                        </SelectItem>
+                                        <SelectItem value="daily">
+                                            Once a day, from a time
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {data.schedule_mode === 'interval' && (
+                                    <div className="w-36">
+                                        <AffixInput
+                                            suffix="min"
+                                            inputMode="numeric"
+                                            value={data.schedule_every_minutes}
+                                            onChange={(e) =>
+                                                setData(
+                                                    'schedule_every_minutes',
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                )}
+                                {data.schedule_mode === 'daily' && (
+                                    <Input
+                                        type="time"
+                                        className="w-32"
+                                        value={data.schedule_at}
+                                        onChange={(e) =>
+                                            setData(
+                                                'schedule_at',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                )}
+                            </div>
+                            {data.schedule_mode === 'daily' && (
+                                <p className="mt-1.5 text-xs text-muted-foreground">
+                                    Report time zone. If the run does not
+                                    succeed (for example the file is not there
+                                    yet), it tries again every hour that day.
+                                </p>
+                            )}
                         </Field>
                         <Field
                             label="MIDs this account covers"

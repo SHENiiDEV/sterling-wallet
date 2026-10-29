@@ -501,6 +501,9 @@ export default function BotsIndex({
                                         </TableCell>
                                         <TableCell className="text-sm">
                                             {connectorLabel(account.connector)}
+                                            <div className="text-xs text-muted-foreground">
+                                                {account.schedule_label}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-sm">
                                             {account.mid_ids.length

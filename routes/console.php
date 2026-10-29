@@ -15,6 +15,8 @@ Schedule::command('bots:dispatch corefy-export')->hourly()->between('06:00', '12
 Schedule::command('bots:dispatch madfin-export')->hourly()->withoutOverlapping();
 // FinBridges (C2B wallet API): pick up new transactions every 10 minutes.
 Schedule::command('bots:dispatch finbridges-api')->everyTenMinutes()->withoutOverlapping();
+// Accounts with their own rhythm (every N minutes, or daily at a set time): checked every minute.
+Schedule::command('bots:dispatch --custom')->everyMinute()->withoutOverlapping();
 Schedule::command('reports:release-due')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reports:reconcile')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reserve:release')->dailyAt('06:10')->withoutOverlapping();

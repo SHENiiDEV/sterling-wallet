@@ -35,6 +35,18 @@ use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
+// For search engines: only the public page is offered; the console, the portal and the API are not.
+Route::get('robots.txt', fn () => response(
+    "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /portal\nDisallow: /api\nDisallow: /settings\nDisallow: /login\n\nSitemap: ".url('/sitemap.xml')."\n",
+    200,
+    ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'public, max-age=3600'],
+))->name('robots');
+Route::get('sitemap.xml', fn () => response(
+    '<?xml version="1.0" encoding="UTF-8"?>'."\n".'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>'.e(url('/')).'</loc><changefreq>monthly</changefreq><priority>1.0</priority></url></urlset>'."\n",
+    200,
+    ['Content-Type' => 'application/xml; charset=UTF-8', 'Cache-Control' => 'public, max-age=3600'],
+))->name('sitemap');
+
 // After login: staff to the admin panel, merchant users to their portal.
 Route::get('dashboard', fn () => auth()->user()?->isStaff() ? redirect()->route('admin.dashboard') : redirect()->route('portal.dashboard'))
     ->middleware('auth')->name('dashboard');
