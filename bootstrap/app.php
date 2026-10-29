@@ -23,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        // Global, so a redirect to the login (an exception on the way) carries the header too.
+        $middleware->append(KeepPrivatePagesOutOfSearch::class);
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
             'merchant' => EnsureMerchantUser::class,
@@ -33,7 +36,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            KeepPrivatePagesOutOfSearch::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
     })

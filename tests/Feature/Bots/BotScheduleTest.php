@@ -7,6 +7,7 @@ use App\Bots\BotSchedule;
 use App\Enums\BotRunStatus;
 use App\Models\BotRun;
 use App\Models\IntegrationAccount;
+use App\Models\Provider;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,10 +19,12 @@ class BotScheduleTest extends TestCase
 {
     use BuildsReportFixtures, RefreshDatabase;
 
+    private ?Provider $provider = null;
+
     private function account(array $attributes): IntegrationAccount
     {
         return IntegrationAccount::query()->create([
-            'provider_id' => $this->corefy()->id, 'connector' => 'corefy-export', 'name' => 'Corefy', 'username' => 'u', 'password' => 'p', ...$attributes,
+            'provider_id' => ($this->provider ??= $this->corefy())->id, 'connector' => 'corefy-export', 'name' => 'Corefy', 'username' => 'u', 'password' => 'p', ...$attributes,
         ]);
     }
 
@@ -31,7 +34,7 @@ class BotScheduleTest extends TestCase
             'connector' => 'corefy-export', 'integration_account_id' => $account->id, 'report_date' => '2026-10-28',
             'target_key' => uniqid('k'), 'target' => [], 'status' => $status,
         ]);
-        $run->forceFill(['created_at' => CarbonImmutable::parse($at, 'Europe/Riga')])->save();
+        $run->forceFill(['created_at' => CarbonImmutable::parse($at, 'Europe/Riga')->utc()])->save();
     }
 
     private function at(string $time): CarbonImmutable
