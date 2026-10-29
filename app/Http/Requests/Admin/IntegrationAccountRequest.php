@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Bots\BotSchedule;
 use App\Bots\ConnectorRegistry;
 use App\Bots\Connectors\CardaqExportConnector;
 use Closure;
@@ -37,6 +38,9 @@ class IntegrationAccountRequest extends FormRequest
             'mid_ids' => ['nullable', 'array'],
             'mid_ids.*' => ['integer', Rule::exists('merchant_mids', 'id')],
             'is_active' => ['boolean'],
+            'schedule_mode' => ['sometimes', Rule::in([BotSchedule::AUTO, BotSchedule::INTERVAL, BotSchedule::DAILY])],
+            'schedule_every_minutes' => ['nullable', 'required_if:schedule_mode,interval', 'integer', 'min:5', 'max:10080'],
+            'schedule_at' => ['nullable', 'required_if:schedule_mode,daily', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
         ];
     }
 
@@ -89,6 +93,13 @@ class IntegrationAccountRequest extends FormRequest
                     $data[$secret] = null;
                 }
             }
+        }
+        // Only the field of the chosen rhythm is kept.
+        if (($data['schedule_mode'] ?? BotSchedule::AUTO) !== BotSchedule::INTERVAL) {
+            $data['schedule_every_minutes'] = null;
+        }
+        if (($data['schedule_mode'] ?? BotSchedule::AUTO) !== BotSchedule::DAILY) {
+            $data['schedule_at'] = null;
         }
         $data['mid_ids'] = empty($data['mid_ids']) ? null : array_map('intval', $data['mid_ids']);
 

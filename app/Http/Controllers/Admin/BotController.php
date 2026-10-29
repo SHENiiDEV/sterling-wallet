@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Bots\BotDispatcher;
+use App\Bots\BotSchedule;
 use App\Bots\ConnectorRegistry;
 use App\Bots\PlaywrightRunner;
 use App\Bots\Target;
@@ -50,6 +51,10 @@ class BotController extends Controller
                 'settings' => $account->settings,
                 'mid_ids' => $account->mid_ids ?? [],
                 'is_active' => $account->is_active,
+                'schedule_mode' => $account->schedule_mode,
+                'schedule_every_minutes' => $account->schedule_every_minutes,
+                'schedule_at' => $account->schedule_at,
+                'schedule_label' => BotSchedule::label($account),
                 'last_run' => $this->runSummary($account->runs()->latest('id')->first()),
                 'failures_in_row' => $this->failuresInRow($account),
             ]),

@@ -7,13 +7,13 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('bots:dispatch {connector? : Only this connector code}')]
+#[Signature('bots:dispatch {connector? : Only this connector code} {--custom : Only accounts with their own schedule that is due now}')]
 #[Description('Queue bot runs for every report file that is due and still missing')]
 class DispatchBotsCommand extends Command
 {
     public function handle(BotDispatcher $dispatcher): int
     {
-        $runs = $dispatcher->dispatchDue($this->argument('connector'));
+        $runs = $dispatcher->dispatchDue($this->argument('connector'), (bool) $this->option('custom'));
 
         foreach ($runs as $run) {
             $this->line("Queued #{$run->id} {$run->connector} {$run->target_key}");
