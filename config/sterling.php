@@ -77,7 +77,8 @@ return [
         // report lists them (Madfin) can switch this on to get the gateway id on every row.
         'include_declines' => false,
         // Rows left with the same card and amount on both sides, as many on each, hours apart: pair them in time order.
-        'pair_leftovers' => true,
+        // Off by default (the window above then really is the limit); a provider whose clearing times lag turns it on.
+        'pair_leftovers' => false,
     ],
 
     /*
