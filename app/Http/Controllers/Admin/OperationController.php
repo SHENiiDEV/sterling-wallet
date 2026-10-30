@@ -30,6 +30,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +38,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OperationController extends Controller
 {
+    /** Most operations one bulk delete may remove. */
+    private const BULK_LIMIT = 20000;
+
     /**
      * @return array<string, mixed>
      */
@@ -294,6 +298,97 @@ class OperationController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Operation deleted.'.$note]);
 
         return to_route('admin.operations.index');
+    }
+
+    /**
+     * Deletes many operations: the ticked ones, or everything the current filters match. Needs "DELETE <count>" typed back
+     * and a reason. Operations in a report that is in an approved or paid settlement are kept: that report is final.
+     */
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'mode' => ['required', 'in:selected,filtered'],
+            'ids' => ['required_if:mode,selected', 'array', 'max:1000'],
+            'ids.*' => ['integer'],
+            'expected' => ['required', 'integer', 'min:1'],
+            'confirm' => ['required', 'string'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+        $filters = $this->filterInput($request);
+
+        if ($data['mode'] === 'filtered') {
+            if (collect($filters)->filter(fn ($v) => $v !== null && $v !== '' && $v !== false)->isEmpty()) {
+                throw ValidationException::withMessages(['mode' => 'Filter the list first: all operations cannot be deleted at once.']);
+            }
+            $query = $this->filtered($filters);
+        } else {
+            $query = MerchantOperation::query()->whereIn('id', $data['ids']);
+        }
+
+        $count = (clone $query)->count();
+        if ($count !== (int) $data['expected']) {
+            throw ValidationException::withMessages(['expected' => "The selection changed: it is now {$count} operation(s), not {$data['expected']}. Look again."]);
+        }
+        if ($count > self::BULK_LIMIT) {
+            throw ValidationException::withMessages(['expected' => 'At most '.self::BULK_LIMIT.' operations at a time: narrow the filters.']);
+        }
+        if (trim($data['confirm']) !== "DELETE {$count}") {
+            throw ValidationException::withMessages(['confirm' => "Type \"DELETE {$count}\" to confirm."]);
+        }
+
+        // Reports that are final keep their operations.
+        $locked = $this->lockedReports($query);
+        $deletable = (clone $query);
+        foreach ($locked as $report) {
+            $deletable->whereNot(fn ($q) => $q->where('merchant_mid_id', $report->merchant_mid_id)->whereBetween('report_date', [$report->period_from->toDateString(), $report->period_to->toDateString()]));
+        }
+
+        $deleted = 0;
+        (clone $deletable)->reorder()->select('merchant_operations.id')->chunkById(1000, function ($chunk) use (&$deleted) {
+            $deleted += MerchantOperation::query()->whereIn('id', $chunk->pluck('id'))->delete();
+        }, 'merchant_operations.id', 'id');
+
+        AuditLogger::log('operations.bulk_deleted', null, [
+            'mode' => $data['mode'],
+            'reason' => $data['reason'],
+            'matched' => $count,
+            'deleted' => $deleted,
+            'kept_in_final_reports' => $count - $deleted,
+            'filters' => $data['mode'] === 'filtered' ? $filters : null,
+            'ids' => $data['mode'] === 'selected' ? array_slice($data['ids'], 0, 100) : null,
+        ]);
+
+        $kept = $count - $deleted;
+        Inertia::flash('toast', ['type' => $deleted > 0 ? 'success' : 'warning', 'message' => "{$deleted} operation(s) deleted."
+            .($kept > 0 ? " {$kept} belong to a report that is already paid out and were kept." : '')
+            .' Reports built for those days are not recalculated: regenerate them in Reports.']);
+
+        return to_route('admin.operations.index', Arr::only($filters, array_keys($filters)));
+    }
+
+    /**
+     * Reports covering the selection that are in an approved or paid settlement, or whose reserve was released.
+     *
+     * @param  Builder<MerchantOperation>  $query
+     * @return Collection<int, DailyReportTask>
+     */
+    private function lockedReports(Builder $query): Collection
+    {
+        $mids = (clone $query)->toBase()->reorder()->whereNotNull('merchant_mid_id')->distinct()->pluck('merchant_mid_id');
+        if ($mids->isEmpty()) {
+            return collect();
+        }
+        $from = (clone $query)->toBase()->reorder()->min('report_date');
+        $to = (clone $query)->toBase()->reorder()->max('report_date');
+
+        return DailyReportTask::query()
+            ->whereIn('merchant_mid_id', $mids)
+            ->where('status', ReportStatus::Completed)
+            ->where('period_to', '>=', $from)
+            ->where('period_from', '<=', $to)
+            ->get()
+            ->filter(fn (DailyReportTask $report) => $report->lockReason() !== null)
+            ->values();
     }
 
     /**
