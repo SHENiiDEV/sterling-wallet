@@ -87,7 +87,7 @@ class ReconciliationService
 
         // What is left: the same card and amount on both sides, as many rows on one side as on the other, but hours apart
         // (a payment retried later, a clearing time far from the authorisation). Paired in time order, up to a day apart.
-        if ($rules['pair_leftovers'] ?? true) {
+        if ($rules['pair_leftovers'] ?? false) {
             [$pairs, $taken] = $this->pairLeftovers($bank, $gate, $pairs, $taken);
         }
 

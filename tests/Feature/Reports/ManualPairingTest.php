@@ -146,6 +146,10 @@ class ManualPairingTest extends TestCase
 
     public function test_leftovers_with_the_same_card_and_amount_pair_even_hours_apart_but_only_when_the_counts_agree()
     {
+        // A provider whose clearing times lag turns this on; elsewhere the window stays the limit.
+        $this->bank->update(['matching' => ['pair_leftovers' => true]]);
+        $this->mid->refresh();
+
         $row = fn ($provider, string $payment, string $at, string $amount) => MerchantOperation::query()->create([
             'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $provider->id,
             'role' => $provider->type, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => OperationType::Sale,

@@ -108,6 +108,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::delete('operations/{operation}/pair', [OperationController::class, 'unpair'])->name('operations.unpair');
         Route::get('operations/{operation}/edit', [OperationController::class, 'edit'])->name('operations.edit');
         Route::put('operations/{operation}', [OperationController::class, 'update'])->name('operations.update');
+        Route::post('operations/bulk-delete', [OperationController::class, 'bulkDestroy'])->name('operations.bulk-destroy');
         Route::delete('operations/{operation}', [OperationController::class, 'destroy'])->name('operations.destroy');
     });
 

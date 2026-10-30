@@ -5,6 +5,7 @@ import {
     Link2Off,
     Plus,
     Search,
+    Trash2,
     X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -17,7 +18,18 @@ import {
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Pagination } from '@/components/admin/pagination';
 import { CurrencyBadge } from '@/components/admin/tone-badge';
+import { Field } from '@/components/admin/form';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -26,6 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import {
     Table,
     TableBody,
@@ -87,6 +100,114 @@ type Props = {
 
 const ALL = 'all';
 
+/** Deleting several operations: the ticked ones, or everything the filters match. */
+function BulkDeleteDialog({
+    count,
+    mode,
+    ids,
+    filters,
+    onClose,
+}: {
+    count: number;
+    mode: 'selected' | 'filtered';
+    ids: number[];
+    filters: Filters;
+    onClose: () => void;
+}) {
+    const [confirm, setConfirm] = useState('');
+    const [reason, setReason] = useState('');
+    const [processing, setProcessing] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const phrase = `DELETE ${count}`;
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-md">
+                <form
+                    className="grid gap-4"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        router.post(
+                            admin.operations.bulkDestroy.url(),
+                            {
+                                mode,
+                                ...(mode === 'selected' ? { ids } : filters),
+                                expected: count,
+                                confirm,
+                                reason,
+                            },
+                            {
+                                preserveScroll: true,
+                                onStart: () => setProcessing(true),
+                                onFinish: () => setProcessing(false),
+                                onError: setErrors,
+                                onSuccess: onClose,
+                            },
+                        );
+                    }}
+                >
+                    <DialogHeader>
+                        <DialogTitle>
+                            Delete {count} operation{count === 1 ? '' : 's'}?
+                        </DialogTitle>
+                        <DialogDescription>
+                            {mode === 'selected'
+                                ? 'The ticked operations are removed for good.'
+                                : 'Everything the current filters match is removed for good, also on other pages.'}{' '}
+                            Reports already built for those days are not
+                            recalculated: regenerate them afterwards. Operations
+                            in a report that is already paid out are kept.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Field
+                        label={`Type “${phrase}” to confirm`}
+                        htmlFor="bulk-confirm"
+                        error={errors.confirm ?? errors.expected ?? errors.mode}
+                    >
+                        <Input
+                            id="bulk-confirm"
+                            autoComplete="off"
+                            value={confirm}
+                            onChange={(e) => setConfirm(e.target.value)}
+                        />
+                    </Field>
+                    <Field
+                        label="Reason"
+                        htmlFor="bulk-reason"
+                        error={errors.reason}
+                    >
+                        <Input
+                            id="bulk-reason"
+                            placeholder="Why these operations are removed"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                        />
+                    </Field>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button type="button" variant="outline">
+                                Cancel
+                            </Button>
+                        </DialogClose>
+                        <Button
+                            type="submit"
+                            variant="destructive"
+                            disabled={
+                                processing ||
+                                confirm.trim() !== phrase ||
+                                reason.trim() === ''
+                            }
+                        >
+                            {processing ? <Spinner /> : <Trash2 />}
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function OperationsIndex({
     operations,
     totals,
@@ -129,6 +250,28 @@ export default function OperationsIndex({
     }, [search]);
 
     const hasFilters = Object.values(filters).some(Boolean);
+
+    // Ticking rows: this page's, or "everything the filters match" (only when the list is filtered).
+    const [selected, setSelected] = useState<number[]>([]);
+    const [allMatching, setAllMatching] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const pageIds = operations.data.map((op) => op.id);
+    const allOnPage =
+        pageIds.length > 0 && pageIds.every((id) => selected.includes(id));
+    const selectedCount = allMatching ? operations.total : selected.length;
+    const filtersKey = JSON.stringify(filters);
+    useEffect(() => {
+        setSelected([]);
+        setAllMatching(false);
+    }, [operations.current_page, filtersKey]);
+    const toggleRow = (id: number, on: boolean) => {
+        setAllMatching(false);
+        setSelected((current) =>
+            on
+                ? [...new Set([...current, id])]
+                : current.filter((x) => x !== id),
+        );
+    };
     const unmatched = filters.unmatched === '1';
 
     const select = (
@@ -415,6 +558,47 @@ export default function OperationsIndex({
                         </div>
                     </div>
 
+                    {selectedCount > 0 && (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-primary/5 px-4 py-2.5 text-sm">
+                            <span className="font-medium">
+                                {allMatching
+                                    ? `All ${operations.total} matching the filters selected`
+                                    : `${selected.length} selected on this page`}
+                            </span>
+                            {!allMatching &&
+                                hasFilters &&
+                                operations.total > pageIds.length &&
+                                allOnPage && (
+                                    <button
+                                        type="button"
+                                        className="text-primary hover:underline"
+                                        onClick={() => setAllMatching(true)}
+                                    >
+                                        Select all {operations.total} matching
+                                        the filters
+                                    </button>
+                                )}
+                            <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                    setSelected([]);
+                                    setAllMatching(false);
+                                }}
+                            >
+                                Clear
+                            </button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                className="ml-auto"
+                                onClick={() => setDeleting(true)}
+                            >
+                                <Trash2 />
+                                Delete…
+                            </Button>
+                        </div>
+                    )}
                     {operations.data.length === 0 ? (
                         <EmptyState
                             icon={ArrowLeftRight}
@@ -429,6 +613,18 @@ export default function OperationsIndex({
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-10">
+                                        <Checkbox
+                                            aria-label="Select all on this page"
+                                            checked={allOnPage}
+                                            onCheckedChange={(on) => {
+                                                setAllMatching(false);
+                                                setSelected(
+                                                    on === true ? pageIds : [],
+                                                );
+                                            }}
+                                        />
+                                    </TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Provider</TableHead>
                                     <TableHead>Type</TableHead>
@@ -454,6 +650,24 @@ export default function OperationsIndex({
                                             )
                                         }
                                     >
+                                        <TableCell
+                                            className="w-10"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <Checkbox
+                                                aria-label="Select operation"
+                                                checked={
+                                                    allMatching ||
+                                                    selected.includes(op.id)
+                                                }
+                                                onCheckedChange={(on) =>
+                                                    toggleRow(
+                                                        op.id,
+                                                        on === true,
+                                                    )
+                                                }
+                                            />
+                                        </TableCell>
                                         <TableCell className="whitespace-nowrap">
                                             <div>
                                                 {formatDate(op.report_date)}
@@ -536,6 +750,15 @@ export default function OperationsIndex({
                     )}
                     <Pagination page={operations} noun="operations" />
                 </div>
+                {deleting && (
+                    <BulkDeleteDialog
+                        count={selectedCount}
+                        mode={allMatching ? 'filtered' : 'selected'}
+                        ids={selected}
+                        filters={filters}
+                        onClose={() => setDeleting(false)}
+                    />
+                )}
             </PageBody>
         </>
     );
