@@ -202,7 +202,7 @@ cd /var/www/wallets/sp-wallet && sudo -u www-data php artisan about && sudo -u w
 ## 11. Наполнение данными (порядок восстановления)
 
 1. **Провайдеры** (Providers): Cardaq, Madfin, Corefy, FinBridges, Oxen и т.д. с формой отчёта, часовым поясом, задержкой (Cardaq 2, Corefy 1) и условиями.
-2. **Условия банков из таблицы:** `php artisan banks:sync-terms` (без `--apply` покажет разницу), `php artisan banks:import /путь/banks.csv` (то же; `--apply`, когда разница устраивает).
+2. **Банки, клиенты, компании и MID под Corefy одной командой:** `sudo -u www-data php artisan db:seed --class=BanksAndMidsSeeder --force`. Создаст Madfin, PayAlly, Cardaq с их условиями, провайдера Corefy, клиентов (1Cap, BazPay, DG, Gold, KK, Payscrow, Zenithal), компании и сайты под ними, записи онбординга банков и по одному MID к Corefy для каждой готовой компании. MID с названием `TBD-…` нужно переименовать на реальный номер (Merchants → MID). Команду можно запускать повторно: ничего не дублируется. Обновить условия банков позже: `php artisan banks:import /путь/banks.csv --apply`.
 3. **Клиенты → компании → мерчанты → MID** (Admin → Clients, Companies, Merchants); тарифы мерчантов, график выплат T+N, кошельки для выплат, e-mail для счетов.
 4. **Праздники** (Admin → Bank holidays) и курсы FX, если вы ведёте их вручную.
 5. **Аккаунты ботов** и **Authenticator codes** (секреты из платформ заново).
@@ -227,12 +227,12 @@ cd /var/www/wallets/sp-wallet && git pull && sudo -u www-data composer install -
 
 1. **Ежедневный дамп** базы, `storage/app` и `.env` скриптом `scripts/backup.sh` (шифрует и хранит 14 дней локально):
 
-   ```bash
-   cd /var/www/wallets/sp-wallet && chmod +x deploy.sh scripts/backup.sh
-   cat > /etc/cron.d/sterling-backup <<'CRON'
-   20 3 * * * root /var/www/wallets/sp-wallet/scripts/backup.sh >> /var/log/sterling-backup.log 2>&1
-   CRON
-   ```
+    ```bash
+    cd /var/www/wallets/sp-wallet && chmod +x deploy.sh scripts/backup.sh
+    cat > /etc/cron.d/sterling-backup <<'CRON'
+    20 3 * * * root /var/www/wallets/sp-wallet/scripts/backup.sh >> /var/log/sterling-backup.log 2>&1
+    CRON
+    ```
 
 2. **Копия за пределы сервера** (другой VPS, S3/Backblaze/Hetzner Storage Box): в скрипте есть переменная `REMOTE` (rsync/rclone). Копия на том же сервере не считается.
 3. **Снапшот диска** у провайдера VPS (включите автоматические), раз в неделю.
@@ -257,11 +257,11 @@ gunzip -c sterling_db_ДАТА.sql.gz | mysql sterling_wallet && tar -xzf sterli
 
 ## 15. Частые проблемы
 
-| Симптом | Причина и решение |
-| --- | --- |
-| 500 после деплоя, в логе «Permission denied» | файлы в `storage` или `bootstrap/cache` стали root-овыми: `chown -R www-data:www-data storage bootstrap/cache` |
-| «Unknown column …» | не применены миграции: `sudo -u www-data php artisan migrate --force && sudo -u www-data php artisan optimize:clear` |
-| Боты не запускаются / ничего не обрабатывается | воркер не работает (`systemctl status sterling-worker`) или нет cron (`cat /etc/cron.d/sterling`) |
-| Загрузка файла: 413 | `client_max_body_size` в nginx или `upload_max_filesize` в PHP меньше файла |
-| Белый экран, `Vite manifest not found` | не выполнен `npm run build` |
-| Бот Cardaq «skipped» | письма ещё нет: нормально, повторит по расписанию |
+| Симптом                                        | Причина и решение                                                                                                    |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 500 после деплоя, в логе «Permission denied»   | файлы в `storage` или `bootstrap/cache` стали root-овыми: `chown -R www-data:www-data storage bootstrap/cache`       |
+| «Unknown column …»                             | не применены миграции: `sudo -u www-data php artisan migrate --force && sudo -u www-data php artisan optimize:clear` |
+| Боты не запускаются / ничего не обрабатывается | воркер не работает (`systemctl status sterling-worker`) или нет cron (`cat /etc/cron.d/sterling`)                    |
+| Загрузка файла: 413                            | `client_max_body_size` в nginx или `upload_max_filesize` в PHP меньше файла                                          |
+| Белый экран, `Vite manifest not found`         | не выполнен `npm run build`                                                                                          |
+| Бот Cardaq «skipped»                           | письма ещё нет: нормально, повторит по расписанию                                                                    |

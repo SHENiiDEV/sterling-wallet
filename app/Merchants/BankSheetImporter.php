@@ -329,8 +329,8 @@ final class BankSheetImporter
                 return $case;
             }
         }
-        // "Integration done" is the "Done" status.
-        if ($enum === IntegrationStatus::class && $key === 'integration_done') {
+        // "Integration done" and "Completed" are the "Done" status.
+        if ($enum === IntegrationStatus::class && in_array($key, ['integration_done', 'completed'], true)) {
             return IntegrationStatus::Done;
         }
         if ($enum === AcquirerStatus::class && $key === 're_brand') {
