@@ -12,7 +12,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 
-#[Signature('finbridges:reload {--from= : First day, YYYY-MM-DD} {--to= : Last day, YYYY-MM-DD (default today)} {--chunk=0 : Split into runs of this many days (0 = one run)} {--account= : Only this bot account id} {--clear : Delete the existing operations, reports and reserve of the covered MIDs first} {--apply : Do it; without it only shows what would happen}')]
+#[Signature('finbridges:reload {--from= : First day, YYYY-MM-DD} {--to= : Last day, YYYY-MM-DD (default today)} {--chunk=0 : Split into runs of this many days (0 = one run)} {--connector=finbridges-api : Bot connector to reload, e.g. corefy-export} {--account= : Only this bot account id} {--clear : Delete the existing operations, reports and reserve of the covered MIDs first} {--apply : Do it; without it only shows what would happen}')]
 #[Description('Reload the history of the FinBridges (C2B) wallets over a date range, optionally clearing what is stored first')]
 class FinBridgesBackfillCommand extends Command
 {
@@ -27,13 +27,13 @@ class FinBridgesBackfillCommand extends Command
         }
 
         $accounts = IntegrationAccount::query()
-            ->where('connector', 'finbridges-api')
+            ->where('connector', $this->option('connector') ?: 'finbridges-api')
             ->when($this->option('account'), fn ($q, $id) => $q->whereKey($id))
             ->where('is_active', true)
             ->get();
 
         if ($accounts->isEmpty()) {
-            $this->error('No active FinBridges bot account.');
+            $this->error('No active bot account for this connector.');
 
             return self::FAILURE;
         }
