@@ -268,4 +268,6 @@ gunzip -c sterling_db_ДАТА.sql.gz | mysql sterling_wallet && tar -xzf sterli
 | Боты не запускаются / ничего не обрабатывается | воркер не работает (`systemctl status sterling-worker`) или нет cron (`cat /etc/cron.d/sterling`)                    |
 | Загрузка файла: 413                            | `client_max_body_size` в nginx или `upload_max_filesize` в PHP меньше файла                                          |
 | Белый экран, `Vite manifest not found`         | не выполнен `npm run build`                                                                                          |
+| 502 только при открытии страницы в новой вкладке | большие заголовки `Link` не помещаются в буфер nginx: добавьте `fastcgi_buffer_size 32k; fastcgi_buffers 16 16k;` в `location ~ \.php$` |
+| «Provider … has no report format set» | у провайдера не заполнен Report format (Admin → Providers): cardaq / corefy / madfin / finbridges |
 | Бот Cardaq «skipped»                           | письма ещё нет: нормально, повторит по расписанию                                                                    |
