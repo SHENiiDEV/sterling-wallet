@@ -65,6 +65,8 @@ class PlaywrightRunner
             error: $payload['error'] ?? null,
             screenshot: $payload['screenshot'] ?? null,
             log: $log,
+            fileDates: array_filter((array) ($payload['file_dates'] ?? []), 'is_string'),
+            emptyDates: array_values(array_filter((array) ($payload['empty_dates'] ?? []), 'is_string')),
         );
     }
 }

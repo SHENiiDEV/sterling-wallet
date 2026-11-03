@@ -6,8 +6,12 @@
  * Laravel marks the day as received with nothing in it.
  *
  * Input (besides the common fields): commerce_account, gte, lt (Unix s),
- * dashboard_url, username, password, totp_secret (optional).
+ * dashboard_url, username, password, totp_secret (optional). With `periods`
+ * ([{report_date, from, to}]) the export covers a whole range and is split into
+ * one file per report period (loading history); `file_dates` and `empty_dates`
+ * tell Laravel which day each file and each empty period belongs to.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import {
     humanClick,
@@ -16,6 +20,7 @@ import {
     randomDelay,
     runConnector,
 } from './lib/runtime.mjs';
+import { parseCsv, splitByPeriod, toCsv } from './lib/csv.mjs';
 import { freshTotp, nextTotpWindow, totp } from './lib/totp.mjs';
 
 const MAX_STATUS_CHECKS = 60;
@@ -132,26 +137,15 @@ async function extractRowsCount(page) {
     return match ? parseInt(match[1], 10) : null;
 }
 
-await runConnector(async (input, page) => {
-    if (!input.username || !input.password)
-        throw new Error(
-            'Corefy login or password is not set on the integration account.',
-        );
-    if (!input.commerce_account)
-        throw new Error('No commerce account (gate MID) for this target.');
-
-    await login(page, input);
-
-    const base = String(
-        input.dashboard_url || 'https://dashboard.paycore.io',
-    ).replace(/\/+$/, '');
+/**
+ * Exports the payment invoices of the commerce account created in [gte, lt) and downloads the CSV.
+ * Returns { rows, file } (file is null for an empty export).
+ */
+async function exportInvoices(page, input, base, gte, lt, fileName) {
     const url =
         `${base}/transactions/payment-invoices?sort=-created` +
         `&filter%5Bcommerce_account%5D=${encodeURIComponent(input.commerce_account)}` +
-        `&filter%5Bcreated%5D%5Blt%5D=${input.lt}&filter%5Bcreated%5D%5Bgte%5D=${input.gte}`;
-    log(
-        `Report ${input.report_date} (${input.from} — ${input.to}), account ${input.commerce_account}`,
-    );
+        `&filter%5Bcreated%5D%5Blt%5D=${lt}&filter%5Bcreated%5D%5Bgte%5D=${gte}`;
     await page.goto(url, { waitUntil: 'networkidle' });
     await randomDelay(2000, 3500);
 
@@ -204,6 +198,118 @@ await runConnector(async (input, page) => {
     const rows = await extractRowsCount(page);
     log(`Rows: ${rows ?? 'unknown'}`);
     if (rows === 0) {
+        return { rows: 0, file: null };
+    }
+
+    const csvButton = page.locator('button:has-text("Download csv")').first();
+    const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 30000 }),
+        humanClick(csvButton),
+    ]);
+    const file = path.join(input.download_dir, fileName);
+    await download.saveAs(file);
+    log('Saved', file);
+
+    return { rows, file };
+}
+
+await runConnector(async (input, page) => {
+    if (!input.username || !input.password)
+        throw new Error(
+            'Corefy login or password is not set on the integration account.',
+        );
+    if (!input.commerce_account)
+        throw new Error('No commerce account (gate MID) for this target.');
+
+    await login(page, input);
+
+    const base = String(
+        input.dashboard_url || 'https://dashboard.paycore.io',
+    ).replace(/\/+$/, '');
+    const safeAccount = String(input.commerce_account).replace(
+        /[^a-zA-Z0-9_-]/g,
+        '_',
+    );
+
+    // A range of days (loading history): one export for the whole range, then one file per report period.
+    if (Array.isArray(input.periods) && input.periods.length > 0) {
+        log(
+            `Range ${input.from} — ${input.to} (${input.periods.length} report period(s)), account ${input.commerce_account}`,
+        );
+        const whole = await exportInvoices(
+            page,
+            input,
+            base,
+            input.gte,
+            input.lt,
+            `corefy_${safeAccount}_range_${input.from}_${input.to}.csv`,
+        );
+
+        const emptyDates = input.periods.map((p) => p.report_date);
+        if (whole.file === null) {
+            return {
+                status: 'succeeded',
+                rows: 0,
+                files: [],
+                empty_dates: emptyDates,
+                report_date: input.report_date,
+            };
+        }
+
+        const [header, ...rows] = parseCsv(fs.readFileSync(whole.file, 'utf8'));
+        const { byPeriod, outside } = splitByPeriod(
+            header,
+            rows,
+            input.periods,
+            input.timezone || 'UTC',
+        );
+        if (outside > 0)
+            log(
+                `${outside} row(s) fall outside the requested days and are left out.`,
+            );
+
+        const files = [];
+        const fileDates = {};
+        const empty = [];
+        for (const period of input.periods) {
+            const periodRows = byPeriod.get(period.report_date) ?? [];
+            if (periodRows.length === 0) {
+                empty.push(period.report_date);
+                continue;
+            }
+            const file = path.join(
+                input.download_dir,
+                `corefy_${safeAccount}_${period.report_date}.csv`,
+            );
+            fs.writeFileSync(file, toCsv([header, ...periodRows]));
+            files.push(file);
+            fileDates[file] = period.report_date;
+            log(`${period.report_date}: ${periodRows.length} row(s)`);
+        }
+        fs.rmSync(whole.file, { force: true });
+
+        return {
+            status: 'succeeded',
+            rows: rows.length - outside,
+            files,
+            file_dates: fileDates,
+            empty_dates: empty,
+            report_date: input.report_date,
+        };
+    }
+
+    log(
+        `Report ${input.report_date} (${input.from} — ${input.to}), account ${input.commerce_account}`,
+    );
+    const day = await exportInvoices(
+        page,
+        input,
+        base,
+        input.gte,
+        input.lt,
+        `corefy_${safeAccount}_${input.report_date}.csv`,
+    );
+    if (day.file === null) {
         return {
             status: 'succeeded',
             rows: 0,
@@ -212,26 +318,10 @@ await runConnector(async (input, page) => {
         };
     }
 
-    const csvButton = page.locator('button:has-text("Download csv")').first();
-    const [download] = await Promise.all([
-        page.waitForEvent('download', { timeout: 30000 }),
-        humanClick(csvButton),
-    ]);
-    const safeAccount = String(input.commerce_account).replace(
-        /[^a-zA-Z0-9_-]/g,
-        '_',
-    );
-    const file = path.join(
-        input.download_dir,
-        `corefy_${safeAccount}_${input.report_date}.csv`,
-    );
-    await download.saveAs(file);
-    log('Saved', file);
-
     return {
         status: 'succeeded',
-        rows,
-        files: [file],
+        rows: day.rows,
+        files: [day.file],
         report_date: input.report_date,
     };
 });

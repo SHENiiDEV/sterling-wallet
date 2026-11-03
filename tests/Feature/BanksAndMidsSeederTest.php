@@ -32,6 +32,8 @@ class BanksAndMidsSeederTest extends TestCase
         $this->assertTrue($cardaq->matchingRules()['pair_leftovers']);
 
         $this->assertSame('payally', Provider::query()->where('code', 'payally')->sole()->code);
+        $finbridges = Provider::query()->where('code', 'finbridges')->sole();
+        $this->assertSame(['finbridges', 'finbridges-api', 'UTC'], [$finbridges->report_format, $finbridges->connector, $finbridges->timezone]);
         $corefy = Provider::query()->where('code', 'corefy')->sole();
         $this->assertSame(['corefy-export', 1], [$corefy->connector, $corefy->report_delay_days]);
 

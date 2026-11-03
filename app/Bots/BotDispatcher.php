@@ -82,13 +82,15 @@ class BotDispatcher
     }
 
     /**
-     * Fetch an arbitrary range of days in one run. Only for connectors that book every row to its own day
-     * (the wallet API), since the run's report date is just the last day of the range.
+     * Fetch an arbitrary range of days: one run for connectors that book every row to its own day (the wallet API),
+     * several chunked runs for connectors that split the range themselves (Corefy).
+     *
+     * @return list<BotRun>
      */
-    public function queueRange(IntegrationAccount $account, CarbonImmutable $from, CarbonImmutable $to, ?User $by = null): ?BotRun
+    public function queueRange(IntegrationAccount $account, CarbonImmutable $from, CarbonImmutable $to, ?User $by = null): array
     {
         $connector = $this->connectors->get($account->connector);
-        if (! $connector instanceof IngestsByRowDate) {
+        if (! $connector instanceof RangeRuns && ! $connector instanceof IngestsByRowDate) {
             throw new InvalidArgumentException("{$account->connector} cannot fetch a range of days.");
         }
 
@@ -97,10 +99,20 @@ class BotDispatcher
             throw new InvalidArgumentException('This account covers no MIDs yet.');
         }
 
-        $period = new ReportPeriod($to, $from, $to);
-        $key = 'range:'.$from->toDateString().':'.$to->toDateString();
+        if ($connector instanceof RangeRuns) {
+            $targets = $connector->rangeTargets($account, $from, $to, $mids);
+        } else {
+            $targets = [new Target($account, new ReportPeriod($to, $from, $to), $mids, ['key' => 'range:'.$from->toDateString().':'.$to->toDateString()])];
+        }
 
-        return $this->queue($connector, new Target($account, $period, $mids, ['key' => $key]), $by);
+        $runs = [];
+        foreach ($targets as $target) {
+            if ($run = $this->queue($connector, $target, $by)) {
+                $runs[] = $run;
+            }
+        }
+
+        return $runs;
     }
 
     /**

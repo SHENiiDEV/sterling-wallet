@@ -143,6 +143,8 @@ return [
         // depend on which user (root, www-data) installed it. Fill it with
         // `cd bots && npm run install-browser`.
         'browsers_path' => env('BOTS_BROWSERS_PATH', base_path('bots/.browsers')),
+        // History loads: days of reports one Corefy run exports at once (split into one file per report day).
+        'range_days_per_run' => (int) env('BOTS_RANGE_DAYS_PER_RUN', 14),
         'timeout_seconds' => (int) env('BOTS_TIMEOUT_SECONDS', 900),
         'headless' => (bool) env('BOTS_HEADLESS', true),
         'proxy' => env('BOTS_HTTP_PROXY'),
