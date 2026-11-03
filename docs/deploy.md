@@ -132,6 +132,10 @@ server {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.4-fpm.sock;
         fastcgi_read_timeout 120;
+        # Страницы в новой вкладке приходят с большими заголовками Link (предзагрузка): без этого nginx отвечает 502.
+        fastcgi_buffer_size 32k;
+        fastcgi_buffers 16 16k;
+        fastcgi_busy_buffers_size 32k;
     }
 
     location ~ /\.(?!well-known) { deny all; }

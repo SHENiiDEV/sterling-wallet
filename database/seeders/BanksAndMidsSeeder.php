@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Enums\MidStatus;
 use App\Enums\ProviderType;
+use App\Enums\TariffProduct;
 use App\Merchants\BankSheetImporter;
 use App\Models\Client;
 use App\Models\Company;
@@ -86,6 +87,7 @@ CSV;
     public function run(): void
     {
         $corefy = $this->corefy();
+        $this->finBridges();
 
         foreach (self::CLIENTS as $name) {
             Client::query()->firstOrCreate(['name' => $name]);
@@ -119,6 +121,17 @@ CSV;
         $corefy->update(['report_format' => 'corefy', 'connector' => 'corefy-export', 'report_delay_days' => 1]);
 
         return $corefy;
+    }
+
+    /**
+     * The C2B wallet API: bank transfers, no card schemes and no gateway. Its costs come from the contract (Providers).
+     */
+    private function finBridges(): void
+    {
+        $structure = ['report_format' => 'finbridges', 'connector' => 'finbridges-api', 'timezone' => 'UTC', 'product' => TariffProduct::C2b];
+
+        Provider::query()->firstOrCreate(['code' => 'finbridges'], ['name' => 'FinBridges', 'type' => ProviderType::Bank, 'is_active' => true, ...$structure])
+            ->update($structure);
     }
 
     /**
