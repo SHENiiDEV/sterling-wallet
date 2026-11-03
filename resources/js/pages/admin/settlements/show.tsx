@@ -928,14 +928,24 @@ function ApproveDialog({
 function SettleDialog({
     settlement,
     onClose,
+    record = false,
 }: {
     settlement: Props['settlement'];
     onClose: () => void;
+    /** A draft paid in the past: approve and pay in one step, dated. */
+    record?: boolean;
 }) {
-    const form = useForm<{ tx_hash: string; proof: File | null }>({
+    const today = new Date().toISOString().slice(0, 10);
+    const form = useForm<{
+        tx_hash: string;
+        paid_on: string;
+        proof: File | null;
+    }>({
         tx_hash: '',
+        paid_on: today,
         proof: null,
     });
+    const backdated = record || form.data.paid_on !== today;
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -944,7 +954,10 @@ function SettleDialog({
                     className="grid gap-4"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        form.post(admin.settlements.settle.url(settlement.id), {
+                        const url = record
+                            ? admin.settlements.record.url(settlement.id)
+                            : admin.settlements.settle.url(settlement.id);
+                        form.post(url, {
                             forceFormData: true,
                             preserveScroll: true,
                             onSuccess: onClose,
@@ -953,16 +966,38 @@ function SettleDialog({
                 >
                     <DialogHeader>
                         <DialogTitle>
-                            Mark {settlement.number} as paid
+                            {record ? 'Record' : 'Mark'} {settlement.number} as
+                            paid
                         </DialogTitle>
                         <DialogDescription>
                             {formatMoney(settlement.total_payout)}{' '}
-                            {settlement.payout_currency} sent. Record the
-                            transaction and attach the confirmation.
+                            {settlement.payout_currency}{' '}
+                            {record
+                                ? 'was already paid. The settlement is approved and paid with the date below; use this to restore history.'
+                                : 'sent. Record the transaction and attach the confirmation.'}
                         </DialogDescription>
                     </DialogHeader>
                     <Field
-                        label="Transaction hash"
+                        label="Paid on"
+                        htmlFor="paid_on"
+                        error={form.errors.paid_on}
+                    >
+                        <Input
+                            id="paid_on"
+                            type="date"
+                            max={today}
+                            value={form.data.paid_on}
+                            onChange={(e) =>
+                                form.setData('paid_on', e.target.value)
+                            }
+                        />
+                    </Field>
+                    <Field
+                        label={
+                            backdated
+                                ? 'Transaction hash (optional)'
+                                : 'Transaction hash'
+                        }
                         htmlFor="tx"
                         error={form.errors.tx_hash}
                     >
@@ -1000,7 +1035,11 @@ function SettleDialog({
                         </DialogClose>
                         <Button
                             type="submit"
-                            disabled={form.processing || !form.data.tx_hash}
+                            disabled={
+                                form.processing ||
+                                !form.data.paid_on ||
+                                (!backdated && !form.data.tx_hash)
+                            }
                         >
                             {form.processing && <Spinner />}
                             Mark as paid
@@ -1087,7 +1126,7 @@ export default function SettlementShow({
     availableReleases,
 }: Props) {
     const [dialog, setDialog] = useState<
-        'add' | 'adjust' | 'approve' | 'settle' | 'cancel' | null
+        'add' | 'adjust' | 'approve' | 'settle' | 'record' | 'cancel' | null
     >(null);
     const draft = settlement.status === 'draft';
     const currencies = Array.from(new Set(lines.map((l) => l.currency)));
@@ -1201,6 +1240,15 @@ export default function SettlementShow({
                                 <Button onClick={() => setDialog('approve')}>
                                     <Check />
                                     Approve
+                                </Button>
+                            )}
+                            {draft && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setDialog('record')}
+                                >
+                                    <FileCheck2 />
+                                    Record as paid (past date)
                                 </Button>
                             )}
                             {settlement.status === 'approved' && (
@@ -1674,6 +1722,13 @@ export default function SettlementShow({
             )}
             {dialog === 'settle' && (
                 <SettleDialog
+                    settlement={settlement}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog === 'record' && (
+                <SettleDialog
+                    record
                     settlement={settlement}
                     onClose={() => setDialog(null)}
                 />

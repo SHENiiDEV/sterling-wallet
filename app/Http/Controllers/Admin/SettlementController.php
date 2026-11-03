@@ -20,6 +20,7 @@ use App\Settlements\SettlementSchedule;
 use App\Settlements\SettlementService;
 use App\Settlements\SettlementStatementPdf;
 use App\Support\ProductScope;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -288,14 +289,36 @@ class SettlementController extends Controller
     public function settle(Request $request, Settlement $settlement): RedirectResponse
     {
         $data = $request->validate([
-            'tx_hash' => ['required', 'string', 'max:128'],
+            // A payment dated in the past (restoring history) may lack its hash.
+            'tx_hash' => ['nullable', 'required_without:paid_on', 'string', 'max:128'],
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
             'proof' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,webp', 'max:10240'],
         ]);
 
         $proof = $request->file('proof')?->store("settlements/{$settlement->id}", 'local');
-        $this->settlements->markSettled($settlement, $request->user(), trim($data['tx_hash']), $proof ?: null);
+        $this->settlements->markSettled($settlement, $request->user(), isset($data['tx_hash']) ? trim($data['tx_hash']) : null, $proof ?: null, isset($data['paid_on']) ? CarbonImmutable::parse($data['paid_on'])->setTime(12, 0) : null);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "{$settlement->number} marked as paid."]);
+
+        return back();
+    }
+
+    /**
+     * A draft that was paid in the past: approve and pay it in one step, dated the day it was really paid.
+     */
+    public function record(Request $request, Settlement $settlement): RedirectResponse
+    {
+        $data = $request->validate([
+            'paid_on' => ['required', 'date', 'before_or_equal:today'],
+            'tx_hash' => ['nullable', 'string', 'max:128'],
+            'proof' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,webp', 'max:10240'],
+        ]);
+        $this->assertDraft($settlement);
+
+        $proof = $request->file('proof')?->store("settlements/{$settlement->id}", 'local');
+        $this->settlements->recordPaid($settlement, $request->user(), CarbonImmutable::parse($data['paid_on']), filled($data['tx_hash'] ?? null) ? trim($data['tx_hash']) : null, $proof ?: null);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "{$settlement->number} recorded as paid on {$data['paid_on']}."]);
 
         return back();
     }

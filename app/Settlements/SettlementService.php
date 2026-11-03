@@ -412,7 +412,7 @@ class SettlementService
             ->values();
     }
 
-    public function approve(Settlement $settlement, User $by, bool $confirmEarly = false): Settlement
+    public function approve(Settlement $settlement, User $by, bool $confirmEarly = false, ?CarbonImmutable $at = null): Settlement
     {
         $this->assertEditable($settlement);
 
@@ -438,13 +438,13 @@ class SettlementService
             throw ValidationException::withMessages(['wallet_id' => 'Choose the merchant wallet to pay to.']);
         }
 
-        $settlement->update(['status' => SettlementStatus::Approved, 'approved_by' => $by->id, 'approved_at' => now()]);
+        $settlement->update(['status' => SettlementStatus::Approved, 'approved_by' => $by->id, 'approved_at' => $at ?? now()]);
         AuditLogger::log('settlement.approved', $settlement, ['total' => $settlement->total_payout]);
 
         return $settlement;
     }
 
-    public function markSettled(Settlement $settlement, User $by, string $txHash, ?string $proofPath = null): Settlement
+    public function markSettled(Settlement $settlement, User $by, ?string $txHash, ?string $proofPath = null, ?CarbonImmutable $at = null): Settlement
     {
         if ($settlement->status !== SettlementStatus::Approved) {
             throw ValidationException::withMessages(['settlement' => 'Only an approved settlement can be marked as paid.']);
@@ -453,13 +453,31 @@ class SettlementService
         $settlement->update([
             'status' => SettlementStatus::Settled,
             'settled_by' => $by->id,
-            'settled_at' => now(),
+            'settled_at' => $at ?? now(),
             'tx_hash' => $txHash,
             'proof_path' => $proofPath ?? $settlement->proof_path,
         ]);
         AuditLogger::log('settlement.settled', $settlement, ['tx_hash' => $txHash]);
 
         return $settlement;
+    }
+
+    /**
+     * Restoring history: a draft that was paid in the past is approved and paid in one step, both dated
+     * the day it was really paid. Payout-before-due checks are skipped (it is already done).
+     */
+    public function recordPaid(Settlement $settlement, User $by, CarbonImmutable $paidOn, ?string $txHash = null, ?string $proofPath = null): Settlement
+    {
+        return DB::transaction(function () use ($settlement, $by, $paidOn, $txHash, $proofPath) {
+            $at = $paidOn->setTime(12, 0);
+            $this->approve($settlement, $by, true, $at);
+            if ($settlement->created_at === null || $settlement->created_at->greaterThan($at)) {
+                $settlement->forceFill(['created_at' => $at])->save();
+            }
+            AuditLogger::log('settlement.backdated', $settlement, ['paid_on' => $paidOn->toDateString()]);
+
+            return $this->markSettled($settlement, $by, $txHash, $proofPath, $at);
+        });
     }
 
     /**

@@ -156,6 +156,38 @@ class SettlementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('totals.0.paid_out', 273.58)->where('totals.0.payout', 273.58));
     }
 
+    public function test_a_draft_can_be_recorded_as_paid_on_a_past_date_without_a_hash()
+    {
+        $report = $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+
+        // A future date is refused; a past one approves and pays the draft in one step, dated that day.
+        $this->actingAs($this->admin)->post(route('admin.settlements.record', $settlement), ['paid_on' => now()->addDay()->toDateString()])
+            ->assertSessionHasErrors('paid_on');
+        $this->actingAs($this->admin)->post(route('admin.settlements.record', $settlement), ['paid_on' => '2026-09-20'])
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $this->assertSame(SettlementStatus::Settled, $settlement->status);
+        $this->assertSame('2026-09-20', $settlement->approved_at->toDateString());
+        $this->assertSame('2026-09-20', $settlement->settled_at->toDateString());
+        $this->assertSame('2026-09-20', $settlement->created_at->toDateString());
+        $this->assertNull($settlement->tx_hash);
+        $this->assertStringContainsString($settlement->number, (string) $report->fresh()->lockReason());
+    }
+
+    public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
+    {
+        $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        app(SettlementService::class)->approve($settlement, $this->admin);
+
+        $this->actingAs($this->admin)->post(route('admin.settlements.settle', $settlement), ['paid_on' => '2026-09-18', 'tx_hash' => '0xold'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-09-18', $settlement->fresh()->settled_at->toDateString());
+    }
+
     public function test_a_report_is_paid_by_only_one_active_settlement_and_cancel_frees_it()
     {
         $this->report();
