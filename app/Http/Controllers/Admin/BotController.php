@@ -150,12 +150,12 @@ class BotController extends Controller
         ]);
 
         try {
-            $run = $dispatcher->queueRange($account, CarbonImmutable::parse($data['from']), CarbonImmutable::parse($data['to']), $request->user());
+            $runs = $dispatcher->queueRange($account, CarbonImmutable::parse($data['from']), CarbonImmutable::parse($data['to']), $request->user());
         } catch (InvalidArgumentException $e) {
             throw ValidationException::withMessages(['from' => $e->getMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => $run ? 'success' : 'info', 'message' => $run ? "Run queued for {$data['from']} – {$data['to']}." : 'A run for this range is already queued.']);
+        Inertia::flash('toast', ['type' => $runs ? 'success' : 'info', 'message' => $runs ? count($runs)." run(s) queued for {$data['from']} – {$data['to']}." : 'Runs for this range are already queued.']);
 
         return to_route('admin.bots.index');
     }

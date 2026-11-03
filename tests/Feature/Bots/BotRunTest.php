@@ -131,6 +131,28 @@ class BotRunTest extends TestCase
         $this->assertSame($account->id, $run->integration_account_id);
     }
 
+    public function test_a_range_run_ingests_one_file_per_day_and_marks_empty_days()
+    {
+        $file = $this->corefyCsv(day: '2026-09-15')->getPathname();
+        $this->fakeRunner(fn () => new BotResult(
+            BotRunStatus::Succeeded, files: [$file], rows: 5, reportDate: CarbonImmutable::parse('2026-09-16'),
+            fileDates: [$file => '2026-09-15'], emptyDates: ['2026-09-16'],
+        ));
+        $account = $this->account();
+        $run = BotRun::query()->create([
+            'connector' => 'corefy-export', 'integration_account_id' => $account->id, 'report_date' => '2026-09-16',
+            'target_key' => 'range', 'status' => BotRunStatus::Queued,
+            'target' => ['report_date' => '2026-09-16', 'from' => '2026-09-15', 'to' => '2026-09-16', 'mid_ids' => [$this->mid->id], 'params' => ['commerce_account' => 'coma_TEST1']],
+        ]);
+
+        app()->call([new RunConnectorJob($run->id), 'handle']);
+
+        $this->assertSame(BotRunStatus::Succeeded, $run->fresh()->status);
+        $this->assertSame(5, $this->mid->operations()->count());
+        $this->assertSame(0, (int) DailyReportTask::query()->where('report_date', '2026-09-16')->sole()->sources()->sole()->rows_count);
+        $this->assertSame(5, (int) DailyReportTask::query()->where('report_date', '2026-09-15')->sole()->sources()->sole()->rows_count);
+    }
+
     public function test_zero_rows_marks_the_day_as_received()
     {
         $this->fakeRunner(fn () => new BotResult(BotRunStatus::Succeeded, files: [], rows: 0));

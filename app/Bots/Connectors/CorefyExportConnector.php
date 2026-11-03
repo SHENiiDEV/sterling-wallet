@@ -2,8 +2,10 @@
 
 namespace App\Bots\Connectors;
 
+use App\Bots\RangeRuns;
 use App\Bots\Target;
 use App\Models\IntegrationAccount;
+use App\Reports\ReportDateResolver;
 use App\Reports\ReportPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -12,7 +14,7 @@ use Illuminate\Support\Collection;
  * Corefy (Paycore dashboard): exports payment invoices of one commerce
  * account for the report period. One target per commerce account and period.
  */
-class CorefyExportConnector extends PlaywrightConnector
+class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
 {
     public function code(): string
     {
@@ -42,11 +44,65 @@ class CorefyExportConnector extends PlaywrightConnector
         }
     }
 
+    /**
+     * History in a few runs: the range is cut into whole report periods (a Friday–Sunday bundle stays together), the
+     * periods into chunks of about `sterling.bots.range_days_per_run` days, and each chunk is one export per commerce
+     * account that the bot splits into one file per period.
+     */
+    public function rangeTargets(IntegrationAccount $account, CarbonImmutable $from, CarbonImmutable $to, Collection $mids): iterable
+    {
+        $resolver = app(ReportDateResolver::class);
+        $periods = [];
+        for ($cursor = $from; $cursor->lessThanOrEqualTo($to); $cursor = $periods[array_key_last($periods)]->to->addDay()) {
+            $periods[] = $resolver->periodFor($cursor);
+        }
+
+        $limit = max(1, (int) config('sterling.bots.range_days_per_run', 14));
+        $chunks = [];
+        $current = [];
+        $days = 0;
+        foreach ($periods as $period) {
+            $length = (int) $period->from->diffInDays($period->to) + 1;
+            if ($current !== [] && $days + $length > $limit) {
+                $chunks[] = $current;
+                $current = [];
+                $days = 0;
+            }
+            $current[] = $period;
+            $days += $length;
+        }
+        if ($current !== []) {
+            $chunks[] = $current;
+        }
+
+        $byAccount = [];
+        foreach ($mids as $mid) {
+            foreach ($mid->gateAccounts() ?: [$mid->mid] as $commerceAccount) {
+                $byAccount[$commerceAccount][] = $mid;
+            }
+        }
+
+        foreach ($chunks as $chunk) {
+            $first = $chunk[0];
+            $last = $chunk[array_key_last($chunk)];
+            $span = new ReportPeriod($last->to, $first->from, $last->to);
+
+            foreach ($byAccount as $commerceAccount => $group) {
+                yield new Target($account, $span, collect($group)->values(), [
+                    'key' => "range:{$first->from->toDateString()}:{$last->to->toDateString()}:{$commerceAccount}",
+                    'commerce_account' => (string) $commerceAccount,
+                    'periods' => array_map(fn (ReportPeriod $p) => ['report_date' => $p->reportDate->toDateString(), 'from' => $p->from->toDateString(), 'to' => $p->to->toDateString()], $chunk),
+                ]);
+            }
+        }
+    }
+
     protected function input(Target $target): array
     {
         $timezone = $target->account->provider->timezone;
 
         return [
+            'periods' => $target->params['periods'] ?? null,
             'login_url' => $target->account->login_url ?: 'https://dashboard.paycore.io/login',
             'dashboard_url' => $target->account->setting('dashboard_url', 'https://dashboard.paycore.io'),
             'commerce_account' => $target->params['commerce_account'] ?? null,

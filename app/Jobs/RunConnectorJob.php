@@ -10,6 +10,7 @@ use App\Bots\Target;
 use App\Enums\BotRunStatus;
 use App\Models\BotRun;
 use App\Reports\Ingestion\ReportIngestionService;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -117,6 +118,14 @@ class RunConnectorJob implements ShouldQueue
         $provider = $run->account->provider;
         $date = $byRowDate ? null : ($result->reportDate ?? $target->period->reportDate);
 
+        // A range run: the days it found nothing for are received with nothing in them.
+        foreach ($result->emptyDates as $emptyDay) {
+            $ingestion->markEmpty($provider, CarbonImmutable::parse($emptyDay), $target->mids, $run);
+        }
+        if ($result->emptyDates !== [] && $result->files === []) {
+            return;
+        }
+
         if ($result->isEmptyReport()) {
             if ($date !== null) {
                 $ingestion->markEmpty($provider, $date, $target->mids, $run);
@@ -130,7 +139,8 @@ class RunConnectorJob implements ShouldQueue
             if (! is_file($path)) {
                 throw new RuntimeException("Downloaded file is missing: {$path}");
             }
-            $rows += $ingestion->ingest($provider, new SplFileInfo($path), $date, $run, $target->mids)->rows;
+            $fileDate = isset($result->fileDates[$path]) ? CarbonImmutable::parse($result->fileDates[$path]) : $date;
+            $rows += $ingestion->ingest($provider, new SplFileInfo($path), $fileDate, $run, $target->mids)->rows;
         }
         $run->rows_count ??= $rows;
     }

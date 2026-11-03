@@ -74,13 +74,13 @@ class FinBridgesBackfillCommand extends Command
                 }
 
                 try {
-                    $run = $dispatcher->queueRange($account, $start, $end);
+                    $runs = $dispatcher->queueRange($account, $start, $end);
                 } catch (InvalidArgumentException $e) {
                     $this->error("{$label}: {$e->getMessage()}");
 
                     continue;
                 }
-                $this->line($run ? "Queued #{$run->id} {$label}" : "Already queued: {$label}");
+                $this->line($runs ? 'Queued #'.implode(', #', array_map(fn ($r) => $r->id, $runs))." {$label}" : "Already queued: {$label}");
             }
         }
 

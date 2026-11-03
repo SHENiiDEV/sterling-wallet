@@ -178,7 +178,7 @@ class OperationsAndBotsTest extends TestCase
             'provider_id' => $corefy->id, 'connector' => 'finbridges-api', 'name' => 'FinBridges', 'username' => 'k', 'password' => 's',
         ]);
         $report = IntegrationAccount::query()->create([
-            'provider_id' => $corefy->id, 'connector' => 'corefy-export', 'name' => 'Corefy', 'username' => 'u', 'password' => 'p',
+            'provider_id' => $corefy->id, 'connector' => 'madfin-export', 'name' => 'Madfin', 'username' => 'u', 'password' => 'p',
         ]);
 
         $this->actingAs($this->admin)->post(route('admin.bots.accounts.run', $wallet), ['from' => '2026-08-01', 'to' => '2026-09-12'])
@@ -193,6 +193,31 @@ class OperationsAndBotsTest extends TestCase
         $this->assertSame(1, BotRun::query()->count());
         $this->post(route('admin.bots.accounts.run', $wallet), ['from' => '2026-09-12', 'to' => '2026-08-01'])->assertSessionHasErrors('from');
         $this->post(route('admin.bots.accounts.run', $report), ['from' => '2026-08-01', 'to' => '2026-09-12'])->assertSessionHasErrors('from');
+    }
+
+    public function test_a_corefy_range_is_cut_into_chunks_of_whole_report_periods()
+    {
+        Queue::fake();
+        config(['sterling.bots.range_days_per_run' => 7]);
+        $corefy = $this->corefy();
+        $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy);
+        $account = IntegrationAccount::query()->create([
+            'provider_id' => $corefy->id, 'connector' => 'corefy-export', 'name' => 'Corefy', 'username' => 'u', 'password' => 'p',
+        ]);
+
+        // Mon 2026-08-31 .. Sun 2026-09-13: the Fri–Sun bundle 11–13 Sep stays whole.
+        $this->actingAs($this->admin)->post(route('admin.bots.accounts.run', $account), ['from' => '2026-08-31', 'to' => '2026-09-13'])
+            ->assertSessionHasNoErrors();
+
+        $runs = BotRun::query()->orderBy('id')->get();
+        $this->assertCount(2, $runs);
+        $this->assertSame('coma_TEST1', $runs[0]->target['params']['commerce_account']);
+        $this->assertSame('2026-08-31', $runs[0]->target['from']);
+        $this->assertSame('2026-09-13', $runs[1]->target['to']);
+        $this->assertSame('2026-09-13', $runs[1]->target['params']['periods'][array_key_last($runs[1]->target['params']['periods'])]['report_date']);
+
+        $this->post(route('admin.bots.accounts.run', $account), ['from' => '2026-08-31', 'to' => '2026-09-13']);
+        $this->assertSame(2, BotRun::query()->count());
     }
 
     public function test_run_now_and_retry_queue_runs()

@@ -79,7 +79,9 @@ function RunNowDialog({
     account: IntegrationAccount;
     onClose: () => void;
 }) {
-    const canRange = account.connector === 'finbridges-api';
+    const canRange = ['finbridges-api', 'corefy-export'].includes(
+        account.connector,
+    );
     const [range, setRange] = useState(false);
     const form = useForm({
         report_date: yesterday(),
