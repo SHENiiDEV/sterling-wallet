@@ -173,6 +173,47 @@ class MerchantTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('admin/merchants/show')->has('merchant.mids', 3));
     }
 
+    public function test_a_gateway_account_cannot_front_two_mids_of_the_same_currency()
+    {
+        $client = Client::query()->create(['name' => 'Acme']);
+        $company = Company::factory()->create(['client_id' => $client->id]);
+        $merchant = Merchant::factory()->create(['company_id' => $company->id]);
+        $bank = Provider::factory()->create();
+        $gate = Provider::factory()->gate()->create();
+        $first = MerchantMid::factory()->for($merchant)->create([
+            'mid' => '1792-1', 'currency' => Currency::Eur, 'bank_provider_id' => $bank->id, 'gate_provider_id' => $gate->id, 'gate_mid' => 'coma_SHARED',
+        ]);
+        $payload = ['currency' => 'EUR', 'status' => 'review', 'bank_provider_id' => $bank->id, 'gate_provider_id' => $gate->id, 'rolling_reserve_limit' => 0];
+
+        // The same account on another EUR MID is refused; another currency or a free account is fine.
+        $this->actingAs($this->admin)->post(route('admin.merchants.mids.store', $merchant), [...$payload, 'mid' => '1792-2', 'gate_mid' => 'coma_SHARED'])
+            ->assertSessionHasErrors('gate_mid');
+        $this->post(route('admin.merchants.mids.store', $merchant), [...$payload, 'mid' => '1792-3', 'gate_mid' => 'coma_SHARED', 'currency' => 'USD'])
+            ->assertSessionHasNoErrors();
+        $this->post(route('admin.merchants.mids.store', $merchant), [...$payload, 'mid' => '1792-4', 'gate_mid' => 'coma_OWN'])
+            ->assertSessionHasNoErrors();
+
+        // Its own account does not clash with itself when edited.
+        $this->put(route('admin.merchants.mids.update', [$merchant, $first]), [...$payload, 'mid' => '1792-1', 'gate_mid' => 'coma_SHARED'])
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_folders_show_mid_numbers_and_flag_a_shared_gateway_account()
+    {
+        $client = Client::query()->create(['name' => 'Acme']);
+        $company = Company::factory()->create(['client_id' => $client->id]);
+        $merchant = Merchant::factory()->create(['company_id' => $company->id]);
+        $gate = Provider::factory()->gate()->create();
+        foreach (['A1', 'A2'] as $mid) {
+            MerchantMid::factory()->for($merchant)->create(['mid' => $mid, 'currency' => Currency::Eur, 'gate_provider_id' => $gate->id, 'gate_mid' => 'coma_X']);
+        }
+
+        $this->actingAs($this->admin)->get(route('admin.merchants.folders'))
+            ->assertInertia(fn (Assert $page) => $page->where('folders.0.mid_list.0.mid', 'A1')->where('folders.0.mid_list.0.conflict', true));
+        $this->get(route('admin.merchants.folders', ['client' => $client->id]))
+            ->assertInertia(fn (Assert $page) => $page->where('open.groups.0.merchants.0.mids.0.gate_conflicts', ['A2']));
+    }
+
     public function test_mid_numbers_are_unique()
     {
         $existing = MerchantMid::factory()->create();

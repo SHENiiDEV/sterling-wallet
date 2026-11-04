@@ -8,7 +8,9 @@ use App\Enums\MidStatus;
 use App\Enums\ProviderType;
 use App\Enums\TariffProduct;
 use App\Models\Merchant;
+use App\Models\MerchantMid;
 use App\Support\ProductScope;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -60,6 +62,39 @@ class MerchantMidRequest extends FormRequest
     }
 
     /**
+     * A gateway account fronting two MIDs of the same currency cannot be told apart: every row lands on one of them.
+     */
+    private function checkGateAccountsAreFree(Validator $validator): void
+    {
+        $accounts = array_values(array_unique(array_filter([trim((string) $this->input('gate_mid')), ...(array) $this->input('extra_gate_mids', [])])));
+        if ($accounts === [] || ! $this->filled('gate_provider_id') || ! $this->filled('currency')) {
+            return;
+        }
+
+        $mid = $this->route('mid');
+        $ignore = $mid instanceof Model ? $mid->getKey() : $mid;
+
+        $others = MerchantMid::query()
+            ->where('gate_provider_id', $this->input('gate_provider_id'))
+            ->where('currency', $this->input('currency'))
+            ->when($ignore, fn ($q) => $q->whereKeyNot($ignore))
+            ->get();
+
+        foreach ($others as $other) {
+            $shared = array_values(array_intersect($accounts, $other->gateAccounts()));
+            if ($shared !== []) {
+                $validator->errors()->add('gate_mid', sprintf(
+                    'Gateway account %s is already used by MID %s (same gateway and currency): the rows could not be told apart. Give each MID its own account.',
+                    implode(', ', $shared),
+                    $other->mid,
+                ));
+
+                return;
+            }
+        }
+    }
+
+    /**
      * Issue #10: live MIDs of a live merchant need an acquirer to price costs.
      */
     public function after(): array
@@ -75,6 +110,8 @@ class MerchantMidRequest extends FormRequest
                     && ! $this->filled('bank_provider_id')) {
                     $validator->errors()->add('bank_provider_id', 'An active MID needs an acquirer.');
                 }
+
+                $this->checkGateAccountsAreFree($validator);
             },
         ];
     }

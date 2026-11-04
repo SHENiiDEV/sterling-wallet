@@ -17,6 +17,9 @@ final class MerchantFolders
 {
     public const NONE = 'none';
 
+    /** @var array<string, list<string>>|null gateway|currency|account => MID numbers that use it */
+    private ?array $gateUsage = null;
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -113,7 +116,32 @@ final class MerchantFolders
             'active_mids' => $mids->where('status', MidStatus::Active)->count(),
             'currencies' => $mids->map(fn (MerchantMid $m) => $m->currency->value)->unique()->sort()->values()->all(),
             'preview' => $merchants->take(3)->pluck('name')->values()->all(),
+            'mid_list' => $mids->sortBy('mid')->take(8)->map(fn (MerchantMid $m) => ['mid' => $m->mid, 'currency' => $m->currency->value, 'status' => $m->status->value, 'conflict' => $this->conflicts($m) !== []])->values()->all(),
         ];
+    }
+
+    /**
+     * Other MIDs of the same gateway and currency that share a gateway account with this one.
+     *
+     * @return list<string>
+     */
+    private function conflicts(MerchantMid $mid): array
+    {
+        $this->gateUsage ??= MerchantMid::query()->whereNotNull('gate_provider_id')->get()
+            ->reduce(function (array $usage, MerchantMid $m) {
+                foreach ($m->gateAccounts() as $account) {
+                    $usage["{$m->gate_provider_id}|{$m->currency->value}|{$account}"][] = $m->mid;
+                }
+
+                return $usage;
+            }, []);
+
+        $others = [];
+        foreach ($mid->gateAccounts() as $account) {
+            $others = [...$others, ...array_diff($this->gateUsage["{$mid->gate_provider_id}|{$mid->currency->value}|{$account}"] ?? [], [$mid->mid])];
+        }
+
+        return array_values(array_unique($others));
     }
 
     /**
@@ -137,6 +165,8 @@ final class MerchantFolders
                 'bank' => $mid->bankProvider?->name,
                 'gate' => $mid->gateProvider?->name,
                 'gate_accounts' => count($mid->gateAccounts()),
+                'gate_mid' => $mid->gateAccounts(),
+                'gate_conflicts' => $this->conflicts($mid),
             ])->values()->all(),
         ];
     }
