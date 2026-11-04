@@ -13,12 +13,25 @@ import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import admin from '@/routes/admin';
 
-type MerchantRow = {
-    merchant: { public_id: string; name: string };
+type Signals = {
+    top_bin: string | null;
+    top_bin_share: number | null;
+    bin_limit: number;
+    heavy_cards: number;
+    max_tries: number;
+    attempts_limit: number;
+    night_share: number | null;
+    night_limit: number;
+    flags: string[];
+};
+
+type OwnerRow = {
+    merchant: { public_id: string | null; name: string };
+    mid: string | null;
+    signals: Signals | Record<string, never>;
     sales: number;
     cards: number;
     new_cards: number;
-    judged_cards: number;
     new_share: number | null;
     high_days: number;
     days: number;
@@ -37,12 +50,13 @@ type DayRow = {
 
 type Props = {
     days: number;
+    by: 'merchant' | 'mid';
     limit: number;
     warmup: number;
     from: string;
     to: string;
-    merchants: MerchantRow[];
-    selected: { public_id: string; name: string; days: DayRow[] } | null;
+    owners: OwnerRow[];
+    selected: { key: string; name: string; days: DayRow[] } | null;
 };
 
 const WINDOWS = [7, 14, 30, 60, 90];
@@ -50,7 +64,9 @@ const WINDOWS = [7, 14, 30, 60, 90];
 const percent = (value: number | null) =>
     value === null ? '—' : `${value.toFixed(1)}%`;
 
-function Status({ status }: { status: MerchantRow['status'] }) {
+const hasSignals = (s: OwnerRow['signals']): s is Signals => 'flags' in s;
+
+function Status({ status }: { status: OwnerRow['status'] }) {
     const label = {
         ok: 'Normal',
         high: 'Too many new cards',
@@ -71,17 +87,99 @@ function Status({ status }: { status: MerchantRow['status'] }) {
     );
 }
 
+function Switch<T extends string | number>({
+    options,
+    value,
+    href,
+    label,
+}: {
+    options: T[];
+    value: T;
+    href: (option: T) => string;
+    label: (option: T) => string;
+}) {
+    return (
+        <div className="inline-flex rounded-lg border p-0.5 text-sm">
+            {options.map((option) => (
+                <Link
+                    key={option}
+                    href={href(option)}
+                    className={
+                        value === option
+                            ? 'rounded-md bg-primary px-3 py-1 text-primary-foreground'
+                            : 'px-3 py-1 text-muted-foreground'
+                    }
+                >
+                    {label(option)}
+                </Link>
+            ))}
+        </div>
+    );
+}
+
+function SignalCells({ signals }: { signals: OwnerRow['signals'] }) {
+    if (!hasSignals(signals)) {
+        return (
+            <TableCell
+                colSpan={3}
+                className="text-center text-muted-foreground"
+            >
+                —
+            </TableCell>
+        );
+    }
+    const red = (flag: string) =>
+        signals.flags.includes(flag) && 'font-medium text-rose-600';
+
+    return (
+        <>
+            <TableCell
+                className={cn('text-right tabular-nums', red('bin'))}
+                title={`One BIN over ${signals.bin_limit}% of the sales is flagged`}
+            >
+                {signals.top_bin ?? '—'}{' '}
+                <span className="text-xs">
+                    {percent(signals.top_bin_share)}
+                </span>
+            </TableCell>
+            <TableCell
+                className={cn('text-right tabular-nums', red('attempts'))}
+                title={`Cards tried at least ${signals.attempts_limit} times in a day`}
+            >
+                {signals.heavy_cards}
+                {signals.heavy_cards > 0 && (
+                    <span className="text-xs"> (max {signals.max_tries}×)</span>
+                )}
+            </TableCell>
+            <TableCell
+                className={cn('text-right tabular-nums', red('night'))}
+                title={`Sales at night over ${signals.night_limit}% are flagged`}
+            >
+                {percent(signals.night_share)}
+            </TableCell>
+        </>
+    );
+}
+
 export default function Traffic({
     days,
+    by,
     limit,
     warmup,
     from,
     to,
-    merchants,
+    owners,
     selected,
 }: Props) {
     const url = (query: Record<string, string | number>) =>
         admin.traffic.index.url({ query });
+    const ownerQuery = (o: OwnerRow) =>
+        by === 'mid'
+            ? { by, mid: o.mid ?? '' }
+            : { by, merchant: o.merchant.public_id ?? '' };
+    const isSelected = (o: OwnerRow) =>
+        selected !== null &&
+        selected.key === (by === 'mid' ? o.mid : o.merchant.public_id);
 
     return (
         <>
@@ -89,43 +187,47 @@ export default function Traffic({
             <PageBody>
                 <PageHeader
                     title="Card traffic"
-                    description={`Share of first-time cards per merchant, ${formatDate(from)} – ${formatDate(to)}. Trusted traffic stays under ${limit}%.`}
+                    description={`Traffic quality per ${by === 'mid' ? 'MID' : 'merchant'}, ${formatDate(from)} – ${formatDate(to)}. Trusted traffic keeps new cards under ${limit}%.`}
                     actions={
-                        <div className="inline-flex rounded-lg border p-0.5 text-sm">
-                            {WINDOWS.map((w) => (
-                                <Link
-                                    key={w}
-                                    href={url({
-                                        days: w,
-                                        ...(selected
-                                            ? { merchant: selected.public_id }
-                                            : {}),
-                                    })}
-                                    className={
-                                        days === w
-                                            ? 'rounded-md bg-primary px-3 py-1 text-primary-foreground'
-                                            : 'px-3 py-1 text-muted-foreground'
-                                    }
-                                >
-                                    {w}d
-                                </Link>
-                            ))}
-                        </div>
+                        <>
+                            <Switch
+                                options={['merchant', 'mid'] as const}
+                                value={by}
+                                href={(k) => url({ days, by: k })}
+                                label={(k) =>
+                                    k === 'mid' ? 'By MID' : 'By merchant'
+                                }
+                            />
+                            <Switch
+                                options={WINDOWS}
+                                value={days}
+                                href={(w) => url({ days: w, by })}
+                                label={(w) => `${w}d`}
+                            />
+                        </>
                     }
                 />
                 <p className="text-sm text-muted-foreground">
                     A card is the BIN plus the last four digits. It counts as
-                    new on the day it is first seen on that merchant. The share
-                    is new cards ÷ cards paying that day. The first {warmup}{' '}
-                    days of a merchant&apos;s history are not judged: with no
-                    history every card is new.
+                    new on the day it is first seen on that{' '}
+                    {by === 'mid' ? 'MID' : 'merchant'}. The share is new cards
+                    ÷ cards paying that day. The first {warmup} days of the
+                    history are not judged: with no history every card is new.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                    Other signals over the period: one BIN carrying too much of
+                    the sales, the same card tried many times in a day (card
+                    testing) and the share of sales at night (00:00–06:00 UTC).
+                    A red value is above its limit.
                 </p>
 
                 <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Merchant</TableHead>
+                                <TableHead>
+                                    {by === 'mid' ? 'MID' : 'Merchant'}
+                                </TableHead>
                                 <TableHead className="text-right">
                                     Sales
                                 </TableHead>
@@ -141,62 +243,80 @@ export default function Traffic({
                                 <TableHead className="text-right">
                                     Days over {limit}%
                                 </TableHead>
+                                <TableHead className="text-right">
+                                    Top BIN
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Cards tried many times
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Night
+                                </TableHead>
                                 <TableHead>Status</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {merchants.length === 0 && (
+                            {owners.length === 0 && (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={7}
+                                        colSpan={10}
                                         className="py-10 text-center text-muted-foreground"
                                     >
                                         No card sales in this period.
                                     </TableCell>
                                 </TableRow>
                             )}
-                            {merchants.map((m) => (
+                            {owners.map((o) => (
                                 <TableRow
-                                    key={m.merchant.public_id}
-                                    className={cn(
-                                        selected?.public_id ===
-                                            m.merchant.public_id && 'bg-accent',
-                                    )}
+                                    key={o.mid ?? o.merchant.public_id}
+                                    className={cn(isSelected(o) && 'bg-accent')}
                                 >
                                     <TableCell>
                                         <Link
                                             href={url({
                                                 days,
-                                                merchant: m.merchant.public_id,
+                                                ...ownerQuery(o),
                                             })}
                                             className="font-medium hover:underline"
                                         >
-                                            {m.merchant.name}
+                                            {by === 'mid' ? (
+                                                <>
+                                                    <span className="font-mono">
+                                                        {o.mid}
+                                                    </span>{' '}
+                                                    <span className="text-xs font-normal text-muted-foreground">
+                                                        {o.merchant.name}
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                o.merchant.name
+                                            )}
                                         </Link>
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                        {m.sales}
+                                        {o.sales}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                        {m.cards}
+                                        {o.cards}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                        {m.new_cards}
+                                        {o.new_cards}
                                     </TableCell>
                                     <TableCell
                                         className={cn(
                                             'text-right font-medium tabular-nums',
-                                            m.status === 'high' &&
+                                            o.status === 'high' &&
                                                 'text-rose-600',
                                         )}
                                     >
-                                        {percent(m.new_share)}
+                                        {percent(o.new_share)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                        {m.high_days}
+                                        {o.high_days}
                                     </TableCell>
+                                    <SignalCells signals={o.signals} />
                                     <TableCell>
-                                        <Status status={m.status} />
+                                        <Status status={o.status} />
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -211,7 +331,7 @@ export default function Traffic({
                                 {selected.name} by day
                             </h2>
                             <Button variant="outline" size="sm" asChild>
-                                <Link href={url({ days })}>Close</Link>
+                                <Link href={url({ days, by })}>Close</Link>
                             </Button>
                         </div>
                         <div className="overflow-hidden rounded-xl border bg-card shadow-xs">

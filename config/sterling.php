@@ -251,6 +251,14 @@ return [
     'traffic' => [
         'new_card_share_limit' => (float) env('TRAFFIC_NEW_CARD_LIMIT', 20),
         'warmup_days' => (int) env('TRAFFIC_WARMUP_DAYS', 7),
+        // One BIN carrying more than this share (%) of a period's sales.
+        'bin_share_limit' => (float) env('TRAFFIC_BIN_SHARE_LIMIT', 30),
+        // The same card tried this many times (sales and declines) within one day: card testing.
+        'attempts_per_card_limit' => (int) env('TRAFFIC_ATTEMPTS_LIMIT', 8),
+        // Sales made between these UTC hours (from inclusive, to exclusive), and the share (%) that is too much.
+        'night_from_hour' => (int) env('TRAFFIC_NIGHT_FROM', 0),
+        'night_to_hour' => (int) env('TRAFFIC_NIGHT_TO', 6),
+        'night_share_limit' => (float) env('TRAFFIC_NIGHT_SHARE_LIMIT', 25),
     ],
 
     /*
