@@ -17,6 +17,7 @@ import {
     ListChecks,
     PieChart,
     ScrollText,
+    ShieldCheck,
     Store,
     Tags,
     TrendingUp,
@@ -105,6 +106,12 @@ const navGroups: NavGroup[] = [
                 title: 'Volumes',
                 href: admin.volumes.index(),
                 icon: ChartColumn,
+                module: 'reports',
+            },
+            {
+                title: 'Card traffic',
+                href: admin.traffic.index(),
+                icon: ShieldCheck,
                 module: 'reports',
             },
             {
