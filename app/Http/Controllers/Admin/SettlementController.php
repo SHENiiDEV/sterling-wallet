@@ -169,6 +169,11 @@ class SettlementController extends Controller
                 ? app(AuthenticatorCodes::class)->present(app(AuthenticatorCodes::class)->forSettlement($settlement))
                 : [],
             'payoutCurrencies' => $this->payoutCurrencies(),
+            'scopeOptions' => $editable ? [
+                'merchants' => Merchant::query()->with('company:id,name,client_id')->orderBy('name')->get(['id', 'public_id', 'name', 'company_id'])
+                    ->map(fn (Merchant $m) => ['public_id' => $m->public_id, 'name' => trim(($m->company?->name ?? '').' · '.$m->name, ' ·')])->values(),
+                'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            ] : null,
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
                 'id' => $l->id,
                 'type' => $l->type->value,
@@ -233,6 +238,28 @@ class SettlementController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Settlement updated.']);
+
+        return back();
+    }
+
+    /**
+     * Draft only: switch between paying one merchant and paying a whole client.
+     */
+    public function scope(Request $request, Settlement $settlement): RedirectResponse
+    {
+        $data = $request->validate([
+            'merchant' => ['nullable', 'required_without:client', 'string', 'exists:merchants,public_id'],
+            'client' => ['nullable', 'required_without:merchant', 'integer', 'exists:clients,id'],
+        ]);
+        $this->assertDraft($settlement);
+
+        $this->settlements->changeScope(
+            $settlement,
+            ! empty($data['client']) ? null : Merchant::query()->where('public_id', $data['merchant'])->firstOrFail(),
+            ! empty($data['client']) ? Client::query()->findOrFail($data['client']) : null,
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Payout scope changed. Add the reports you need.']);
 
         return back();
     }

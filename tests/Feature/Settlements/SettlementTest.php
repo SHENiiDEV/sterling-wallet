@@ -176,6 +176,35 @@ class SettlementTest extends TestCase
         $this->assertStringContainsString($settlement->number, (string) $report->fresh()->lockReason());
     }
 
+    public function test_a_draft_can_switch_between_a_merchant_and_its_client()
+    {
+        $this->report();
+        $client = \App\Models\Client::query()->create(['name' => 'Acme group']);
+        $company = \App\Models\Company::factory()->create(['name' => 'Acme Ltd', 'client_id' => $client->id]);
+        $this->merchant->update(['company_id' => $company->id]);
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        $this->assertSame(1, $settlement->lines()->where('type', SettlementLineType::Report)->count());
+
+        // Merchant → client: nothing is lost, the scope widens.
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['client' => $client->id])->assertSessionHasNoErrors();
+        $settlement->refresh();
+        $this->assertSame($client->id, $settlement->client_id);
+        $this->assertSame(1, $settlement->lines()->count());
+
+        // Client → another merchant: this merchant's report drops out and is free again.
+        $other = $this->merchantWithTariff();
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['merchant' => $other->public_id])->assertSessionHasNoErrors();
+        $settlement->refresh();
+        $this->assertNull($settlement->client_id);
+        $this->assertSame($other->id, $settlement->merchant_id);
+        $this->assertSame(0, $settlement->lines()->count());
+        $this->assertCount(1, app(SettlementService::class)->availableReports($this->merchant));
+
+        // Only a draft can be changed.
+        $settlement->update(['status' => SettlementStatus::Approved]);
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['client' => $client->id])->assertSessionHasErrors('settlement');
+    }
+
     public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
     {
         $this->report();

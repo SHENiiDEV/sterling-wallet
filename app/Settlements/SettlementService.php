@@ -263,6 +263,44 @@ class SettlementService
     }
 
     /**
+     * Pay a merchant alone, or a whole client with every company it has (or has had): a draft can be switched
+     * either way. Lines of merchants that fall out of the new scope are dropped (their reports become free
+     * again); the rest stay. Add the other companies' reports afterwards.
+     */
+    public function changeScope(Settlement $settlement, ?Merchant $merchant, ?Client $client): Settlement
+    {
+        $this->assertEditable($settlement);
+
+        return DB::transaction(function () use ($settlement, $merchant, $client) {
+            if ($client !== null) {
+                $primary = Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->orderBy('id')->first()
+                    ?? throw ValidationException::withMessages(['client' => 'This client has no merchants yet.']);
+                // Keep the current merchant as the main one if it belongs to the client.
+                $primary = Merchant::query()->whereKey($settlement->merchant_id)->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->first() ?? $primary;
+                $settlement->update(['merchant_id' => $primary->id, 'client_id' => $client->id]);
+            } else {
+                $settlement->update(['merchant_id' => $merchant->id, 'client_id' => null]);
+            }
+
+            $scope = $settlement->merchantIds();
+            foreach ($settlement->lines()->with(['dailyReport:id,merchant_id', 'reserveEntry:id,merchant_id'])->get() as $line) {
+                $owner = $line->dailyReport?->merchant_id ?? $line->reserveEntry?->merchant_id;
+                if ($owner !== null && ! in_array($owner, $scope, true)) {
+                    $line->delete();
+                }
+            }
+
+            $wallet = $settlement->wallet;
+            if ($wallet === null || ! in_array($wallet->merchant_id, $scope, true)) {
+                $settlement->update(['wallet_id' => $this->defaultWallet($settlement)?->id]);
+            }
+            AuditLogger::log('settlement.scope_changed', $settlement, ['merchant_id' => $settlement->merchant_id, 'client_id' => $settlement->client_id]);
+
+            return $this->recalculate($settlement);
+        });
+    }
+
+    /**
      * Wallets the settlement can be paid to: active wallets of every merchant in its scope.
      *
      * @return Collection<int, MerchantCryptoWallet>

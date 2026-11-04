@@ -129,6 +129,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('settlements', [SettlementController::class, 'store'])->name('settlements.store');
         Route::get('settlements/{settlement}', [SettlementController::class, 'show'])->name('settlements.show');
         Route::put('settlements/{settlement}', [SettlementController::class, 'update'])->name('settlements.update');
+        Route::post('settlements/{settlement}/scope', [SettlementController::class, 'scope'])->name('settlements.scope');
         Route::post('settlements/{settlement}/lines', [SettlementController::class, 'addReports'])->name('settlements.lines.store');
         Route::post('settlements/{settlement}/adjustments', [SettlementController::class, 'addAdjustment'])->name('settlements.adjustments.store');
         Route::delete('settlements/{settlement}/lines/{line}', [SettlementController::class, 'removeLine'])->name('settlements.lines.destroy');
