@@ -160,7 +160,7 @@ After=network.target mysql.service
 [Service]
 User=www-data
 WorkingDirectory=/var/www/wallets/sp-wallet
-ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --timeout=1200 --max-time=3600
+ExecStart=/usr/bin/php artisan queue:work --memory=768 --sleep=3 --tries=3 --timeout=1200 --max-time=3600
 Restart=always
 RestartSec=5
 

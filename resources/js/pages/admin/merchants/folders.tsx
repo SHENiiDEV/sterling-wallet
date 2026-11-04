@@ -29,6 +29,12 @@ type FolderSummary = {
     active_mids: number;
     currencies: string[];
     preview: string[];
+    mid_list: {
+        mid: string;
+        currency: string;
+        status: MidStatus;
+        conflict: boolean;
+    }[];
 };
 
 type FolderMid = {
@@ -40,6 +46,8 @@ type FolderMid = {
     bank: string | null;
     gate: string | null;
     gate_accounts: number;
+    gate_mid: string[];
+    gate_conflicts: string[];
 };
 
 type FolderMerchant = {
@@ -96,6 +104,28 @@ function FolderCard({ folder }: { folder: FolderSummary }) {
                     <CurrencyBadge key={currency} currency={currency} />
                 ))}
             </div>
+            {folder.mid_list.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                    {folder.mid_list.map((m) => (
+                        <span
+                            key={m.mid}
+                            className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${m.conflict ? 'border-rose-500/50 text-rose-600' : 'text-muted-foreground'}`}
+                            title={
+                                m.conflict
+                                    ? 'Shares a gateway account with another MID'
+                                    : undefined
+                            }
+                        >
+                            {m.mid}
+                        </span>
+                    ))}
+                    {folder.mids > folder.mid_list.length && (
+                        <span className="text-xs text-muted-foreground">
+                            +{folder.mids - folder.mid_list.length}
+                        </span>
+                    )}
+                </div>
+            )}
             {folder.preview.length > 0 && (
                 <p className="truncate text-xs text-muted-foreground">
                     {folder.preview.join(' · ')}
@@ -153,6 +183,17 @@ function MerchantCard({ merchant }: { merchant: FolderMerchant }) {
                                 {mid.gate_accounts > 1 &&
                                     ` (${mid.gate_accounts} accounts)`}
                             </span>
+                            {mid.gate_mid.length > 0 && (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                    {mid.gate_mid.join(', ')}
+                                </span>
+                            )}
+                            {mid.gate_conflicts.length > 0 && (
+                                <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-xs text-rose-600">
+                                    same gateway account as{' '}
+                                    {mid.gate_conflicts.join(', ')}
+                                </span>
+                            )}
                             <span className="ml-auto">
                                 <MidStatusBadge
                                     status={mid.status}

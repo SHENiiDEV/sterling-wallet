@@ -239,6 +239,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Merchant documents
+    |--------------------------------------------------------------------------
+    |
+    | The operations file a merchant gets with a daily report names no
+    | acquirer or gateway: every row carries this label as its provider.
+    |
+    */
+
+    'documents' => [
+        'provider_label' => env('DOCUMENTS_PROVIDER_LABEL', 'SterlingPay'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Commercial proposal (offer PDF)
     |--------------------------------------------------------------------------
     |
