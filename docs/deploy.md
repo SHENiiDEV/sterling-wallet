@@ -229,27 +229,32 @@ cd /var/www/wallets/sp-wallet && git pull && sudo -u www-data composer install -
 
 Прошлый сервер умер без копий. Минимум:
 
-1. **Ежедневный дамп** базы, `storage/app` и `.env` скриптом `scripts/backup.sh` (шифрует и хранит 14 дней локально):
+1. **Полный слепок сервера** скриптом `scripts/backup.sh`: `/var/www` (без `vendor`, `node_modules`, `.browsers`), конфиги (nginx, php, mysql, letsencrypt, systemd, cron, ssh), список пакетов и дамп **всех** баз MySQL. Файлы шифруются gpg, локально хранятся 7 дней и отправляются в Google Drive через rclone (папка `server-backups`).
 
     ```bash
-    cd /var/www/wallets/sp-wallet && chmod +x deploy.sh scripts/backup.sh
+    curl https://rclone.org/install.sh | bash
+    rclone config            # n → имя gdrive → тип drive → scope drive → auto config: n → токен из `rclone authorize "drive"` на вашем компьютере
+    openssl rand -base64 32 > /root/.sterling-backup-pass && chmod 600 /root/.sterling-backup-pass   # СОХРАНИТЕ пароль отдельно (менеджер паролей)
+    cd /var/www/wallets/sp-wallet && chmod +x deploy.sh scripts/backup.sh && scripts/backup.sh && rclone ls gdrive:server-backups
     cat > /etc/cron.d/sterling-backup <<'CRON'
-    20 3 * * * root /var/www/wallets/sp-wallet/scripts/backup.sh >> /var/log/sterling-backup.log 2>&1
+    20 */6 * * * root /var/www/wallets/sp-wallet/scripts/backup.sh >> /var/log/sterling-backup.log 2>&1
     CRON
     ```
 
-2. **Копия за пределы сервера** (другой VPS, S3/Backblaze/Hetzner Storage Box): в скрипте есть переменная `REMOTE` (rsync/rclone). Копия на том же сервере не считается.
-3. **Снапшот диска** у провайдера VPS (включите автоматические), раз в неделю.
-4. **Пароль шифрования** и `APP_KEY` храните в менеджере паролей, не на сервере.
-5. **Раз в месяц проверяйте восстановление:** развернуть копию на чистой машине, `php artisan migrate:status`, зайти в систему.
+    Без пароля шифрования скрипт ничего не отправляет (в копии есть `.env` и ключи).
 
-Восстановление из копии:
+2. **Снапшот диска** у провайдера VPS (включите автоматические), раз в неделю: это единственное, что вернёт сервер целиком вместе с ОС.
+3. **Пароль шифрования** и `APP_KEY` храните в менеджере паролей, не на сервере.
+4. **Раз в месяц проверяйте восстановление** на чистой машине.
+
+Восстановление: скачать файлы с Drive (`rclone copy gdrive:server-backups /root/restore`), расшифровать и распаковать:
 
 ```bash
-gunzip -c sterling_db_ДАТА.sql.gz | mysql sterling_wallet && tar -xzf sterling_storage_ДАТА.tar.gz -C /var/www/wallets/sp-wallet/storage/app && chown -R www-data:www-data /var/www/wallets/sp-wallet/storage
+cd /root/restore && for f in *.gpg; do gpg --batch --pinentry-mode loopback --passphrase-file /root/.sterling-backup-pass -o "${f%.gpg}" -d "$f"; done
+gunzip -c mysql_all_ДАТА.sql.gz | mysql && tar -xzf var_www_ДАТА.tar.gz -C /var && tar -xzf server_config_ДАТА.tar.gz -C / && cd /var/www/wallets/sp-wallet && composer install --no-dev && npm ci && npm run build && chown -R www-data:www-data /var/www/wallets/sp-wallet
 ```
 
-(скрипт шифрует файлы gpg: сначала `gpg -d файл.gpg > файл`).
+Конфиги из `server_config` проверьте перед перезаписью `/etc` на новой ОС; список пакетов: `dpkg --set-selections < packages.txt && apt-get dselect-upgrade`.
 
 ## 14. Безопасность и эксплуатация
 

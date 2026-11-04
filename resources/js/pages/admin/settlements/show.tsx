@@ -477,6 +477,10 @@ type Props = {
     overview: Overview;
     authenticatorCodes: AuthenticatorCodeMeta[];
     payoutCurrencies: Option[];
+    scopeOptions: {
+        merchants: { public_id: string; name: string }[];
+        clients: { id: number; name: string }[];
+    } | null;
     lines: Line[];
     wallets: {
         id: number;
@@ -510,15 +514,32 @@ function AddLinesDialog({
     settlement,
     reports,
     releases,
+    scopeOptions,
     onClose,
 }: {
     settlement: Props['settlement'];
+    scopeOptions: Props['scopeOptions'];
     reports: Props['availableReports'];
     releases: Props['availableReleases'];
     onClose: () => void;
 }) {
     const [reportIds, setReportIds] = useState<number[]>([]);
     const [releaseIds, setReleaseIds] = useState<number[]>([]);
+    const [other, setOther] = useState(NONE);
+    const pickOther = (value: string) => {
+        setOther(value);
+        setReportIds([]);
+        router.get(
+            admin.settlements.show.url(settlement.id),
+            value === NONE ? {} : { from_merchant: value },
+            {
+                only: ['availableReports'],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    };
     const toggle = (list: number[], set: (v: number[]) => void, id: number) =>
         set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
     const owners = Array.from(new Set(reports.map((r) => r.owner)));
@@ -532,6 +553,28 @@ function AddLinesDialog({
                         Only what no other active settlement pays yet.
                     </DialogDescription>
                 </DialogHeader>
+                {scopeOptions && (
+                    <Field label="Also take reports of another merchant (e.g. the company the terminal was taken over from)">
+                        <Select value={other} onValueChange={pickOther}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>
+                                    Only this settlement's merchants
+                                </SelectItem>
+                                {scopeOptions.merchants.map((m) => (
+                                    <SelectItem
+                                        key={m.public_id}
+                                        value={m.public_id}
+                                    >
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                )}
                 <div className="grid gap-2">
                     {owners.map((owner) => (
                         <div key={owner} className="grid gap-2">
@@ -652,6 +695,8 @@ function AddLinesDialog({
                                 {
                                     report_ids: reportIds,
                                     release_ids: releaseIds,
+                                    from_merchant:
+                                        other === NONE ? null : other,
                                 },
                                 { preserveScroll: true, onSuccess: onClose },
                             )
@@ -928,14 +973,24 @@ function ApproveDialog({
 function SettleDialog({
     settlement,
     onClose,
+    record = false,
 }: {
     settlement: Props['settlement'];
     onClose: () => void;
+    /** A draft paid in the past: approve and pay in one step, dated. */
+    record?: boolean;
 }) {
-    const form = useForm<{ tx_hash: string; proof: File | null }>({
+    const today = new Date().toISOString().slice(0, 10);
+    const form = useForm<{
+        tx_hash: string;
+        paid_on: string;
+        proof: File | null;
+    }>({
         tx_hash: '',
+        paid_on: today,
         proof: null,
     });
+    const backdated = record || form.data.paid_on !== today;
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -944,7 +999,10 @@ function SettleDialog({
                     className="grid gap-4"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        form.post(admin.settlements.settle.url(settlement.id), {
+                        const url = record
+                            ? admin.settlements.record.url(settlement.id)
+                            : admin.settlements.settle.url(settlement.id);
+                        form.post(url, {
                             forceFormData: true,
                             preserveScroll: true,
                             onSuccess: onClose,
@@ -953,16 +1011,38 @@ function SettleDialog({
                 >
                     <DialogHeader>
                         <DialogTitle>
-                            Mark {settlement.number} as paid
+                            {record ? 'Record' : 'Mark'} {settlement.number} as
+                            paid
                         </DialogTitle>
                         <DialogDescription>
                             {formatMoney(settlement.total_payout)}{' '}
-                            {settlement.payout_currency} sent. Record the
-                            transaction and attach the confirmation.
+                            {settlement.payout_currency}{' '}
+                            {record
+                                ? 'was already paid. The settlement is approved and paid with the date below; use this to restore history.'
+                                : 'sent. Record the transaction and attach the confirmation.'}
                         </DialogDescription>
                     </DialogHeader>
                     <Field
-                        label="Transaction hash"
+                        label="Paid on"
+                        htmlFor="paid_on"
+                        error={form.errors.paid_on}
+                    >
+                        <Input
+                            id="paid_on"
+                            type="date"
+                            max={today}
+                            value={form.data.paid_on}
+                            onChange={(e) =>
+                                form.setData('paid_on', e.target.value)
+                            }
+                        />
+                    </Field>
+                    <Field
+                        label={
+                            backdated
+                                ? 'Transaction hash (optional)'
+                                : 'Transaction hash'
+                        }
                         htmlFor="tx"
                         error={form.errors.tx_hash}
                     >
@@ -1000,13 +1080,122 @@ function SettleDialog({
                         </DialogClose>
                         <Button
                             type="submit"
-                            disabled={form.processing || !form.data.tx_hash}
+                            disabled={
+                                form.processing ||
+                                !form.data.paid_on ||
+                                (!backdated && !form.data.tx_hash)
+                            }
                         >
                             {form.processing && <Spinner />}
                             Mark as paid
                         </Button>
                     </DialogFooter>
                 </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function ScopeDialog({
+    settlement,
+    options,
+    onClose,
+}: {
+    settlement: Props['settlement'];
+    options: NonNullable<Props['scopeOptions']>;
+    onClose: () => void;
+}) {
+    const [kind, setKind] = useState<'merchant' | 'client'>(
+        settlement.client ? 'client' : 'merchant',
+    );
+    const [merchant, setMerchant] = useState(settlement.merchant.public_id);
+    const [client, setClient] = useState(
+        settlement.client ? String(settlement.client.id) : '',
+    );
+    const [processing, setProcessing] = useState(false);
+    const value = kind === 'client' ? client : merchant;
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Change who is paid</DialogTitle>
+                    <DialogDescription>
+                        Pay one merchant, or a whole client with all its
+                        companies (including the old ones). Lines of merchants
+                        outside the new choice are removed and their reports
+                        become free again; add the reports you need afterwards.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="inline-flex w-fit rounded-lg border p-0.5 text-sm">
+                    {(['merchant', 'client'] as const).map((k) => (
+                        <button
+                            key={k}
+                            type="button"
+                            onClick={() => setKind(k)}
+                            className={
+                                kind === k
+                                    ? 'rounded-md bg-primary px-3 py-1 text-primary-foreground'
+                                    : 'px-3 py-1 text-muted-foreground'
+                            }
+                        >
+                            {k === 'client' ? 'Client' : 'Merchant'}
+                        </button>
+                    ))}
+                </div>
+                <Select
+                    value={value}
+                    onValueChange={(v) =>
+                        kind === 'client' ? setClient(v) : setMerchant(v)
+                    }
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {kind === 'client'
+                            ? options.clients.map((c) => (
+                                  <SelectItem key={c.id} value={String(c.id)}>
+                                      {c.name}
+                                  </SelectItem>
+                              ))
+                            : options.merchants.map((m) => (
+                                  <SelectItem
+                                      key={m.public_id}
+                                      value={m.public_id}
+                                  >
+                                      {m.name}
+                                  </SelectItem>
+                              ))}
+                    </SelectContent>
+                </Select>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline">
+                            Cancel
+                        </Button>
+                    </DialogClose>
+                    <Button
+                        disabled={processing || !value}
+                        onClick={() =>
+                            router.post(
+                                admin.settlements.scope.url(settlement.id),
+                                kind === 'client' ? { client } : { merchant },
+                                {
+                                    preserveScroll: true,
+                                    onStart: () => setProcessing(true),
+                                    onFinish: () => {
+                                        setProcessing(false);
+                                        onClose();
+                                    },
+                                },
+                            )
+                        }
+                    >
+                        {processing && <Spinner />}
+                        Change
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -1083,11 +1272,19 @@ export default function SettlementShow({
     lines,
     wallets,
     payoutCurrencies,
+    scopeOptions,
     availableReports,
     availableReleases,
 }: Props) {
     const [dialog, setDialog] = useState<
-        'add' | 'adjust' | 'approve' | 'settle' | 'cancel' | null
+        | 'add'
+        | 'adjust'
+        | 'approve'
+        | 'settle'
+        | 'record'
+        | 'scope'
+        | 'cancel'
+        | null
     >(null);
     const draft = settlement.status === 'draft';
     const currencies = Array.from(new Set(lines.map((l) => l.currency)));
@@ -1201,6 +1398,23 @@ export default function SettlementShow({
                                 <Button onClick={() => setDialog('approve')}>
                                     <Check />
                                     Approve
+                                </Button>
+                            )}
+                            {draft && scopeOptions && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setDialog('scope')}
+                                >
+                                    Change merchant / client
+                                </Button>
+                            )}
+                            {draft && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setDialog('record')}
+                                >
+                                    <FileCheck2 />
+                                    Record as paid (past date)
                                 </Button>
                             )}
                             {settlement.status === 'approved' && (
@@ -1655,6 +1869,7 @@ export default function SettlementShow({
                     settlement={settlement}
                     reports={availableReports}
                     releases={availableReleases}
+                    scopeOptions={scopeOptions}
                     onClose={() => setDialog(null)}
                 />
             )}
@@ -1674,6 +1889,20 @@ export default function SettlementShow({
             )}
             {dialog === 'settle' && (
                 <SettleDialog
+                    settlement={settlement}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog === 'scope' && scopeOptions && (
+                <ScopeDialog
+                    settlement={settlement}
+                    options={scopeOptions}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog === 'record' && (
+                <SettleDialog
+                    record
                     settlement={settlement}
                     onClose={() => setDialog(null)}
                 />

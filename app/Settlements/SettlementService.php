@@ -175,12 +175,13 @@ class SettlementService
 
     /**
      * @param  iterable<DailyReportTask>  $reports
+     * @param  list<int>  $alsoMerchantIds  merchants outside the settlement's scope whose reports are added on purpose (a terminal that changed hands)
      */
-    public function addReports(Settlement $settlement, iterable $reports): void
+    public function addReports(Settlement $settlement, iterable $reports, array $alsoMerchantIds = []): void
     {
         $this->assertEditable($settlement);
         $taken = $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id')->pluck('daily_report_task_id')->all();
-        $scope = $settlement->merchantIds();
+        $scope = [...$settlement->merchantIds(), ...$alsoMerchantIds];
 
         foreach ($reports as $report) {
             if (! in_array($report->merchant_id, $scope, true) || $report->status !== ReportStatus::Completed || in_array($report->id, $taken, true)) {
@@ -260,6 +261,44 @@ class SettlementService
         }
 
         return $this->recalculate($settlement);
+    }
+
+    /**
+     * Pay a merchant alone, or a whole client with every company it has (or has had): a draft can be switched
+     * either way. Lines of merchants that fall out of the new scope are dropped (their reports become free
+     * again); the rest stay. Add the other companies' reports afterwards.
+     */
+    public function changeScope(Settlement $settlement, ?Merchant $merchant, ?Client $client): Settlement
+    {
+        $this->assertEditable($settlement);
+
+        return DB::transaction(function () use ($settlement, $merchant, $client) {
+            if ($client !== null) {
+                $primary = Merchant::query()->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->orderBy('id')->first()
+                    ?? throw ValidationException::withMessages(['client' => 'This client has no merchants yet.']);
+                // Keep the current merchant as the main one if it belongs to the client.
+                $primary = Merchant::query()->whereKey($settlement->merchant_id)->whereHas('company', fn ($q) => $q->where('client_id', $client->id))->first() ?? $primary;
+                $settlement->update(['merchant_id' => $primary->id, 'client_id' => $client->id]);
+            } else {
+                $settlement->update(['merchant_id' => $merchant->id, 'client_id' => null]);
+            }
+
+            $scope = $settlement->merchantIds();
+            foreach ($settlement->lines()->with(['dailyReport:id,merchant_id', 'reserveEntry:id,merchant_id'])->get() as $line) {
+                $owner = $line->dailyReport?->merchant_id ?? $line->reserveEntry?->merchant_id;
+                if ($owner !== null && ! in_array($owner, $scope, true)) {
+                    $line->delete();
+                }
+            }
+
+            $wallet = $settlement->wallet;
+            if ($wallet === null || ! in_array($wallet->merchant_id, $scope, true)) {
+                $settlement->update(['wallet_id' => $this->defaultWallet($settlement)?->id]);
+            }
+            AuditLogger::log('settlement.scope_changed', $settlement, ['merchant_id' => $settlement->merchant_id, 'client_id' => $settlement->client_id]);
+
+            return $this->recalculate($settlement);
+        });
     }
 
     /**
@@ -412,7 +451,7 @@ class SettlementService
             ->values();
     }
 
-    public function approve(Settlement $settlement, User $by, bool $confirmEarly = false): Settlement
+    public function approve(Settlement $settlement, User $by, bool $confirmEarly = false, ?CarbonImmutable $at = null): Settlement
     {
         $this->assertEditable($settlement);
 
@@ -438,13 +477,13 @@ class SettlementService
             throw ValidationException::withMessages(['wallet_id' => 'Choose the merchant wallet to pay to.']);
         }
 
-        $settlement->update(['status' => SettlementStatus::Approved, 'approved_by' => $by->id, 'approved_at' => now()]);
+        $settlement->update(['status' => SettlementStatus::Approved, 'approved_by' => $by->id, 'approved_at' => $at ?? now()]);
         AuditLogger::log('settlement.approved', $settlement, ['total' => $settlement->total_payout]);
 
         return $settlement;
     }
 
-    public function markSettled(Settlement $settlement, User $by, string $txHash, ?string $proofPath = null): Settlement
+    public function markSettled(Settlement $settlement, User $by, ?string $txHash, ?string $proofPath = null, ?CarbonImmutable $at = null): Settlement
     {
         if ($settlement->status !== SettlementStatus::Approved) {
             throw ValidationException::withMessages(['settlement' => 'Only an approved settlement can be marked as paid.']);
@@ -453,13 +492,31 @@ class SettlementService
         $settlement->update([
             'status' => SettlementStatus::Settled,
             'settled_by' => $by->id,
-            'settled_at' => now(),
+            'settled_at' => $at ?? now(),
             'tx_hash' => $txHash,
             'proof_path' => $proofPath ?? $settlement->proof_path,
         ]);
         AuditLogger::log('settlement.settled', $settlement, ['tx_hash' => $txHash]);
 
         return $settlement;
+    }
+
+    /**
+     * Restoring history: a draft that was paid in the past is approved and paid in one step, both dated
+     * the day it was really paid. Payout-before-due checks are skipped (it is already done).
+     */
+    public function recordPaid(Settlement $settlement, User $by, CarbonImmutable $paidOn, ?string $txHash = null, ?string $proofPath = null): Settlement
+    {
+        return DB::transaction(function () use ($settlement, $by, $paidOn, $txHash, $proofPath) {
+            $at = $paidOn->setTime(12, 0);
+            $this->approve($settlement, $by, true, $at);
+            if ($settlement->created_at === null || $settlement->created_at->greaterThan($at)) {
+                $settlement->forceFill(['created_at' => $at])->save();
+            }
+            AuditLogger::log('settlement.backdated', $settlement, ['paid_on' => $paidOn->toDateString()]);
+
+            return $this->markSettled($settlement, $by, $txHash, $proofPath, $at);
+        });
     }
 
     /**

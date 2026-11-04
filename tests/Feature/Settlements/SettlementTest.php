@@ -156,6 +156,87 @@ class SettlementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('totals.0.paid_out', 273.58)->where('totals.0.payout', 273.58));
     }
 
+    public function test_a_draft_can_be_recorded_as_paid_on_a_past_date_without_a_hash()
+    {
+        $report = $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+
+        // A future date is refused; a past one approves and pays the draft in one step, dated that day.
+        $this->actingAs($this->admin)->post(route('admin.settlements.record', $settlement), ['paid_on' => now()->addDay()->toDateString()])
+            ->assertSessionHasErrors('paid_on');
+        $this->actingAs($this->admin)->post(route('admin.settlements.record', $settlement), ['paid_on' => '2026-09-20'])
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $this->assertSame(SettlementStatus::Settled, $settlement->status);
+        $this->assertSame('2026-09-20', $settlement->approved_at->toDateString());
+        $this->assertSame('2026-09-20', $settlement->settled_at->toDateString());
+        $this->assertSame('2026-09-20', $settlement->created_at->toDateString());
+        $this->assertNull($settlement->tx_hash);
+        $this->assertStringContainsString($settlement->number, (string) $report->fresh()->lockReason());
+    }
+
+    public function test_a_draft_can_switch_between_a_merchant_and_its_client()
+    {
+        $this->report();
+        $client = \App\Models\Client::query()->create(['name' => 'Acme group']);
+        $company = \App\Models\Company::factory()->create(['name' => 'Acme Ltd', 'client_id' => $client->id]);
+        $this->merchant->update(['company_id' => $company->id]);
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        $this->assertSame(1, $settlement->lines()->where('type', SettlementLineType::Report)->count());
+
+        // Merchant → client: nothing is lost, the scope widens.
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['client' => $client->id])->assertSessionHasNoErrors();
+        $settlement->refresh();
+        $this->assertSame($client->id, $settlement->client_id);
+        $this->assertSame(1, $settlement->lines()->count());
+
+        // Client → another merchant: this merchant's report drops out and is free again.
+        $other = $this->merchantWithTariff();
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['merchant' => $other->public_id])->assertSessionHasNoErrors();
+        $settlement->refresh();
+        $this->assertNull($settlement->client_id);
+        $this->assertSame($other->id, $settlement->merchant_id);
+        $this->assertSame(0, $settlement->lines()->count());
+        $this->assertCount(1, app(SettlementService::class)->availableReports($this->merchant));
+
+        // Only a draft can be changed.
+        $settlement->update(['status' => SettlementStatus::Approved]);
+        $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['client' => $client->id])->assertSessionHasErrors('settlement');
+    }
+
+    public function test_reports_of_another_merchant_can_be_added_on_purpose_to_a_draft()
+    {
+        $report = $this->report();
+        $other = $this->merchantWithTariff();
+        $settlement = app(SettlementService::class)->createDraft($other, $this->admin);
+        $this->assertSame(0, $settlement->lines()->count());
+
+        // Without saying so, a report of a merchant outside the scope is refused.
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.store', $settlement), ['report_ids' => [$report->id]]);
+        $this->assertSame(0, $settlement->lines()->count());
+
+        // The page offers that merchant's reports, and adding them on purpose works.
+        $this->actingAs($this->admin)->get(route('admin.settlements.show', ['settlement' => $settlement, 'from_merchant' => $this->merchant->public_id]))
+            ->assertInertia(fn (Assert $page) => $page->has('availableReports', 1));
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.store', $settlement), ['report_ids' => [$report->id], 'from_merchant' => $this->merchant->public_id])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, $settlement->lines()->count());
+        $this->assertSame($report->id, $settlement->lines()->sole()->daily_report_task_id);
+    }
+
+    public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
+    {
+        $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        app(SettlementService::class)->approve($settlement, $this->admin);
+
+        $this->actingAs($this->admin)->post(route('admin.settlements.settle', $settlement), ['paid_on' => '2026-09-18', 'tx_hash' => '0xold'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-09-18', $settlement->fresh()->settled_at->toDateString());
+    }
+
     public function test_a_report_is_paid_by_only_one_active_settlement_and_cancel_frees_it()
     {
         $this->report();

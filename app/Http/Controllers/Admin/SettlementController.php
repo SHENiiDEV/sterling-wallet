@@ -20,7 +20,9 @@ use App\Settlements\SettlementSchedule;
 use App\Settlements\SettlementService;
 use App\Settlements\SettlementStatementPdf;
 use App\Support\ProductScope;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
@@ -138,7 +140,7 @@ class SettlementController extends Controller
         return to_route('admin.settlements.show', $settlement);
     }
 
-    public function show(Settlement $settlement): Response
+    public function show(Request $request, Settlement $settlement): Response
     {
         $settlement->load(['merchant', 'client:id,name', 'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant:id,name,company_id,settlement_lag_days', 'lines.dailyReport.merchant.company:id,name', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
         $editable = $settlement->isEditable();
@@ -168,6 +170,11 @@ class SettlementController extends Controller
                 ? app(AuthenticatorCodes::class)->present(app(AuthenticatorCodes::class)->forSettlement($settlement))
                 : [],
             'payoutCurrencies' => $this->payoutCurrencies(),
+            'scopeOptions' => $editable ? [
+                'merchants' => Merchant::query()->with('company:id,name,client_id')->orderBy('name')->get(['id', 'public_id', 'name', 'company_id'])
+                    ->map(fn (Merchant $m) => ['public_id' => $m->public_id, 'name' => trim(($m->company?->name ?? '').' · '.$m->name, ' ·')])->values(),
+                'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            ] : null,
             'lines' => $settlement->lines->sortBy('id')->values()->map(fn (SettlementLine $l) => [
                 'id' => $l->id,
                 'type' => $l->type->value,
@@ -189,7 +196,7 @@ class SettlementController extends Controller
                 'address' => $w->address,
                 'merchant' => $w->merchant->name,
             ])->values(),
-            'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->map(fn (DailyReportTask $t) => [
+            'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->merge($this->otherMerchantReports($settlement, $request))->map(fn (DailyReportTask $t) => [
                 'id' => $t->id,
                 'report_date' => $t->report_date->toDateString(),
                 'due' => $this->due($t),
@@ -236,6 +243,28 @@ class SettlementController extends Controller
         return back();
     }
 
+    /**
+     * Draft only: switch between paying one merchant and paying a whole client.
+     */
+    public function scope(Request $request, Settlement $settlement): RedirectResponse
+    {
+        $data = $request->validate([
+            'merchant' => ['nullable', 'required_without:client', 'string', 'exists:merchants,public_id'],
+            'client' => ['nullable', 'required_without:merchant', 'integer', 'exists:clients,id'],
+        ]);
+        $this->assertDraft($settlement);
+
+        $this->settlements->changeScope(
+            $settlement,
+            ! empty($data['client']) ? null : Merchant::query()->where('public_id', $data['merchant'])->firstOrFail(),
+            ! empty($data['client']) ? Client::query()->findOrFail($data['client']) : null,
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Payout scope changed. Add the reports you need.']);
+
+        return back();
+    }
+
     public function addReports(Request $request, Settlement $settlement): RedirectResponse
     {
         $data = $request->validate([
@@ -243,10 +272,13 @@ class SettlementController extends Controller
             'report_ids.*' => ['integer'],
             'release_ids' => ['array'],
             'release_ids.*' => ['integer'],
+            'from_merchant' => ['nullable', 'string', 'exists:merchants,public_id'],
         ]);
         $this->assertDraft($settlement);
 
-        $this->settlements->addReports($settlement, DailyReportTask::query()->whereIn('id', $data['report_ids'] ?? [])->get());
+        // Reports of another merchant (e.g. the company a terminal was taken over from) are added on purpose.
+        $also = ! empty($data['from_merchant']) ? [Merchant::query()->where('public_id', $data['from_merchant'])->value('id')] : [];
+        $this->settlements->addReports($settlement, DailyReportTask::query()->whereIn('id', $data['report_ids'] ?? [])->get(), $also);
         $releases = $this->settlements->availableReleasesIn($settlement)->whereIn('id', $data['release_ids'] ?? []);
         foreach ($releases as $release) {
             $this->settlements->addRelease($settlement, $release);
@@ -288,14 +320,36 @@ class SettlementController extends Controller
     public function settle(Request $request, Settlement $settlement): RedirectResponse
     {
         $data = $request->validate([
-            'tx_hash' => ['required', 'string', 'max:128'],
+            // A payment dated in the past (restoring history) may lack its hash.
+            'tx_hash' => ['nullable', 'required_without:paid_on', 'string', 'max:128'],
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
             'proof' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,webp', 'max:10240'],
         ]);
 
         $proof = $request->file('proof')?->store("settlements/{$settlement->id}", 'local');
-        $this->settlements->markSettled($settlement, $request->user(), trim($data['tx_hash']), $proof ?: null);
+        $this->settlements->markSettled($settlement, $request->user(), isset($data['tx_hash']) ? trim($data['tx_hash']) : null, $proof ?: null, isset($data['paid_on']) ? CarbonImmutable::parse($data['paid_on'])->setTime(12, 0) : null);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "{$settlement->number} marked as paid."]);
+
+        return back();
+    }
+
+    /**
+     * A draft that was paid in the past: approve and pay it in one step, dated the day it was really paid.
+     */
+    public function record(Request $request, Settlement $settlement): RedirectResponse
+    {
+        $data = $request->validate([
+            'paid_on' => ['required', 'date', 'before_or_equal:today'],
+            'tx_hash' => ['nullable', 'string', 'max:128'],
+            'proof' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,webp', 'max:10240'],
+        ]);
+        $this->assertDraft($settlement);
+
+        $proof = $request->file('proof')?->store("settlements/{$settlement->id}", 'local');
+        $this->settlements->recordPaid($settlement, $request->user(), CarbonImmutable::parse($data['paid_on']), filled($data['tx_hash'] ?? null) ? trim($data['tx_hash']) : null, $proof ?: null);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "{$settlement->number} recorded as paid on {$data['paid_on']}."]);
 
         return back();
     }
@@ -330,6 +384,21 @@ class SettlementController extends Controller
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Unpaid reports of a merchant outside this settlement's scope, picked in the "add reports" dialog.
+     *
+     * @return Collection<int, DailyReportTask>
+     */
+    private function otherMerchantReports(Settlement $settlement, Request $request): Collection
+    {
+        $id = $request->filled('from_merchant') ? Merchant::query()->where('public_id', $request->string('from_merchant'))->value('id') : null;
+        if ($id === null || in_array($id, $settlement->merchantIds(), true)) {
+            return new Collection;
+        }
+
+        return $this->settlements->availableReportsFor([$id], $settlement->product);
+    }
+
     private function present(Settlement $s): array
     {
         return [
