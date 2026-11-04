@@ -2,6 +2,7 @@
 
 namespace App\Reports\Generation;
 
+use App\Enums\ProviderType;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
 use Brick\Math\RoundingMode;
@@ -107,6 +108,18 @@ class ReportDocuments
     }
 
     /**
+     * One id for both sides of a pair: the gateway's invoice id (cpi_…). Nothing for an operation without a pair.
+     */
+    private function pairId(MerchantOperation $op): ?string
+    {
+        if ($op->role === ProviderType::Gate) {
+            return $op->matched_operation_id !== null ? $op->payment_id : null;
+        }
+
+        return $op->sp_id;
+    }
+
+    /**
      * @return list<list<string|null>>
      */
     private function operationRows(DailyReportTask $task): array
@@ -118,8 +131,8 @@ class ReportDocuments
             ->orderBy('role')->orderBy('transaction_at')->orderBy('id')
             ->get()
             ->map(fn (MerchantOperation $op) => [
-                $op->provider->name, $op->role->value, $op->operation_type->value, $op->reference, $op->payment_id,
-                $op->sp_id, $op->getAttribute('arn'), $op->card_bin, $op->card_last4, $op->ips,
+                config('sterling.documents.provider_label'), $op->role->value, $op->operation_type->value, $op->reference, $op->payment_id,
+                $this->pairId($op), $op->getAttribute('arn'), $op->card_bin, $op->card_last4, $op->ips,
                 $op->region, $op->amount, $op->currency, $op->transaction_at?->toDateTimeString(),
                 $op->customerName(), $op->customerAccount(), $op->customer_email, $op->getAttribute('resolution'),
             ])

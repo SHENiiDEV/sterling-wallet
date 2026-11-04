@@ -14,6 +14,7 @@ use App\Models\ReserveLedgerEntry;
 use App\Models\Settlement;
 use App\Models\User;
 use App\Reports\Generation\DailyReportGenerator;
+use App\Reports\Generation\ReportDocuments;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Settlements\ReserveReleaseService;
 use App\Settlements\SettlementService;
@@ -154,6 +155,29 @@ class SettlementTest extends TestCase
         // Report Center shows it as paid out.
         $this->actingAs($this->admin)->get(route('admin.reports.index', ['month' => '2026-09']))
             ->assertInertia(fn (Assert $page) => $page->where('totals.0.paid_out', 273.58)->where('totals.0.payout', 273.58));
+    }
+
+    public function test_the_operations_file_hides_the_providers_and_shares_the_gateway_id_as_pair_id()
+    {
+        $task = $this->report();
+        app(ReportDocuments::class)->write($task);
+
+        $csv = Storage::disk(config('sterling.reports.disk'))->get($task->fresh()->generated_operations_path);
+        $rows = array_map('str_getcsv', array_filter(explode("\n", $csv)));
+        $header = array_shift($rows);
+        [$provider, $payment, $pair] = [array_search('Provider', $header), array_search('Payment ID', $header), array_search('Pair ID', $header)];
+
+        $this->assertNotEmpty($rows);
+        $this->assertStringNotContainsString($this->mid->bankProvider->name, $csv);
+        $this->assertStringNotContainsString($this->mid->gateProvider->name, $csv);
+        foreach ($rows as $row) {
+            $this->assertSame('SterlingPay', $row[$provider]);
+        }
+        // Both sides of a pair carry the gateway's id.
+        $gatePayments = array_column(array_filter($rows, fn ($r) => $r[1] === 'gate'), $payment);
+        foreach (array_filter($rows, fn ($r) => $r[$pair] !== '') as $row) {
+            $this->assertContains($row[$pair], $gatePayments);
+        }
     }
 
     public function test_a_draft_can_be_recorded_as_paid_on_a_past_date_without_a_hash()
