@@ -239,6 +239,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Card traffic control
+    |--------------------------------------------------------------------------
+    |
+    | Trusted traffic has repeat customers: no more than this share (%) of the
+    | cards paying on a day are new to the merchant. The first days of a
+    | merchant's history are not judged, there is nothing to compare with.
+    |
+    */
+
+    'traffic' => [
+        'new_card_share_limit' => (float) env('TRAFFIC_NEW_CARD_LIMIT', 20),
+        'warmup_days' => (int) env('TRAFFIC_WARMUP_DAYS', 7),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Merchant documents
     |--------------------------------------------------------------------------
     |
