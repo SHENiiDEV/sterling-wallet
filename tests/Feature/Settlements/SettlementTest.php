@@ -157,7 +157,7 @@ class SettlementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('totals.0.paid_out', 273.58)->where('totals.0.payout', 273.58));
     }
 
-    public function test_the_operations_file_hides_the_providers_and_shares_the_gateway_id_as_pair_id()
+    public function test_the_operations_file_is_the_acquirer_rows_with_the_gateway_id_as_sp_id()
     {
         $task = $this->report();
         app(ReportDocuments::class)->write($task);
@@ -165,19 +165,29 @@ class SettlementTest extends TestCase
         $csv = Storage::disk(config('sterling.reports.disk'))->get($task->fresh()->generated_operations_path);
         $rows = array_map('str_getcsv', array_filter(explode("\n", $csv)));
         $header = array_shift($rows);
-        [$provider, $payment, $pair] = [array_search('Provider', $header), array_search('Payment ID', $header), array_search('Pair ID', $header)];
+        [$provider, $payment, $spId] = [array_search('Provider', $header), array_search('Payment ID', $header), array_search('sp_id', $header)];
 
-        $this->assertNotEmpty($rows);
+        // No provider names, no Role column; one row per acquirer operation, nothing is listed twice.
+        $this->assertFalse(array_search('Role', $header));
         $this->assertStringNotContainsString($this->mid->bankProvider->name, $csv);
         $this->assertStringNotContainsString($this->mid->gateProvider->name, $csv);
+        $bank = $this->mid->operations()->where('role', 'bank')->count();
+        $this->assertGreaterThan(0, $bank);
+        $unpairedGate = $this->mid->operations()->where('role', 'gate')->whereNull('matched_operation_id')->count();
+        $this->assertCount($bank + $unpairedGate, $rows);
+
+        // sp_id is the gateway's id of the matched operation.
+        $gateIds = $this->mid->operations()->where('role', 'gate')->pluck('payment_id')->all();
         foreach ($rows as $row) {
             $this->assertSame('SterlingPay', $row[$provider]);
+            if ($row[$payment] !== '') {
+                $this->assertNotContains($row[$payment], $gateIds);
+            }
+            if ($row[$spId] !== '') {
+                $this->assertContains($row[$spId], $gateIds);
+            }
         }
-        // Both sides of a pair carry the gateway's id.
-        $gatePayments = array_column(array_filter($rows, fn ($r) => $r[1] === 'gate'), $payment);
-        foreach (array_filter($rows, fn ($r) => $r[$pair] !== '') as $row) {
-            $this->assertContains($row[$pair], $gatePayments);
-        }
+        $this->assertNotEmpty(array_filter($rows, fn ($r) => $r[$spId] !== ''));
     }
 
     public function test_a_draft_can_be_recorded_as_paid_on_a_past_date_without_a_hash()
