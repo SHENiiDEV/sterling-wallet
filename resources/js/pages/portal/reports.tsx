@@ -1,6 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { Download } from 'lucide-react';
 import { Pagination } from '@/components/admin/pagination';
+import { PeriodReport } from '@/components/admin/period-report';
 import { PortalFilters, ReportFiles } from '@/components/portal/portal';
 import type { PortalReport, PortalShared } from '@/components/portal/portal';
 import { Button } from '@/components/ui/button';
@@ -93,6 +94,13 @@ export default function PortalReports(props: Props) {
                     />
                 </div>
             </div>
+
+            {props.clientDays && (
+                <PeriodReport
+                    url={portal.reports.client.url()}
+                    companies={props.portal.companies}
+                />
+            )}
 
             {props.clientDays && (
                 <section className="overflow-hidden rounded-xl border bg-card shadow-xs">

@@ -11,6 +11,7 @@ import {
 import { ClientPortalAccess } from '@/components/admin/clients/client-portal-access';
 import type { ClientPortalUser } from '@/components/admin/clients/client-portal-access';
 import { EmptyState } from '@/components/admin/empty-state';
+import { PeriodReport } from '@/components/admin/period-report';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
@@ -189,6 +190,14 @@ export default function ClientShow({
                         </div>
                     )}
                 </section>
+
+                <PeriodReport
+                    url={admin.clients.report.url(client.id)}
+                    companies={companies.map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                    }))}
+                />
 
                 <section className="grid gap-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">

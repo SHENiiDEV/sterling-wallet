@@ -2,10 +2,11 @@
 @extends('pdf.layout')
 
 @php($label = $client->invoiceName().($scope ? ' · '.$scope->name : ''))
-@section('title', 'Daily report '.$label.' '.$date->toDateString())
-@section('doc-title', 'Daily Processing Report')
-@section('doc-sub', $label.' · '.$date->toDateString())
-@section('footer', 'Daily report · '.$label.' · '.$date->toDateString())
+@php($range = $isPeriod ? $date->format('j M Y').' – '.$to->format('j M Y') : $date->toDateString())
+@section('title', ($isPeriod ? 'Report ' : 'Daily report ').$label.' '.$range)
+@section('doc-title', $isPeriod ? 'Processing Report' : 'Daily Processing Report')
+@section('doc-sub', $label.' · '.$range)
+@section('footer', ($isPeriod ? 'Report · ' : 'Daily report · ').$label.' · '.$range)
 
 @section('content')
     <table class="meta">
@@ -22,8 +23,8 @@
                 </table>
             </td>
             <td>
-                <div class="label">Report</div>
-                <div class="value">{{ $date->format('l, j F Y') }}</div>
+                <div class="label">{{ $isPeriod ? 'Period' : 'Report' }}</div>
+                <div class="value">{{ $isPeriod ? $date->format('j F Y').' – '.$to->format('j F Y') : $date->format('l, j F Y') }}</div>
                 <table class="kv" style="margin-top: 4px">
                     <tr><td class="k">Generated</td><td>{{ $generatedAt->format('Y-m-d H:i') }}</td></tr>
                 </table>
@@ -32,7 +33,7 @@
     </table>
 
     @if ($totals === [])
-        <p class="muted">No completed reports for this day.</p>
+        <p class="muted">No completed reports for this {{ $isPeriod ? 'period' : 'day' }}.</p>
     @else
         <table class="tiles">
             <tr>
@@ -53,6 +54,40 @@
         <h2>Payout calculation <span class="hint">· {{ $scope ? $scope->name : 'all companies' }} · all amounts in {{ $currency }}</span></h2>
         @include('reports.partials.calc', ['steps' => $steps, 'currency' => $currency])
     @endforeach
+
+    @if ($isPeriod && $days !== [])
+        <h2>By day <span class="hint">· report days; a weekend is reported together on Sunday</span></h2>
+        <table class="grid avoid-break">
+            <thead>
+                <tr>
+                    <th>Report day</th>
+                    <th>Currency</th>
+                    <th class="num">Sales</th>
+                    <th class="num">Gross sales</th>
+                    <th class="num">Refunds / CB amount</th>
+                    <th class="num">Fees</th>
+                    <th class="num">Reserve</th>
+                    <th class="num">Net payout</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($days as $day => $byCurrency)
+                    @foreach ($byCurrency as $currency => $total)
+                        <tr>
+                            <td>{{ \Carbon\CarbonImmutable::parse($day)->format('D, j M Y') }}</td>
+                            <td>{{ $currency }}</td>
+                            <td class="num">{{ $total['sales'] }}</td>
+                            <td class="num">{{ $money($total['turnover']) }}</td>
+                            <td class="num">{{ $money($total['deductions']) }}</td>
+                            <td class="num">{{ $money($total['fees']) }}</td>
+                            <td class="num">{{ $money($total['reserve']) }}</td>
+                            <td class="num">{{ $money($total['payout']) }}</td>
+                        </tr>
+                    @endforeach
+                @endforeach
+            </tbody>
+        </table>
+    @endif
 
     @foreach ($companies as $company => $block)
         <h2>
@@ -152,9 +187,15 @@
         </table>
     @endif
 
+    @if ($isPeriod && $missing !== [])
+        <div class="note">
+            Not complete: no finished report yet for @foreach ($missing as $mid => $dates){{ $mid }} ({{ implode(', ', array_map(fn ($d) => \Carbon\CarbonImmutable::parse($d)->format('j M'), $dates)) }}){{ $loop->last ? '' : '; ' }}@endforeach. The figures above do not include these days.
+        </div>
+    @endif
+
     @if ($pending !== [])
         <div class="note">
-            Not included yet: @foreach ($pending as $item){{ $item['mid'] }} ({{ $item['status'] }}){{ $loop->last ? '' : ', ' }}@endforeach. These reports are still waiting for provider data.
+            Not included yet: @foreach ($pending as $item){{ $item['mid'] }}{{ $isPeriod ? ' '.\Carbon\CarbonImmutable::parse($item['date'])->format('j M') : '' }} ({{ $item['status'] }}){{ $loop->last ? '' : ', ' }}@endforeach. These reports are still waiting for provider data.
         </div>
     @endif
 
