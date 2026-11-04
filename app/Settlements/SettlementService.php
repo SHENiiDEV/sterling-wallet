@@ -175,12 +175,13 @@ class SettlementService
 
     /**
      * @param  iterable<DailyReportTask>  $reports
+     * @param  list<int>  $alsoMerchantIds  merchants outside the settlement's scope whose reports are added on purpose (a terminal that changed hands)
      */
-    public function addReports(Settlement $settlement, iterable $reports): void
+    public function addReports(Settlement $settlement, iterable $reports, array $alsoMerchantIds = []): void
     {
         $this->assertEditable($settlement);
         $taken = $this->activeLineRefs(SettlementLineType::Report, 'daily_report_task_id')->pluck('daily_report_task_id')->all();
-        $scope = $settlement->merchantIds();
+        $scope = [...$settlement->merchantIds(), ...$alsoMerchantIds];
 
         foreach ($reports as $report) {
             if (! in_array($report->merchant_id, $scope, true) || $report->status !== ReportStatus::Completed || in_array($report->id, $taken, true)) {

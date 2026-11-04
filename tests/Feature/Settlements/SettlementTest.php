@@ -205,6 +205,26 @@ class SettlementTest extends TestCase
         $this->actingAs($this->admin)->post(route('admin.settlements.scope', $settlement), ['client' => $client->id])->assertSessionHasErrors('settlement');
     }
 
+    public function test_reports_of_another_merchant_can_be_added_on_purpose_to_a_draft()
+    {
+        $report = $this->report();
+        $other = $this->merchantWithTariff();
+        $settlement = app(SettlementService::class)->createDraft($other, $this->admin);
+        $this->assertSame(0, $settlement->lines()->count());
+
+        // Without saying so, a report of a merchant outside the scope is refused.
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.store', $settlement), ['report_ids' => [$report->id]]);
+        $this->assertSame(0, $settlement->lines()->count());
+
+        // The page offers that merchant's reports, and adding them on purpose works.
+        $this->actingAs($this->admin)->get(route('admin.settlements.show', ['settlement' => $settlement, 'from_merchant' => $this->merchant->public_id]))
+            ->assertInertia(fn (Assert $page) => $page->has('availableReports', 1));
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.store', $settlement), ['report_ids' => [$report->id], 'from_merchant' => $this->merchant->public_id])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, $settlement->lines()->count());
+        $this->assertSame($report->id, $settlement->lines()->sole()->daily_report_task_id);
+    }
+
     public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
     {
         $this->report();

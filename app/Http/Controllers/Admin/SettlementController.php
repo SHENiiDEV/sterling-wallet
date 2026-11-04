@@ -22,6 +22,7 @@ use App\Settlements\SettlementStatementPdf;
 use App\Support\ProductScope;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
@@ -139,7 +140,7 @@ class SettlementController extends Controller
         return to_route('admin.settlements.show', $settlement);
     }
 
-    public function show(Settlement $settlement): Response
+    public function show(Request $request, Settlement $settlement): Response
     {
         $settlement->load(['merchant', 'client:id,name', 'lines.dailyReport.merchantMid:id,mid', 'lines.dailyReport.merchant:id,name,company_id,settlement_lag_days', 'lines.dailyReport.merchant.company:id,name', 'creator:id,name', 'approver:id,name', 'settler:id,name']);
         $editable = $settlement->isEditable();
@@ -195,7 +196,7 @@ class SettlementController extends Controller
                 'address' => $w->address,
                 'merchant' => $w->merchant->name,
             ])->values(),
-            'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->map(fn (DailyReportTask $t) => [
+            'availableReports' => $editable ? $this->settlements->availableReportsIn($settlement)->merge($this->otherMerchantReports($settlement, $request))->map(fn (DailyReportTask $t) => [
                 'id' => $t->id,
                 'report_date' => $t->report_date->toDateString(),
                 'due' => $this->due($t),
@@ -271,10 +272,13 @@ class SettlementController extends Controller
             'report_ids.*' => ['integer'],
             'release_ids' => ['array'],
             'release_ids.*' => ['integer'],
+            'from_merchant' => ['nullable', 'string', 'exists:merchants,public_id'],
         ]);
         $this->assertDraft($settlement);
 
-        $this->settlements->addReports($settlement, DailyReportTask::query()->whereIn('id', $data['report_ids'] ?? [])->get());
+        // Reports of another merchant (e.g. the company a terminal was taken over from) are added on purpose.
+        $also = ! empty($data['from_merchant']) ? [Merchant::query()->where('public_id', $data['from_merchant'])->value('id')] : [];
+        $this->settlements->addReports($settlement, DailyReportTask::query()->whereIn('id', $data['report_ids'] ?? [])->get(), $also);
         $releases = $this->settlements->availableReleasesIn($settlement)->whereIn('id', $data['release_ids'] ?? []);
         foreach ($releases as $release) {
             $this->settlements->addRelease($settlement, $release);
@@ -380,6 +384,21 @@ class SettlementController extends Controller
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Unpaid reports of a merchant outside this settlement's scope, picked in the "add reports" dialog.
+     *
+     * @return Collection<int, DailyReportTask>
+     */
+    private function otherMerchantReports(Settlement $settlement, Request $request): Collection
+    {
+        $id = $request->filled('from_merchant') ? Merchant::query()->where('public_id', $request->string('from_merchant'))->value('id') : null;
+        if ($id === null || in_array($id, $settlement->merchantIds(), true)) {
+            return new Collection;
+        }
+
+        return $this->settlements->availableReportsFor([$id], $settlement->product);
+    }
+
     private function present(Settlement $s): array
     {
         return [

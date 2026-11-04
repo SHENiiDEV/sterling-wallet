@@ -514,15 +514,32 @@ function AddLinesDialog({
     settlement,
     reports,
     releases,
+    scopeOptions,
     onClose,
 }: {
     settlement: Props['settlement'];
+    scopeOptions: Props['scopeOptions'];
     reports: Props['availableReports'];
     releases: Props['availableReleases'];
     onClose: () => void;
 }) {
     const [reportIds, setReportIds] = useState<number[]>([]);
     const [releaseIds, setReleaseIds] = useState<number[]>([]);
+    const [other, setOther] = useState(NONE);
+    const pickOther = (value: string) => {
+        setOther(value);
+        setReportIds([]);
+        router.get(
+            admin.settlements.show.url(settlement.id),
+            value === NONE ? {} : { from_merchant: value },
+            {
+                only: ['availableReports'],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    };
     const toggle = (list: number[], set: (v: number[]) => void, id: number) =>
         set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
     const owners = Array.from(new Set(reports.map((r) => r.owner)));
@@ -536,6 +553,28 @@ function AddLinesDialog({
                         Only what no other active settlement pays yet.
                     </DialogDescription>
                 </DialogHeader>
+                {scopeOptions && (
+                    <Field label="Also take reports of another merchant (e.g. the company the terminal was taken over from)">
+                        <Select value={other} onValueChange={pickOther}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>
+                                    Only this settlement's merchants
+                                </SelectItem>
+                                {scopeOptions.merchants.map((m) => (
+                                    <SelectItem
+                                        key={m.public_id}
+                                        value={m.public_id}
+                                    >
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                )}
                 <div className="grid gap-2">
                     {owners.map((owner) => (
                         <div key={owner} className="grid gap-2">
@@ -656,6 +695,8 @@ function AddLinesDialog({
                                 {
                                     report_ids: reportIds,
                                     release_ids: releaseIds,
+                                    from_merchant:
+                                        other === NONE ? null : other,
                                 },
                                 { preserveScroll: true, onSuccess: onClose },
                             )
@@ -1828,6 +1869,7 @@ export default function SettlementShow({
                     settlement={settlement}
                     reports={availableReports}
                     releases={availableReleases}
+                    scopeOptions={scopeOptions}
                     onClose={() => setDialog(null)}
                 />
             )}
