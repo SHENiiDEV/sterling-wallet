@@ -14,6 +14,7 @@ import {
     AuthenticatorCodesBlock,
     type AuthenticatorCodeMeta,
 } from '@/components/admin/authenticator-codes';
+import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { Field } from '@/components/admin/form';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { PageErrors } from '@/components/admin/page-errors';
@@ -1287,6 +1288,12 @@ export default function SettlementShow({
         | null
     >(null);
     const draft = settlement.status === 'draft';
+    // A paid report that paid nothing can be taken out to be recalculated and paid properly.
+    const canDetach =
+        !draft &&
+        (settlement.status === 'approved' || settlement.status === 'settled') &&
+        lines.some((l) => l.type === 'report' && Number(l.amount) === 0);
+    const [detach, setDetach] = useState<number | null>(null);
     const currencies = Array.from(new Set(lines.map((l) => l.currency)));
     // What the lines add up to in each currency, before and after conversion (in cents, so no rounding drift).
     const currencyTotals = currencies.map((currency) => {
@@ -1500,7 +1507,9 @@ export default function SettlementShow({
                                         <TableHead className="text-right">
                                             {settlement.payout_currency}
                                         </TableHead>
-                                        {draft && <TableHead className="w-0" />}
+                                        {(draft || canDetach) && (
+                                            <TableHead className="w-0" />
+                                        )}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1550,6 +1559,25 @@ export default function SettlementShow({
                                                     line.amount_payout,
                                                 )}
                                             </TableCell>
+                                            {canDetach && (
+                                                <TableCell>
+                                                    {line.type === 'report' &&
+                                                        Number(line.amount) ===
+                                                            0 && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    setDetach(
+                                                                        line.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Take out
+                                                            </Button>
+                                                        )}
+                                                </TableCell>
+                                            )}
                                             {draft && (
                                                 <TableCell>
                                                     <Button
@@ -1607,7 +1635,9 @@ export default function SettlementShow({
                                             <TableCell className="text-right font-medium tabular-nums">
                                                 {formatMoney(total.payout)}
                                             </TableCell>
-                                            {draft && <TableCell />}
+                                            {(draft || canDetach) && (
+                                                <TableCell />
+                                            )}
                                         </TableRow>
                                     ))}
                                     <TableRow className="border-t-2 hover:bg-transparent">
@@ -1623,7 +1653,7 @@ export default function SettlementShow({
                                             )}{' '}
                                             {settlement.payout_currency}
                                         </TableCell>
-                                        {draft && <TableCell />}
+                                        {(draft || canDetach) && <TableCell />}
                                     </TableRow>
                                 </TableBody>
                             </Table>
@@ -1893,6 +1923,24 @@ export default function SettlementShow({
                     onClose={() => setDialog(null)}
                 />
             )}
+            <ConfirmDialog
+                open={detach !== null}
+                onOpenChange={(open) => !open && setDetach(null)}
+                title="Take this report out of the settlement?"
+                description="Its payout line is 0.00, so nothing paid changes. The report becomes free: recalculate it and pay it in a new settlement. Money already paid on a line is never undone here."
+                confirmLabel="Take out"
+                onConfirm={() =>
+                    detach !== null &&
+                    router.post(
+                        admin.settlements.lines.detach.url({
+                            settlement: settlement.id,
+                            line: detach,
+                        }),
+                        { reason: 'Recalculated and paid again' },
+                        { preserveScroll: true },
+                    )
+                }
+            />
             {dialog === 'scope' && scopeOptions && (
                 <ScopeDialog
                     settlement={settlement}

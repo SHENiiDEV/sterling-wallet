@@ -309,6 +309,21 @@ class SettlementController extends Controller
         return back();
     }
 
+    /**
+     * A zero-payout report line out of an approved or paid settlement (it is paid again once recalculated).
+     */
+    public function detach(Request $request, Settlement $settlement, SettlementLine $line): RedirectResponse
+    {
+        abort_unless($line->settlement_id === $settlement->id, 404);
+        $data = $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
+
+        $this->settlements->detachEmptyReport($line, $request->user(), $data['reason'] ?? null);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'The report is out of '.$settlement->number.' and free to be recalculated and paid.']);
+
+        return back();
+    }
+
     public function approve(Request $request, Settlement $settlement): RedirectResponse
     {
         $this->settlements->approve($settlement, $request->user(), $request->boolean('confirm_early'));

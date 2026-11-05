@@ -244,6 +244,30 @@ class SettlementService
     }
 
     /**
+     * Take a report that paid nothing out of an approved or paid settlement, so it can be recalculated and paid on
+     * its own. For history restored with a report that had no data yet (a zero line): money paid on a line is never
+     * undone here, cancel the settlement or adjust the next one instead.
+     */
+    public function detachEmptyReport(SettlementLine $line, User $by, ?string $reason = null): void
+    {
+        $settlement = $line->settlement;
+        if (! in_array($settlement->status, [SettlementStatus::Approved, SettlementStatus::Settled], true)) {
+            throw ValidationException::withMessages(['settlement' => 'A draft is edited directly; a cancelled settlement already freed its reports.']);
+        }
+        if ($line->type !== SettlementLineType::Report || ! BigDecimal::of($line->amount ?? 0)->isZero() || ! BigDecimal::of($line->amount_payout ?? 0)->isZero()) {
+            throw ValidationException::withMessages(['settlement' => 'Only a report line that paid nothing (0.00) can be taken out of a settlement that is already approved or paid.']);
+        }
+
+        $report = $line->dailyReport;
+        $line->delete();
+        AuditLogger::log('settlement.line_detached', $settlement, [
+            'report_id' => $report?->id,
+            'report_date' => $report?->report_date->toDateString(),
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
      * Change what the settlement is paid in. Rates are for the old currency, so they start over.
      */
     public function setPayoutCurrency(Settlement $settlement, string $currency): Settlement

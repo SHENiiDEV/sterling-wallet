@@ -134,6 +134,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('settlements/{settlement}/scope', [SettlementController::class, 'scope'])->name('settlements.scope');
         Route::post('settlements/{settlement}/lines', [SettlementController::class, 'addReports'])->name('settlements.lines.store');
         Route::post('settlements/{settlement}/adjustments', [SettlementController::class, 'addAdjustment'])->name('settlements.adjustments.store');
+        Route::post('settlements/{settlement}/lines/{line}/detach', [SettlementController::class, 'detach'])->name('settlements.lines.detach');
         Route::delete('settlements/{settlement}/lines/{line}', [SettlementController::class, 'removeLine'])->name('settlements.lines.destroy');
         Route::post('settlements/{settlement}/approve', [SettlementController::class, 'approve'])->name('settlements.approve');
         Route::post('settlements/{settlement}/record', [SettlementController::class, 'record'])->name('settlements.record');
