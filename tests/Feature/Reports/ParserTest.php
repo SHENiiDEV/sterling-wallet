@@ -78,6 +78,25 @@ class ParserTest extends TestCase
         $this->assertSame('Refund', $rows[3]->trnType);
     }
 
+    public function test_madfin_portal_export_reads_the_shop_column_and_skips_cancelled_payments()
+    {
+        $file = $this->csvFile([
+            ['ID', 'Created', 'Finalized', 'Type', 'State', 'Error Code', 'Method', 'Amount', 'Currency', 'Reference ID', 'Shop', 'Customer Account Number', 'Customer Email'],
+            ['e446d80c0d1a4473aac66b03ced4f354', '2026-11-04 07:54:12', '2026-11-04 07:54:24', 'Deposit', 'Completed', '', 'Basic Card', '50.00', 'EUR', 'pay_JtNb', '1792-2_CC_IN', '535456***2032', 'Buyer@Example.test'],
+            ['1a20b8d6cf0847fe9ee4e61d03c73066', '2026-11-04 08:03:58', '2026-11-04 08:04:35', 'Deposit', 'Declined', '5.00 Declined by 3DS', 'Basic Card', '20.00', 'EUR', 'pay_iam5', '1792-2_CC_IN', '402360***9274', ''],
+            ['9a20b8d6cf0847fe9ee4e61d03c73099', '2026-11-04 08:05:00', '', 'Deposit', 'Cancelled', '', 'Basic Card', '10.00', 'EUR', 'pay_x', '1792-2_CC_IN', '402360***1111', ''],
+        ], 'Payments_6.csv', ',');
+
+        $rows = $this->parse('madfin', $file);
+
+        $this->assertCount(2, $rows); // the cancelled attempt never reached the bank
+        $this->assertSame(['1792-2_CC_IN', 'e446d80c0d1a4473aac66b03ced4f354', '50.00', 'Completed', '535456', '2032', 'buyer@example.test'], [
+            $rows[0]->mid, $rows[0]->paymentId, $rows[0]->amount, $rows[0]->resolution, $rows[0]->cardBin, $rows[0]->cardLast4, $rows[0]->email,
+        ]);
+        $this->assertSame(OperationType::Sale, MerchantOperation::classify(['trn_type' => $rows[0]->trnType, 'amount' => $rows[0]->amount, 'resolution' => $rows[0]->resolution]));
+        $this->assertSame(OperationType::Decline, MerchantOperation::classify(['trn_type' => $rows[1]->trnType, 'amount' => $rows[1]->amount, 'resolution' => $rows[1]->resolution]));
+    }
+
     public function test_madfin_workbook_reads_the_transactions_sheet_and_its_columns()
     {
         $book = new Spreadsheet;

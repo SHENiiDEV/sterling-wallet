@@ -63,27 +63,6 @@ class ReconciliationService
         $pairs = [];
         $taken = [];
 
-        // Exact first: the acquirer's transaction id is the gateway's reference id (Madfin id = Corefy reference_id).
-        $byReference = [];
-        foreach ($gate as $op) {
-            if (filled($op->reference)) {
-                $byReference[$op->reference][] = $op;
-            }
-        }
-        foreach ($bank as $op) {
-            if (! filled($op->payment_id) || empty($byReference[$op->payment_id])) {
-                continue;
-            }
-            foreach ($byReference[$op->payment_id] as $candidate) {
-                if (! isset($taken[$candidate->id]) && abs((float) $candidate->amount) === abs((float) $op->amount)) {
-                    $pairs[$op->id] = [$op, $candidate];
-                    $taken[$candidate->id] = true;
-
-                    break;
-                }
-            }
-        }
-
         foreach ($rules['keys'] as $key) {
             $index = [];
             foreach ($gate as $op) {
@@ -114,7 +93,9 @@ class ReconciliationService
 
         DB::transaction(function () use ($pairs, $mid) {
             foreach ($pairs as [$bankOp, $gateOp]) {
-                $bankOp->update(['matched_operation_id' => $gateOp->id, 'sp_id' => $gateOp->payment_id]);
+                // An acquirer file without a region (Madfin's portal export) takes it from the gateway's issuer country;
+                // unknown is priced as non-EU, so the fee would otherwise be too high for EU cards.
+                $bankOp->update(['matched_operation_id' => $gateOp->id, 'sp_id' => $gateOp->payment_id, ...($bankOp->region === null && $gateOp->region !== null ? ['region' => $gateOp->region] : [])]);
                 $gateOp->update(['matched_operation_id' => $bankOp->id, 'sp_id' => $bankOp->payment_id]);
 
                 // The gateway row was booked to a sibling terminal: it belongs to this MID.
