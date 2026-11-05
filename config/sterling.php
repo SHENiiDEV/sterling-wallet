@@ -240,6 +240,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gateway vs acquirer gap
+    |--------------------------------------------------------------------------
+    |
+    | A report whose successful sales differ between the gateway and the acquirer
+    | by at least this share (%), this amount and this many payments is flagged
+    | and announced (Telegram, dashboard). Small gaps are normal.
+    |
+    */
+
+    'gap_alert' => [
+        'percent' => (float) env('GAP_ALERT_PERCENT', 3),
+        'min_amount' => (float) env('GAP_ALERT_MIN_AMOUNT', 100),
+        'min_count' => (int) env('GAP_ALERT_MIN_COUNT', 3),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Card traffic control
     |--------------------------------------------------------------------------
     |

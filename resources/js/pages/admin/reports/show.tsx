@@ -49,6 +49,17 @@ type Report = {
         counts?: Record<string, number>;
         merchant_fee?: { percent: string; fixed: string };
         provider_cost?: { bank: string; gate: string; crypto: string };
+        gateway_check?: {
+            gate_sales: number;
+            gate_amount: string;
+            bank_sales: number;
+            bank_amount: string;
+            diff_count: number;
+            diff_amount: string;
+            diff_percent: number;
+            direction: 'none' | 'gateway_more' | 'bank_more';
+            level: 'ok' | 'high';
+        } | null;
     } | null;
     files: string[];
 };
@@ -388,6 +399,46 @@ export default function ReportShow({
                                 value={`${report.summary?.counts?.unmatched_bank ?? 0} / ${report.summary?.counts?.unmatched_gate ?? 0}`}
                             />
                         </dl>
+                        {report.summary?.gateway_check && (
+                            <div
+                                className={
+                                    report.summary.gateway_check.level ===
+                                    'high'
+                                        ? 'mt-3 rounded-lg border border-rose-500/40 bg-rose-500/5 p-3 text-sm'
+                                        : 'mt-3 rounded-lg border bg-muted/30 p-3 text-sm'
+                                }
+                            >
+                                <p className="font-medium">
+                                    {report.summary.gateway_check.level ===
+                                    'high'
+                                        ? 'Gateway and acquirer disagree'
+                                        : 'Gateway vs acquirer'}
+                                </p>
+                                <dl className="mt-1 text-xs text-muted-foreground">
+                                    <Line
+                                        label="Gateway successful"
+                                        value={`${report.summary.gateway_check.gate_sales} · ${formatMoney(report.summary.gateway_check.gate_amount, report.currency)}`}
+                                    />
+                                    <Line
+                                        label="Acquirer completed"
+                                        value={`${report.summary.gateway_check.bank_sales} · ${formatMoney(report.summary.gateway_check.bank_amount, report.currency)}`}
+                                    />
+                                    <Line
+                                        label="Difference"
+                                        value={`${report.summary.gateway_check.diff_count} · ${formatMoney(report.summary.gateway_check.diff_amount, report.currency)} (${report.summary.gateway_check.diff_percent}%)`}
+                                    />
+                                </dl>
+                                {report.summary.gateway_check.level ===
+                                    'high' && (
+                                    <p className="mt-1 text-xs">
+                                        {report.summary.gateway_check
+                                            .direction === 'gateway_more'
+                                            ? 'The gateway accepted payments the bank did not complete: the money may not have reached us. Ask the acquirer for those payments.'
+                                            : 'The bank completed payments the gateway did not report as successful. Check the gateway file.'}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         <p className="mt-2 text-xs text-muted-foreground">
                             Generated{' '}
                             {report.generated_at

@@ -275,6 +275,34 @@ class DashboardController extends Controller
             }
         }
 
+        // Reports where the gateway and the acquirer disagree on how many payments succeeded.
+        if ($withOperations) {
+            $gaps = DailyReportTask::query()
+                ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'merchantMid:id,mid,currency'])
+                ->where('status', ReportStatus::Completed)
+                ->where('summary_data->gateway_check->level', 'high')
+                ->where('report_date', '>=', now(config('sterling.timezone'))->subDays(30)->toDateString())
+                ->orderByDesc('report_date')
+                ->get();
+
+            if ($gaps->isNotEmpty()) {
+                $rows = $gaps->take(15)->map(fn (DailyReportTask $t) => [
+                    'mid_id' => $t->merchant_mid_id,
+                    'mid' => $t->merchantMid?->mid,
+                    'merchant' => $t->merchant->name,
+                    'company' => $t->merchant->company?->name,
+                    'pair' => $t->report_date->format('d M').' · gateway '.($t->summary_data['gateway_check']['gate_sales'] ?? 0).' vs bank '.($t->summary_data['gateway_check']['bank_sales'] ?? 0),
+                    'bank' => (int) ($t->summary_data['gateway_check']['bank_sales'] ?? 0),
+                    'gate' => (int) ($t->summary_data['gateway_check']['gate_sales'] ?? 0),
+                    'count' => abs((int) ($t->summary_data['gateway_check']['diff_count'] ?? 0)),
+                    'note' => ($t->summary_data['gateway_check']['diff_amount'] ?? '0').' '.$t->currency.' ('.($t->summary_data['gateway_check']['diff_percent'] ?? 0).'%)',
+                    'report_id' => $t->id,
+                ])->values()->all();
+
+                $alerts[] = ['key' => 'gateway_gap', 'label' => 'report(s) where the gateway and the acquirer disagree on successful sales (last 30 days)', 'count' => $gaps->count(), 'detail' => null, 'to' => null, 'rows' => $rows];
+            }
+        }
+
         // Mastercard collaboration cases we dispute (at or above the merchant's threshold) that must be answered soon.
         if ($withOperations) {
             $soon = MerchantOperation::query()

@@ -37,6 +37,14 @@ class BotAlerts
         ), $run->screenshot_path);
     }
 
+    /**
+     * Any other alert for the people who watch the system (Telegram when configured, the log always).
+     */
+    public function notify(string $text): void
+    {
+        $this->send($text, null);
+    }
+
     private function send(string $text, ?string $screenshot): void
     {
         Log::warning($text);

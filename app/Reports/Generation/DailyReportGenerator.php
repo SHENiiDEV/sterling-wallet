@@ -2,6 +2,7 @@
 
 namespace App\Reports\Generation;
 
+use App\Bots\BotAlerts;
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
 use App\Enums\OperationType;
@@ -63,6 +64,7 @@ class DailyReportGenerator
 
         $this->documents->write($task);
         app(SettlementService::class)->syncReport($task->refresh());
+        $this->announceGap($task);
 
         $email = $task->merchant->invoice_email;
         if ($sendEmail && $email && ! $task->is_email_sent) {
@@ -71,6 +73,29 @@ class DailyReportGenerator
         }
 
         return $task;
+    }
+
+    /**
+     * A big difference between the gateway's and the acquirer's successful sales is announced once per report.
+     */
+    private function announceGap(DailyReportTask $task): void
+    {
+        $gap = $task->summary_data['gateway_check'] ?? null;
+        if ($gap === null || $gap['level'] !== 'high' || ($gap['notified'] ?? false)) {
+            return;
+        }
+
+        $currency = $task->currency;
+        app(BotAlerts::class)->notify(sprintf(
+            "⚠️ Gateway and acquirer disagree\nMerchant: %s · MID %s\nReport: %s\nGateway: %d sales, %s %s\nAcquirer: %d sales, %s %s\nDifference: %d sales, %s %s (%s%%)",
+            $task->merchant->name, $task->merchantMid->mid, $task->report_date->toDateString(),
+            $gap['gate_sales'], $gap['gate_amount'], $currency, $gap['bank_sales'], $gap['bank_amount'], $currency,
+            $gap['diff_count'], $gap['diff_amount'], $currency, $gap['diff_percent'],
+        ));
+
+        $summary = $task->summary_data;
+        $summary['gateway_check']['notified'] = true;
+        $task->update(['summary_data' => $summary]);
     }
 
     private function guard(DailyReportTask $task): void
@@ -188,13 +213,20 @@ class DailyReportGenerator
         $providerCost = $bankCost->plus($gateCost)->plus($cryptoCost)->plus($fxCost);
         $netProfit = $merchantFee->plus($conversionFee)->minus($providerCost);
 
+        $gap = $mid->gate_provider_id ? GatewayGap::check($bankOps, $gateOps) : null;
+        if ($gap !== null) {
+            $before = $task->summary_data['gateway_check'] ?? [];
+            // Announced once per report: the flag stays while the gap does, and resets when the gap closes.
+            $gap['notified'] = $gap['level'] === 'high' && ($before['notified'] ?? false);
+        }
+
         $baseCurrency = config('sterling.base_currency');
         $rate = $this->fx->rate($currency, $baseCurrency, $task->report_date);
         if ($rate === null) {
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $gap, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
@@ -249,6 +281,7 @@ class DailyReportGenerator
                         'gate' => (string) $gateCost,
                         'crypto' => (string) $cryptoCost,
                     ],
+                    'gateway_check' => $gap,
                     'provider_fx_markup' => (string) $fxCost,
                     'by_scheme' => $this->breakdown($sales, $fee),
                 ],
