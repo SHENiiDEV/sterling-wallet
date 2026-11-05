@@ -119,11 +119,12 @@ class DailyReportGenerator
         $chargebacks = $bankOps->where('operation_type', OperationType::Chargeback);
         // Mastercard Collaboration cases: charged to the merchant at the requested amount plus a fee per case.
         $collabs = $bankOps->where('operation_type', OperationType::Collab);
-        // Per-transaction fees follow the gateway when there is one: every
-        // approved or declined attempt passes through it. Declines never
-        // reach clearing at all. Refunds and chargebacks are acquirer events.
+        // A successful transaction is one the acquirer completed (COMPLETED in its file): those are the sales, the
+        // success fee and the payout. A gateway "ok" without the acquirer's confirmation is not a sale. Declines
+        // never reach clearing, so they are counted where every attempt passes: the gateway when there is one.
+        // Refunds and chargebacks are acquirer events.
         $txSource = $mid->gate_provider_id ? $gateOps : $bankOps;
-        $approved = $txSource->where('operation_type', OperationType::Sale);
+        $approved = $sales;
         $declines = $txSource->where('operation_type', OperationType::Decline);
 
         $turnover = $this->sum($sales);

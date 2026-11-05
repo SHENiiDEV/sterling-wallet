@@ -178,7 +178,7 @@
     <div class="note">
         The net payout is added to your balance and paid out with the next settlement statement.
         Rolling reserve is held on the MID and released automatically after the holding period.
-        Success and decline fees are counted on the payment gateway. Amounts are rounded to cents per total.
+        Success fees are counted on completed transactions, decline fees on declined attempts. Amounts are rounded to cents per total.
     </div>
 
     @if ($operationsTotal > 0)
