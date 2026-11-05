@@ -260,6 +260,27 @@ class SettlementTest extends TestCase
         $this->assertSame($report->id, $settlement->lines()->sole()->daily_report_task_id);
     }
 
+    public function test_a_zero_report_can_be_taken_out_of_a_paid_settlement_but_a_paid_one_cannot()
+    {
+        $report = $this->report();
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        $line = $settlement->lines()->where('type', SettlementLineType::Report)->sole();
+        app(SettlementService::class)->recordPaid($settlement, $this->admin, CarbonImmutable::parse('2026-09-20'));
+
+        // The line paid real money: refused, nothing changes.
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.detach', [$settlement, $line]))->assertSessionHasErrors('settlement');
+        $this->assertSame(1, $settlement->lines()->count());
+
+        // A line that paid 0.00 (the report had no data yet when it was paid) can be taken out: the report is free again.
+        $line->update(['amount' => '0', 'amount_payout' => '0']);
+        $this->actingAs($this->admin)->post(route('admin.settlements.lines.detach', [$settlement, $line]), ['reason' => 'No bank file yet'])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, $settlement->lines()->where('type', SettlementLineType::Report)->count());
+        $this->assertSame(SettlementStatus::Settled, $settlement->fresh()->status);
+        $this->assertNull($report->fresh()->lockReason());
+        $this->assertDatabaseHas('admin_audit_logs', ['action' => 'settlement.line_detached']);
+    }
+
     public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
     {
         $this->report();
