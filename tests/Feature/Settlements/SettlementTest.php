@@ -6,6 +6,8 @@ use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\FxRate;
 use App\Models\Merchant;
@@ -212,8 +214,8 @@ class SettlementTest extends TestCase
     public function test_a_draft_can_switch_between_a_merchant_and_its_client()
     {
         $this->report();
-        $client = \App\Models\Client::query()->create(['name' => 'Acme group']);
-        $company = \App\Models\Company::factory()->create(['name' => 'Acme Ltd', 'client_id' => $client->id]);
+        $client = Client::query()->create(['name' => 'Acme group']);
+        $company = Company::factory()->create(['name' => 'Acme Ltd', 'client_id' => $client->id]);
         $this->merchant->update(['company_id' => $company->id]);
         $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
         $this->assertSame(1, $settlement->lines()->where('type', SettlementLineType::Report)->count());

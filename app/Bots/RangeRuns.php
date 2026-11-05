@@ -3,6 +3,7 @@
 namespace App\Bots;
 
 use App\Models\IntegrationAccount;
+use App\Models\MerchantMid;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -13,7 +14,7 @@ use Illuminate\Support\Collection;
 interface RangeRuns
 {
     /**
-     * @param  Collection<int, \App\Models\MerchantMid>  $mids
+     * @param  Collection<int, MerchantMid>  $mids
      * @return iterable<Target>
      */
     public function rangeTargets(IntegrationAccount $account, CarbonImmutable $from, CarbonImmutable $to, Collection $mids): iterable;
