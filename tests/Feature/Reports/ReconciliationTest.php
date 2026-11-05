@@ -178,6 +178,32 @@ class ReconciliationTest extends TestCase
         $this->assertSame('MADFIN-1', $gate->fresh()->sp_id);
     }
 
+    public function test_the_acquirers_id_equal_to_the_gateways_reference_pairs_the_rows_exactly()
+    {
+        // Different card and half a day apart: nothing but the shared id says they belong together.
+        $bank = $this->op(ProviderType::Bank, 'f1feaf49f9c740b3bc5bc49d002ed06d', '2026-09-15 02:00:00', ['card_last4' => '1111']);
+        $gate = $this->op(ProviderType::Gate, 'cpi_EXACT', '2026-09-15 15:40:00', ['card_last4' => '2222', 'reference' => 'f1feaf49f9c740b3bc5bc49d002ed06d']);
+        // A different amount with the same reference is not taken for the same payment.
+        $other = $this->op(ProviderType::Bank, 'abc', '2026-09-15 03:00:00', ['amount' => '55.00']);
+        $this->op(ProviderType::Gate, 'cpi_OTHER', '2026-09-15 16:00:00', ['card_last4' => '3333', 'reference' => 'abc']);
+
+        $this->assertSame(1, $this->reconcile());
+        $this->assertSame('cpi_EXACT', $bank->fresh()->sp_id);
+        $this->assertSame('f1feaf49f9c740b3bc5bc49d002ed06d', $gate->fresh()->sp_id);
+        $this->assertNull($other->fresh()->sp_id);
+    }
+
+    public function test_the_reference_of_old_gateway_rows_is_filled_from_the_raw_row()
+    {
+        $gate = $this->op(ProviderType::Gate, 'cpi_OLD', '2026-09-15 10:00:00', ['raw' => ['reference_id' => '0feaad2719d54f9c9dd416a7a1010476']]);
+
+        $this->artisan('operations:backfill-references')->expectsOutputToContain('Would fill the reference of 1')->assertSuccessful();
+        $this->assertNull($gate->fresh()->reference);
+
+        $this->artisan('operations:backfill-references', ['--apply' => true])->assertSuccessful();
+        $this->assertSame('0feaad2719d54f9c9dd416a7a1010476', $gate->fresh()->reference);
+    }
+
     public function test_a_gateway_row_moves_to_the_terminal_it_was_paired_with()
     {
         // A second terminal (another bank) fed by the same Corefy account.

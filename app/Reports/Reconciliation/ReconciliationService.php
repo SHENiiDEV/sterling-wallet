@@ -63,6 +63,27 @@ class ReconciliationService
         $pairs = [];
         $taken = [];
 
+        // Exact first: the acquirer's transaction id is the gateway's reference id (Madfin id = Corefy reference_id).
+        $byReference = [];
+        foreach ($gate as $op) {
+            if (filled($op->reference)) {
+                $byReference[$op->reference][] = $op;
+            }
+        }
+        foreach ($bank as $op) {
+            if (! filled($op->payment_id) || empty($byReference[$op->payment_id])) {
+                continue;
+            }
+            foreach ($byReference[$op->payment_id] as $candidate) {
+                if (! isset($taken[$candidate->id]) && abs((float) $candidate->amount) === abs((float) $op->amount)) {
+                    $pairs[$op->id] = [$op, $candidate];
+                    $taken[$candidate->id] = true;
+
+                    break;
+                }
+            }
+        }
+
         foreach ($rules['keys'] as $key) {
             $index = [];
             foreach ($gate as $op) {

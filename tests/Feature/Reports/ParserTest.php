@@ -117,6 +117,7 @@ class ParserTest extends TestCase
         $rows = $this->parse('corefy', $file);
 
         $this->assertCount(3, $rows); // the pending invoice is not an operation yet
+        $this->assertSame('pay_1', $rows[0]->reference); // Corefy's reference id, searchable and used for exact pairing
         $this->assertSame(['coma_d91', 'cpi_1', '88.00', 'EUR', '523641', '0410', 'mastercard', 'eu'], [
             $rows[0]->mid, $rows[0]->paymentId, $rows[0]->amount, $rows[0]->currency, $rows[0]->cardBin, $rows[0]->cardLast4, $rows[0]->ips, $rows[0]->region,
         ]);

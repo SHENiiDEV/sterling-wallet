@@ -27,7 +27,10 @@ class CorefyParser extends HeaderMappedParser
             $attributes['resolution'] = $status;
         }
 
-        $attributes['paymentId'] ??= Values::text($get('reference_id'));
+        // The invoice id (cpi_…) is the payment id. Corefy's reference_id is what the acquirer calls its own transaction
+        // id, so keep it searchable and use it to pair the two sides exactly.
+        $attributes['reference'] = Values::text($get('reference_id'));
+        $attributes['paymentId'] ??= $attributes['reference'];
 
         return $attributes;
     }
