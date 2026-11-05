@@ -67,6 +67,8 @@ class GatewayGapTest extends TestCase
 
     public function test_a_big_gap_is_flagged_announced_once_and_shown_on_the_dashboard()
     {
+        // The dashboard lists the last 30 days.
+        $this->travelTo(CarbonImmutable::parse('2026-09-20 10:00:00', 'Europe/Riga'));
         $this->extraGateSales(3); // the gateway took 3 more payments (300) than the bank completed
 
         app(DailyReportGenerator::class)->generate($this->task());
