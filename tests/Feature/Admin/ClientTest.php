@@ -90,6 +90,43 @@ class ClientTest extends TestCase
         $this->assertSame([], $data['pending']);
     }
 
+    public function test_a_period_statement_adds_the_days_up_per_mid_and_lists_missing_days()
+    {
+        $client = $this->clientWithTwoCompanies();
+        // The next day: the same figures again (the fixture files reuse their ids, so copy the finished reports).
+        foreach (DailyReportTask::query()->where('report_date', '2026-09-15')->get() as $task) {
+            $copy = $task->replicate();
+            $copy->report_date = '2026-09-16';
+            $copy->period_from = '2026-09-16';
+            $copy->period_to = '2026-09-16';
+            $copy->save();
+        }
+
+        $data = app(ClientDailyStatement::class)->data($client, CarbonImmutable::parse('2026-09-15'), null, CarbonImmutable::parse('2026-09-16'));
+
+        $this->assertTrue($data['isPeriod']);
+        $this->assertSame(12, $data['totals']['EUR']['sales']);
+        $this->assertTrue($data['totals']['EUR']['payout']->isEqualTo(BigDecimal::of('273.58')->multipliedBy(4)));
+        $this->assertSame(['2026-09-15', '2026-09-16'], array_keys($data['days']));
+        // Each MID is one line, its two days added up.
+        $this->assertCount(1, $data['companies']['LUNEHOLM LTD']['rows']);
+        $this->assertSame(6, $data['companies']['LUNEHOLM LTD']['rows'][0]['sales']);
+        $this->assertSame([], $data['missing']);
+
+        // Thursday has no report; a period ending on Friday leaves the Friday–Sunday report (dated Sunday) out.
+        $later = app(ClientDailyStatement::class)->data($client, CarbonImmutable::parse('2026-09-15'), null, CarbonImmutable::parse('2026-09-18'));
+        $this->assertSame(['4400000001' => ['2026-09-17'], '4400000002' => ['2026-09-17']], $later['missing']);
+
+        $pdf = $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-16']));
+        $pdf->assertOk();
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+        $this->assertStringContainsString('report_', (string) $pdf->headers->get('Content-Disposition'));
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-16', 'format' => 'xlsx']))->assertOk();
+        // The period must not run backwards or past a year.
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-14']))->assertSessionHasErrors('to');
+        $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2028-01-01']))->assertSessionHasErrors('to');
+    }
+
     public function test_report_downloads_and_is_mailed_to_the_client()
     {
         $client = $this->clientWithTwoCompanies();

@@ -2,6 +2,7 @@
 
 namespace App\Reports\Generation;
 
+use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Models\DailyReportTask;
 use App\Models\MerchantOperation;
@@ -108,9 +109,9 @@ class ReportDocuments
     }
 
     /**
-     * One row per transaction, built from the acquirer's file with the gateway's invoice id (cpi_…) glued on as
-     * `sp_id`. Acquirer rows without a pair keep an empty sp_id; gateway rows no acquirer row matches are listed
-     * after them, with their own cpi_ and the acquirer columns empty.
+     * Completed transactions only: the acquirer's rows (sales, refunds, chargebacks), each with the gateway's
+     * invoice id (cpi_…) glued on as `sp_id`; empty when no gateway operation matches. Declines and gateway
+     * operations the acquirer did not complete are not listed.
      *
      * @return list<list<string|null>>
      */
@@ -121,19 +122,16 @@ class ReportDocuments
         return MerchantOperation::query()
             ->where('merchant_mid_id', $task->merchant_mid_id)
             ->whereBetween('report_date', [$task->period_from->toDateString(), $task->period_to->toDateString()])
-            ->where(fn ($q) => $q->where('role', ProviderType::Bank->value)->orWhere(fn ($g) => $g->where('role', ProviderType::Gate->value)->whereNull('matched_operation_id')))
-            ->orderByRaw('role = ? desc', [ProviderType::Bank->value])->orderBy('transaction_at')->orderBy('id')
+            ->where('role', ProviderType::Bank->value)
+            ->where('operation_type', '!=', OperationType::Decline->value)
+            ->orderBy('transaction_at')->orderBy('id')
             ->get()
-            ->map(function (MerchantOperation $op) use ($label) {
-                $gateOnly = $op->role === ProviderType::Gate;
-
-                return [
-                    $label, $op->operation_type->value, $op->reference, $gateOnly ? null : $op->payment_id,
-                    $gateOnly ? $op->payment_id : $op->sp_id, $op->getAttribute('arn'), $op->card_bin, $op->card_last4, $op->ips,
-                    $op->region, $op->amount, $op->currency, $op->transaction_at?->toDateTimeString(),
-                    $op->customerName(), $op->customerAccount(), $op->customer_email, $op->getAttribute('resolution'),
-                ];
-            })
+            ->map(fn (MerchantOperation $op) => [
+                $label, $op->operation_type->value, $op->reference, $op->payment_id,
+                $op->sp_id, $op->getAttribute('arn'), $op->card_bin, $op->card_last4, $op->ips,
+                $op->region, $op->amount, $op->currency, $op->transaction_at?->toDateTimeString(),
+                $op->customerName(), $op->customerAccount(), $op->customer_email, $op->getAttribute('resolution'),
+            ])
             ->all();
     }
 }

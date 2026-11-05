@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -90,16 +91,23 @@ class PortalController extends Controller
 
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
+            // A period statement (a week, a month, any range up to a year): the last report day.
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date'],
             'format' => ['sometimes', 'in:pdf,xlsx'],
             'company' => ['nullable', 'integer'],
         ]);
         $date = CarbonImmutable::parse($data['date']);
+        $to = isset($data['to']) ? CarbonImmutable::parse($data['to']) : null;
+        $isPeriod = $to !== null && $to->greaterThan($date);
+        if ($isPeriod && $date->diffInDays($to) > 366) {
+            throw ValidationException::withMessages(['to' => 'A period can be at most a year.']);
+        }
         $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
         $companyId = isset($data['company']) ? (int) $data['company'] : null;
         $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
-        $name = 'daily-report_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'];
+        $name = ($isPeriod ? 'report_' : 'daily-report_').preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'].($isPeriod ? '_'.$data['to'] : '');
 
-        return response($xlsx ? $statement->xlsx($client, $date, $companyId) : $statement->render($client, $date, $companyId), 200, [
+        return response($xlsx ? $statement->xlsx($client, $date, $companyId, $to) : $statement->render($client, $date, $companyId, $to), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
         ]);

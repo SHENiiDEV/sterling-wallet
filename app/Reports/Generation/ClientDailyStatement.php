@@ -2,15 +2,19 @@
 
 namespace App\Reports\Generation;
 
+use App\Enums\MidStatus;
 use App\Enums\ReportStatus;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
 use App\Models\Merchant;
+use App\Models\MerchantMid;
+use App\Reports\ReportDateResolver;
 use App\Support\PdfRenderer;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -26,35 +30,40 @@ class ClientDailyStatement
 
     /**
      * @param  int|null  $companyId  only this company of the client (default: all of them)
+     * @param  CarbonImmutable|null  $to  last report day of a period statement (a week, a month, any range); omitted = the one day
      */
-    public function render(Client $client, CarbonImmutable $date, ?int $companyId = null): string
+    public function render(Client $client, CarbonImmutable $date, ?int $companyId = null, ?CarbonImmutable $to = null): string
     {
-        return PdfRenderer::render('reports.client-daily', $this->data($client, $date, $companyId));
+        return PdfRenderer::render('reports.client-daily', $this->data($client, $date, $companyId, $to));
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function data(Client $client, CarbonImmutable $date, ?int $companyId = null): array
+    public function data(Client $client, CarbonImmutable $date, ?int $companyId = null, ?CarbonImmutable $to = null): array
     {
+        $to = $to === null || $to->lessThan($date) ? $date : $to;
+        $isPeriod = $to->greaterThan($date);
         $scope = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
         $companyIds = $scope === null ? Company::query()->where('client_id', $client->id)->pluck('id')->all() : [$scope->id];
 
         $tasks = DailyReportTask::query()
             ->with('merchant.company', 'merchantMid.bankProvider')
             ->whereIn('merchant_id', Merchant::query()->whereIn('company_id', $companyIds)->select('id'))
-            ->whereDate('report_date', $date->toDateString())
+            ->whereBetween('report_date', [$date->toDateString(), $to->toDateString()])
             ->get()
-            ->sortBy(fn (DailyReportTask $t) => [$t->merchant->company->name ?? '', $t->merchant->name, $t->merchantMid->mid])
+            ->sortBy(fn (DailyReportTask $t) => [$t->merchant->company->name ?? '', $t->merchant->name, $t->merchantMid->mid, $t->report_date->toDateString()])
             ->values();
 
         $done = $tasks->where('status', ReportStatus::Completed);
         $pending = $tasks->where('status', '!=', ReportStatus::Completed)
-            ->map(fn (DailyReportTask $t) => ['mid' => $t->merchantMid->mid, 'merchant' => $t->merchant->name, 'status' => $t->status->value])
+            ->map(fn (DailyReportTask $t) => ['mid' => $t->merchantMid->mid, 'merchant' => $t->merchant->name, 'status' => $t->status->value, 'date' => $t->report_date->toDateString()])
             ->values()->all();
 
         $companies = [];
         $totals = [];
+        $perDay = [];
+        $rows = [];
         $sums = ['total' => [], 'companies' => []];
         foreach ($done as $task) {
             $company = $task->merchant->company->name ?? $task->merchant->name;
@@ -75,12 +84,19 @@ class ClientDailyStatement
                 'payout' => $this->dec($task->net_payout),
             ];
 
-            $companies[$company]['rows'][] = $row;
-            $this->add($companies[$company]['totals'][$task->currency], $row);
-            $this->add($totals[$task->currency], $row);
+            // A period: one line per MID, its days added up.
+            $key = $company.'|'.$task->merchantMid->id;
+            $rows[$key] = isset($rows[$key]) ? ['company' => $company, 'row' => $this->merge($rows[$key]['row'], $row)] : ['company' => $company, 'row' => $row];
+            $this->add($perDay[$task->report_date->toDateString()][$task->currency], $row);
             $this->accumulate($sums['companies'][$company][$task->currency], $task);
             $this->accumulate($sums['total'][$task->currency], $task);
         }
+        foreach ($rows as $item) {
+            $companies[$item['company']]['rows'][] = $item['row'];
+            $this->add($companies[$item['company']]['totals'][$item['row']['currency']], $item['row']);
+            $this->add($totals[$item['row']['currency']], $item['row']);
+        }
+        ksort($perDay);
 
         ksort($totals);
         ksort($sums['total']);
@@ -95,6 +111,10 @@ class ClientDailyStatement
             'client' => $client,
             'scope' => $scope,
             'date' => $date,
+            'to' => $to,
+            'isPeriod' => $isPeriod,
+            'days' => $perDay,
+            'missing' => $isPeriod ? $this->missing(Merchant::query()->whereIn('company_id', $companyIds)->pluck('id')->all(), $date, $to, $done) : [],
             'companies' => $companies,
             'totals' => $totals,
             'calc' => $calc,
@@ -103,9 +123,10 @@ class ClientDailyStatement
         ];
     }
 
-    public function xlsx(Client $client, CarbonImmutable $date, ?int $companyId = null): string
+    public function xlsx(Client $client, CarbonImmutable $date, ?int $companyId = null, ?CarbonImmutable $to = null): string
     {
-        $data = $this->data($client, $date, $companyId);
+        $data = $this->data($client, $date, $companyId, $to);
+        $label = $data['isPeriod'] ? $date->toDateString().' – '.$data['to']->toDateString() : $date->toDateString();
 
         $rows = [['Company', 'Merchant', 'Website', 'MID', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
         foreach ($data['companies'] as $company => $block) {
@@ -118,10 +139,24 @@ class ClientDailyStatement
         }
 
         $book = new Spreadsheet;
-        $sheet = $book->getActiveSheet()->setTitle('Daily report');
-        $sheet->fromArray([[$client->invoiceName().($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$date->toDateString()], [], ...$rows]);
+        $sheet = $book->getActiveSheet()->setTitle($data['isPeriod'] ? 'Report' : 'Daily report');
+        $sheet->fromArray([[$client->invoiceName().($data['scope'] ? ' · '.$data['scope']->name : '').' — '.$label], [], ...$rows]);
         foreach (range('A', 'O') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        if ($data['isPeriod']) {
+            $byDay = [['Report day', 'Currency', 'Sales', 'Declines', 'Refunds', 'Chargebacks', 'Turnover', 'Refunds & chargebacks amount', 'Fees', 'Reserve', 'Payout']];
+            foreach ($data['days'] as $day => $byCurrency) {
+                foreach ($byCurrency as $currency => $total) {
+                    $byDay[] = [$day, $currency, $total['sales'], $total['declines'], $total['refunds'], $total['chargebacks'], ...$this->strings($total, ['turnover', 'deductions', 'fees', 'reserve', 'payout'])];
+                }
+            }
+            $daysSheet = $book->createSheet()->setTitle('By day');
+            $daysSheet->fromArray($byDay);
+            foreach (range('A', 'K') as $column) {
+                $daysSheet->getColumnDimension($column)->setAutoSize(true);
+            }
         }
 
         $calc = $book->createSheet()->setTitle('Calculation');
@@ -154,6 +189,64 @@ class ClientDailyStatement
         @unlink($path);
 
         return $content;
+    }
+
+    /**
+     * Two MID lines of the same period added up.
+     *
+     * @param  array<string, mixed>  $a
+     * @param  array<string, mixed>  $b
+     * @return array<string, mixed>
+     */
+    private function merge(array $a, array $b): array
+    {
+        foreach (['sales', 'declines', 'refunds', 'chargebacks'] as $key) {
+            $a[$key] += $b[$key];
+        }
+        foreach (['turnover', 'deductions', 'fees', 'reserve', 'payout'] as $key) {
+            $a[$key] = $a[$key]->plus($b[$key]);
+        }
+
+        return $a;
+    }
+
+    /**
+     * Report days of the period that an active MID should already have a completed report for but does not:
+     * shown in the statement so partial figures are not taken for full ones. A weekend report (Friday–Sunday)
+     * is dated Sunday, so a period that ends on a Friday leaves it out.
+     *
+     * @param  list<int>  $merchantIds
+     * @param  Collection<int, DailyReportTask>  $done
+     * @return array<string, list<string>> MID => dates
+     */
+    private function missing(array $merchantIds, CarbonImmutable $from, CarbonImmutable $to, Collection $done): array
+    {
+        $resolver = app(ReportDateResolver::class);
+        $today = CarbonImmutable::now(config('sterling.timezone'))->startOfDay();
+        $completed = $done->mapWithKeys(fn (DailyReportTask $t) => [$t->merchant_mid_id.'|'.$t->report_date->toDateString() => true]);
+        $missing = [];
+
+        $mids = MerchantMid::query()->with('bankProvider')->whereIn('merchant_id', $merchantIds)->where('status', MidStatus::Active)->orderBy('mid')->get();
+        foreach ($mids as $mid) {
+            if ($mid->bankProvider === null) {
+                continue;
+            }
+            for ($cursor = $from; $cursor->lessThanOrEqualTo($to);) {
+                $period = $resolver->periodFor($cursor);
+                $cursor = $period->to->addDay();
+                $day = $period->reportDate;
+
+                if ($day->lessThan($from) || $day->greaterThan($to)
+                    || ($mid->reports_start_date !== null && $day->lessThan($mid->reports_start_date))
+                    || $resolver->readyOn($mid->bankProvider, $period)->greaterThan($today)
+                    || $completed->has($mid->id.'|'.$day->toDateString())) {
+                    continue;
+                }
+                $missing[$mid->mid][] = $day->toDateString();
+            }
+        }
+
+        return $missing;
     }
 
     /**
