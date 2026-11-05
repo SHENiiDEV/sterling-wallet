@@ -173,7 +173,7 @@ export default function Traffic({
 }: Props) {
     const url = (query: Record<string, string | number>) =>
         admin.traffic.index.url({ query });
-    const ownerQuery = (o: OwnerRow) =>
+    const ownerQuery = (o: OwnerRow): Record<string, string> =>
         by === 'mid'
             ? { by, mid: o.mid ?? '' }
             : { by, merchant: o.merchant.public_id ?? '' };
