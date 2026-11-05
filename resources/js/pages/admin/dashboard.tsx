@@ -91,6 +91,7 @@ type Props = {
             gate: number;
             count: number;
             note?: string;
+            report_id?: number;
         }[];
     }[];
 };
@@ -176,18 +177,26 @@ export default function Dashboard({
                                     {alert.rows && alert.rows.length > 0 && (
                                         <ul className="mt-1 mb-2 grid w-full gap-0.5 border-l-2 pl-3 text-xs text-muted-foreground">
                                             {alert.rows.map((row) => (
-                                                <li key={row.mid_id}>
+                                                <li
+                                                    key={`${row.mid_id}-${row.report_id ?? ''}`}
+                                                >
                                                     <Link
-                                                        href={admin.operations.index(
-                                                            {
-                                                                query: {
-                                                                    unmatched: 1,
-                                                                    type: 'sale',
-                                                                    mid: row.mid_id,
-                                                                    to: alert.to,
-                                                                },
-                                                            },
-                                                        )}
+                                                        href={
+                                                            row.report_id
+                                                                ? admin.reports.show.url(
+                                                                      row.report_id,
+                                                                  )
+                                                                : admin.operations.index(
+                                                                      {
+                                                                          query: {
+                                                                              unmatched: 1,
+                                                                              type: 'sale',
+                                                                              mid: row.mid_id,
+                                                                              to: alert.to,
+                                                                          },
+                                                                      },
+                                                                  )
+                                                        }
                                                         className="hover:underline"
                                                     >
                                                         <span className="font-medium text-foreground tabular-nums">
