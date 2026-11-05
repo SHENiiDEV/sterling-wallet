@@ -15,4 +15,14 @@ class MadfinParser extends HeaderMappedParser
     {
         return 'madfin';
     }
+
+    protected function adjust(array $attributes, callable $get): ?array
+    {
+        // The portal export also lists payments the customer cancelled: they never reached the bank.
+        if (in_array(strtolower((string) $attributes['resolution']), ['cancelled', 'canceled'], true)) {
+            return null;
+        }
+
+        return $attributes;
+    }
 }

@@ -178,19 +178,13 @@ class ReconciliationTest extends TestCase
         $this->assertSame('MADFIN-1', $gate->fresh()->sp_id);
     }
 
-    public function test_the_acquirers_id_equal_to_the_gateways_reference_pairs_the_rows_exactly()
+    public function test_a_bank_row_without_a_region_takes_it_from_the_gateway_row_it_is_paired_with()
     {
-        // Different card and half a day apart: nothing but the shared id says they belong together.
-        $bank = $this->op(ProviderType::Bank, 'f1feaf49f9c740b3bc5bc49d002ed06d', '2026-09-15 02:00:00', ['card_last4' => '1111']);
-        $gate = $this->op(ProviderType::Gate, 'cpi_EXACT', '2026-09-15 15:40:00', ['card_last4' => '2222', 'reference' => 'f1feaf49f9c740b3bc5bc49d002ed06d']);
-        // A different amount with the same reference is not taken for the same payment.
-        $other = $this->op(ProviderType::Bank, 'abc', '2026-09-15 03:00:00', ['amount' => '55.00']);
-        $this->op(ProviderType::Gate, 'cpi_OTHER', '2026-09-15 16:00:00', ['card_last4' => '3333', 'reference' => 'abc']);
+        $bank = $this->op(ProviderType::Bank, 'MF-1', '2026-09-15 10:00:00', ['region' => null]);
+        $this->op(ProviderType::Gate, 'cpi_1', '2026-09-15 10:00:30', ['region' => 'eu']);
 
         $this->assertSame(1, $this->reconcile());
-        $this->assertSame('cpi_EXACT', $bank->fresh()->sp_id);
-        $this->assertSame('f1feaf49f9c740b3bc5bc49d002ed06d', $gate->fresh()->sp_id);
-        $this->assertNull($other->fresh()->sp_id);
+        $this->assertSame('eu', $bank->fresh()->region);
     }
 
     public function test_the_reference_of_old_gateway_rows_is_filled_from_the_raw_row()

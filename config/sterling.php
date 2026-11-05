@@ -215,7 +215,7 @@ return [
             'transacted_at' => ['created', 'created at', 'created_at', 'date', 'processed', 'processed at'],
         ],
         'madfin' => [
-            'mid' => ['mid', 'merchant id', 'terminal id', 'shop name'],
+            'mid' => ['mid', 'merchant id', 'terminal id', 'shop name', 'shop'],
             'merchant_name' => ['merchant name', 'merchant'],
             'payment_id' => ['transaction id', 'id', 'payment id'],
             'arn' => ['arn'],
@@ -233,7 +233,8 @@ return [
             'trn_type' => ['transaction type', 'type', 'trn type'],
             'resolution' => ['status', 'result', 'state'],
             'transacted_at' => ['transaction date', 'date', 'created'],
-            'processed_at' => ['settlement date', 'processing date', 'bank date'],
+            'processed_at' => ['settlement date', 'processing date', 'bank date', 'finalized'],
+            'email' => ['customer email', 'email'],
         ],
     ],
 
