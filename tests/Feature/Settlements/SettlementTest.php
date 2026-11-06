@@ -281,6 +281,28 @@ class SettlementTest extends TestCase
         $this->assertDatabaseHas('admin_audit_logs', ['action' => 'settlement.line_detached']);
     }
 
+    public function test_a_paid_report_is_corrected_and_its_documents_rebuilt_without_touching_the_settlement()
+    {
+        $report = $this->report();
+        $right = (string) $report->getRawOriginal('net_payout');
+        $settlement = app(SettlementService::class)->createDraft($this->merchant, $this->admin);
+        $line = $settlement->lines()->where('type', SettlementLineType::Report)->sole();
+        app(SettlementService::class)->recordPaid($settlement, $this->admin, CarbonImmutable::parse('2026-09-20'));
+        // It was calculated too early and paid with a payout that is too low.
+        $report->update(['net_payout' => '100']);
+
+        $this->artisan('reports:correct', ['--mid' => $this->mid->mid])->expectsOutputToContain('Dry run')->assertSuccessful();
+        $this->assertTrue(BigDecimal::of($report->fresh()->getRawOriginal('net_payout'))->isEqualTo('100'));
+
+        $this->artisan('reports:correct', ['--mid' => $this->mid->mid, '--apply' => true])->expectsOutputToContain('Corrected 1 report(s)')->assertSuccessful();
+
+        $this->assertTrue(BigDecimal::of($report->fresh()->getRawOriginal('net_payout'))->isEqualTo($right));
+        // What was paid stays as paid.
+        $this->assertSame(SettlementStatus::Settled, $settlement->fresh()->status);
+        $this->assertTrue(BigDecimal::of($line->fresh()->amount)->isEqualTo($right));
+        $this->assertDatabaseHas('admin_audit_logs', ['action' => 'report.corrected']);
+    }
+
     public function test_an_approved_settlement_can_be_marked_paid_on_a_past_date()
     {
         $this->report();
