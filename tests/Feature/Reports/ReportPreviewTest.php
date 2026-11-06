@@ -63,4 +63,12 @@ class ReportPreviewTest extends TestCase
 
         $this->artisan('reports:recalc-preview')->assertFailed();
     }
+
+    public function test_the_month_check_lines_up_the_gateway_volume_with_the_finished_reports()
+    {
+        $this->artisan('reports:month-check', ['--month' => '2026-09'])
+            ->expectsOutputToContain($this->mid->mid)
+            ->expectsOutputToContain('Total 2026-09')
+            ->assertSuccessful();
+    }
 }
