@@ -76,6 +76,21 @@ class DailyReportGenerator
     }
 
     /**
+     * Calculate a report that is already in an approved or paid settlement again and keep the result, with fresh
+     * documents (what the client downloads). The settlement and its lines are not touched: what was paid stays as
+     * paid, and the difference is settled by an adjustment in a later settlement. Nothing is e-mailed.
+     */
+    public function correctPaid(DailyReportTask $task): DailyReportTask
+    {
+        $task->load('merchantMid.merchant.cryptoProvider', 'merchantMid.bankProvider', 'merchantMid.gateProvider');
+        $this->guard($task);
+        $this->calculate($task);
+        $this->documents->write($task);
+
+        return $task->refresh();
+    }
+
+    /**
      * What a report would be if it were calculated again now, next to what is stored. Nothing is kept: the whole
      * calculation runs inside a transaction that is rolled back, so it works for reports already paid
      * (to see how far their payout is from the figures the operations give today). No documents, no e-mail.
