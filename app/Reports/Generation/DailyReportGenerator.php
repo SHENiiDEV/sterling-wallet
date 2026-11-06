@@ -76,6 +76,47 @@ class DailyReportGenerator
     }
 
     /**
+     * What a report would be if it were calculated again now, next to what is stored. Nothing is kept: the whole
+     * calculation runs inside a transaction that is rolled back, so it works for reports already paid
+     * (to see how far their payout is from the figures the operations give today). No documents, no e-mail.
+     *
+     * @return array{before: array<string, string|int|null>, after: array<string, string|int|null>}
+     */
+    public function preview(DailyReportTask $task): array
+    {
+        $task->load('merchantMid.merchant.cryptoProvider', 'merchantMid.bankProvider', 'merchantMid.gateProvider');
+        $before = $this->figures($task);
+
+        DB::beginTransaction();
+        try {
+            $this->guard($task);
+            $this->calculate($task);
+            $after = $this->figures($task->refresh());
+        } finally {
+            DB::rollBack();
+        }
+
+        return ['before' => $before, 'after' => $after];
+    }
+
+    /**
+     * @return array<string, string|int|null>
+     */
+    private function figures(DailyReportTask $task): array
+    {
+        return [
+            'sales' => (int) $task->sales_count,
+            'declines' => (int) ($task->summary_data['counts']['declines'] ?? 0),
+            'turnover' => (string) $task->getRawOriginal('turnover'),
+            'fees' => (string) $task->getRawOriginal('total_merchant_fee'),
+            'fixed_fees' => (string) ($task->summary_data['merchant_fee']['fixed'] ?? '0'),
+            'reserve' => (string) $task->getRawOriginal('reserve_amount'),
+            'conversion' => (string) $task->getRawOriginal('conversion_fee'),
+            'payout' => (string) $task->getRawOriginal('net_payout'),
+        ];
+    }
+
+    /**
      * A big difference between the gateway's and the acquirer's successful sales is announced once per report.
      */
     private function announceGap(DailyReportTask $task): void
