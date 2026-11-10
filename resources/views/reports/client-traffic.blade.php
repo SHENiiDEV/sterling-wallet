@@ -2,7 +2,7 @@
 @php($amounts = fn (array $by) => collect($by)->map(fn ($v, $c) => $money($v, $c))->implode(' · ') ?: '—')
 @extends('pdf.layout')
 
-@php($label = $client->invoiceName().($scope ? ' · '.$scope->name : ''))
+@php($label = $title)
 @php($range = $from->format('j M Y').' – '.$to->format('j M Y'))
 @section('title', 'Traffic '.$label.' '.$range)
 @section('doc-title', 'Traffic Report')
@@ -14,7 +14,7 @@
         <tr>
             <td>
                 <div class="label">Client</div>
-                <div class="value">{{ $client->invoiceName() }}@if ($scope) · {{ $scope->name }}@endif</div>
+                <div class="value">{{ $title }}</div>
             </td>
             <td>
                 <div class="label">Period</div>

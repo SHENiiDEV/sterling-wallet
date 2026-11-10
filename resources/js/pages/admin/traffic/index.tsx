@@ -1,6 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
+import { Download } from 'lucide-react';
+import { useState } from 'react';
 import { PageBody, PageHeader } from '@/components/admin/page-header';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
     Table,
     TableBody,
@@ -65,6 +68,121 @@ const percent = (value: number | null) =>
     value === null ? '—' : `${value.toFixed(1)}%`;
 
 const hasSignals = (s: OwnerRow['signals']): s is Signals => 'flags' in s;
+
+/**
+ * A traffic report from a Corefy payments export: pick the file, get the PDF or XLSX. Nothing is stored.
+ */
+function FileReport() {
+    const [file, setFile] = useState<File | null>(null);
+    const [title, setTitle] = useState('');
+    const [busy, setBusy] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const make = async (format: 'pdf' | 'xlsx') => {
+        if (!file) {
+            return;
+        }
+        setBusy(format);
+        setError(null);
+        const body = new FormData();
+        body.append('file', file);
+        body.append('format', format);
+        if (title.trim() !== '') {
+            body.append('title', title.trim());
+        }
+        const token = decodeURIComponent(
+            (
+                document.cookie
+                    .split('; ')
+                    .find((c) => c.startsWith('XSRF-TOKEN=')) ?? ''
+            ).split('=')[1] ?? '',
+        );
+
+        try {
+            const response = await fetch(admin.traffic.file.url(), {
+                method: 'POST',
+                body,
+                credentials: 'same-origin',
+                headers: {
+                    'X-XSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+            });
+            if (!response.ok) {
+                const json = await response.json().catch(() => null);
+                setError(
+                    json?.errors?.file?.[0] ??
+                        json?.message ??
+                        `Failed (${response.status})`,
+                );
+
+                return;
+            }
+            const name =
+                /filename="([^"]+)"/.exec(
+                    response.headers.get('Content-Disposition') ?? '',
+                )?.[1] ?? `traffic.${format}`;
+            const url = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = name;
+            link.click();
+            URL.revokeObjectURL(url);
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    return (
+        <section className="grid gap-3 rounded-xl border bg-card p-4 shadow-xs">
+            <div>
+                <h2 className="text-sm font-semibold">
+                    Report from a Corefy file
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                    Upload a payments export (XLSX or CSV with status,
+                    resolution, amount, created) and get the traffic report:
+                    approval, decline reasons, scheme, issuer country. Routing
+                    errors are left out. The file is not stored.
+                </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                    File
+                    <Input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        className="w-72"
+                        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                </label>
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                    Title (optional)
+                    <Input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="taken from the file"
+                        className="w-56"
+                    />
+                </label>
+                {(['pdf', 'xlsx'] as const).map((format) => (
+                    <Button
+                        key={format}
+                        variant="outline"
+                        size="sm"
+                        disabled={!file || busy !== null}
+                        onClick={() => void make(format)}
+                    >
+                        <Download />
+                        {busy === format ? 'Working…' : format.toUpperCase()}
+                    </Button>
+                ))}
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+        </section>
+    );
+}
 
 function Status({ status }: { status: OwnerRow['status'] }) {
     const label = {
@@ -220,6 +338,8 @@ export default function Traffic({
                     testing) and the share of sales at night (00:00–06:00 UTC).
                     A red value is above its limit.
                 </p>
+
+                <FileReport />
 
                 <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                     <Table>

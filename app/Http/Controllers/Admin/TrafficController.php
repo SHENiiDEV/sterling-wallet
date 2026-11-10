@@ -6,11 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Reports\CardTraffic;
+use App\Reports\Generation\ClientTrafficReport;
+use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Arr;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 
 /**
  * Internal control of the traffic: first-time cards, BIN concentration, repeated attempts and night sales,
@@ -18,6 +23,34 @@ use Inertia\Response;
  */
 class TrafficController extends Controller
 {
+    /**
+     * A traffic report from an uploaded Corefy payments export: upload it, get the file. Nothing is stored.
+     */
+    public function fromFile(Request $request, ClientTrafficReport $report): HttpResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:51200'],
+            'title' => ['nullable', 'string', 'max:120'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'format' => ['sometimes', 'in:pdf,xlsx'],
+        ]);
+
+        try {
+            $result = $report->dataFromFile($request->file('file'), $data['title'] ?? null, isset($data['from']) ? CarbonImmutable::parse($data['from']) : null, isset($data['to']) ? CarbonImmutable::parse($data['to']) : null);
+        } catch (InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['file' => $e->getMessage()]);
+        }
+        $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
+        AuditLogger::log('traffic.report_from_file', null, ['title' => $result['title'], 'attempts' => $result['totals']['attempts']]);
+        $name = 'traffic_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $result['title']).'_'.$result['from']->toDateString().'_'.$result['to']->toDateString();
+
+        return response($xlsx ? $report->xlsxData($result) : $report->renderData($result), 200, [
+            'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
+        ]);
+    }
+
     public function index(Request $request, CardTraffic $traffic): Response
     {
         $data = $request->validate([

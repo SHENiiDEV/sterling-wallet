@@ -124,6 +124,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::delete('reports/{report}', [ReportCenterController::class, 'destroy'])->name('reports.destroy');
         Route::get('volumes', [VolumeController::class, 'index'])->name('volumes.index');
         Route::get('traffic', [TrafficController::class, 'index'])->name('traffic.index');
+        Route::post('traffic/file', [TrafficController::class, 'fromFile'])->name('traffic.file');
         Route::get('reports/{report}/source/{source}', [ReportCenterController::class, 'source'])->name('reports.source');
         Route::get('reports/{report}/download/{file}', [ReportCenterController::class, 'download'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
     });
