@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $connector
  * @property string $timezone
  * @property int $report_delay_days
- * @property array<string, mixed>|null $matching
+ * @property array<string, mixed>|null $matching reconciliation rules and, for an acquirer that holds the reserve before fees, reserve_base / reserve_base_from
  */
 #[Fillable([
     'name', 'code', 'type', 'product', 'is_active', 'logo_path',

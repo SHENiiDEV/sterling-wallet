@@ -61,6 +61,9 @@ class ProviderRequest extends FormRequest
             'matching.window_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
             'matching.try_timezone_shift' => ['sometimes', 'boolean'],
             'matching.include_declines' => ['sometimes', 'boolean'],
+            // The reserve is held from the processing amount before fees (Madfin), from this report date on.
+            'matching.reserve_base' => ['sometimes', Rule::in(['after_fees', 'processing'])],
+            'matching.reserve_base_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'matching.tie_breakers' => ['sometimes', 'array'],
             'matching.tie_breakers.*' => ['string', Rule::in(['email', 'closest_time'])],
         ];

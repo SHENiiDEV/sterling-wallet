@@ -73,8 +73,10 @@ class DailyStatement
             ->latest('id')
             ->first();
         $reservePercent = $stored['reserve_percent'] ?? $merchant->rolling_reserve_percent ?? 0;
-        $expectedReserve = BigDecimal::max(BigDecimal::zero(), $afterFees)->multipliedBy($reservePercent)->dividedBy(100, 2, RoundingMode::HalfUp);
-        $reserveDetail = PdfRenderer::percent($reservePercent).' of net after fees'
+        $onProcessing = ($stored['reserve_base'] ?? 'after_fees') === 'processing';
+        $reserveBase = $onProcessing ? $turnover->minus($refunds)->minus($chargebacks)->minus($collabs) : $afterFees;
+        $expectedReserve = BigDecimal::max(BigDecimal::zero(), $reserveBase)->multipliedBy($reservePercent)->dividedBy(100, 2, RoundingMode::HalfUp);
+        $reserveDetail = PdfRenderer::percent($reservePercent).($onProcessing ? ' of the processing amount' : ' of net after fees')
             .($hold?->release_on ? ' · released '.$hold->release_on->toDateString() : '')
             .($reserve->isLessThan($expectedReserve) ? ' · capped by the MID reserve limit' : '');
         $conversionPercent = $stored['conversion_percent'] ?? $tariff->percent('fiat_to_crypto');
