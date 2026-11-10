@@ -257,6 +257,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Client traffic report
+    |--------------------------------------------------------------------------
+    |
+    | Gateway resolutions that are not attempts of the client and are left out of
+    | the traffic report entirely (the payment never reached a bank).
+    |
+    */
+
+    'traffic_report' => [
+        'ignore_resolutions' => ['routing_error'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Card traffic control
     |--------------------------------------------------------------------------
     |

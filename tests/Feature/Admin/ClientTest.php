@@ -2,13 +2,18 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Enums\OperationType;
+use App\Enums\ProviderType;
 use App\Enums\UserRole;
 use App\Mail\ClientDailyReportMail;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
+use App\Models\MerchantMid;
+use App\Models\MerchantOperation;
 use App\Models\User;
 use App\Reports\Generation\ClientDailyStatement;
+use App\Reports\Generation\ClientTrafficReport;
 use App\Reports\Ingestion\ReportIngestionService;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
@@ -125,6 +130,35 @@ class ClientTest extends TestCase
         // The period must not run backwards or past a year.
         $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-14']))->assertSessionHasErrors('to');
         $this->actingAs($this->admin)->get(route('admin.clients.report', ['client' => $client, 'date' => '2026-09-15', 'to' => '2028-01-01']))->assertSessionHasErrors('to');
+    }
+
+    public function test_the_traffic_report_counts_attempts_by_reason_and_leaves_routing_errors_out()
+    {
+        $client = $this->clientWithTwoCompanies();
+        $mid = MerchantMid::query()->where('mid', '4400000001')->firstOrFail();
+        // A routing error never reached a bank: it is not an attempt of the client.
+        MerchantOperation::query()->create([
+            'merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id, 'provider_id' => $mid->gate_provider_id, 'role' => ProviderType::Gate,
+            'payment_id' => 'cpi_ROUTING', 'operation_type' => OperationType::Decline, 'resolution' => 'ROUTING_ERROR', 'amount' => '20.00', 'currency' => 'EUR',
+            'ips' => 'visa', 'issuer_country' => 'DE', 'report_date' => '2026-09-15', 'transaction_at' => CarbonImmutable::parse('2026-09-15 08:00:00', 'UTC'),
+        ]);
+
+        $data = app(ClientTrafficReport::class)->data($client, CarbonImmutable::parse('2026-09-15'), CarbonImmutable::parse('2026-09-21'));
+
+        // Two terminals, each 3 successful and 2 declined payments.
+        $this->assertSame([10, 6, 4, 60.0, 1], [$data['totals']['attempts'], $data['totals']['successful'], $data['totals']['declined'], $data['totals']['rate'], $data['routingErrors']]);
+        $this->assertTrue($data['totals']['amount']['EUR']->isEqualTo('700.00'));
+        $this->assertSame(['2026-09-15'], array_keys($data['days']));
+        $this->assertEqualsCanonicalizing([['insufficient funds', 2], ['do not honor', 2]], collect($data['reasons'])->map(fn ($r) => [$r['reason'], $r['count']])->all());
+        $this->assertCount(2, $data['mids']);
+
+        $pdf = $this->actingAs($this->admin)->get(route('admin.clients.traffic', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-21']));
+        $pdf->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+        $this->assertStringContainsString('traffic_', (string) $pdf->headers->get('Content-Disposition'));
+        $this->actingAs($this->admin)->get(route('admin.clients.traffic', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-21', 'format' => 'xlsx']))->assertOk();
+        $this->actingAs($this->admin)->get(route('admin.clients.traffic', ['client' => $client, 'date' => '2026-09-15']))->assertSessionHasErrors('to');
+        $this->actingAs($this->admin)->get(route('admin.clients.traffic', ['client' => $client, 'date' => '2026-01-01', 'to' => '2026-09-21']))->assertSessionHasErrors('to');
     }
 
     public function test_report_downloads_and_is_mailed_to_the_client()
