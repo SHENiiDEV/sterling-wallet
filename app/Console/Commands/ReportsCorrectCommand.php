@@ -66,7 +66,7 @@ class ReportsCorrectCommand extends Command
             $rows[] = [$report->report_date->toDateString(), $reason, "{$before['payout']} → {$after['payout']}", ($diff->isPositive() ? '+' : '').$diff->toScale(2)];
 
             if ($apply) {
-                $generator->correctPaid($report);
+                $generator->correctPaid($report->fresh());
                 AuditLogger::log('report.corrected', $report, ['payout_before' => $before['payout'], 'payout_after' => $after['payout'], 'difference' => (string) $diff->toScale(2)]);
             }
         }

@@ -149,7 +149,7 @@ class ClientTest extends TestCase
         $this->assertSame([10, 6, 4, 60.0, 1], [$data['totals']['attempts'], $data['totals']['successful'], $data['totals']['declined'], $data['totals']['rate'], $data['routingErrors']]);
         $this->assertTrue($data['totals']['amount']['EUR']->isEqualTo('700.00'));
         $this->assertSame(['2026-09-15'], array_keys($data['days']));
-        $this->assertSame([['insufficient funds', 2], ['do not honor', 2]], collect($data['reasons'])->map(fn ($r) => [$r['reason'], $r['count']])->sortBy(0, SORT_DESC)->values()->all());
+        $this->assertEqualsCanonicalizing([['insufficient funds', 2], ['do not honor', 2]], collect($data['reasons'])->map(fn ($r) => [$r['reason'], $r['count']])->all());
         $this->assertCount(2, $data['mids']);
 
         $pdf = $this->actingAs($this->admin)->get(route('admin.clients.traffic', ['client' => $client, 'date' => '2026-09-15', 'to' => '2026-09-21']));

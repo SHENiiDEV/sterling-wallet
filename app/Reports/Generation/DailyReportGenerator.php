@@ -101,6 +101,7 @@ class DailyReportGenerator
     {
         $task->load('merchantMid.merchant.cryptoProvider', 'merchantMid.bankProvider', 'merchantMid.gateProvider');
         $before = $this->figures($task);
+        $attributes = $task->getAttributes();
 
         DB::beginTransaction();
         try {
@@ -109,6 +110,8 @@ class DailyReportGenerator
             $after = $this->figures($task->refresh());
         } finally {
             DB::rollBack();
+            // The rolled back values must not stay on the model: a later save would find nothing changed and write nothing.
+            $task->setRawAttributes($attributes, true);
         }
 
         return ['before' => $before, 'after' => $after];
