@@ -56,6 +56,7 @@ Route::middleware(['auth', 'merchant'])->prefix('merchant')->name('portal.')->gr
     Route::get('/', [PortalController::class, 'dashboard'])->name('dashboard');
     Route::get('reports', [PortalController::class, 'reports'])->name('reports');
     Route::get('reports/client', [PortalController::class, 'clientReport'])->name('reports.client');
+    Route::get('reports/traffic', [PortalController::class, 'clientTraffic'])->name('reports.traffic');
     Route::get('reports/{report}/download/{file}', [PortalController::class, 'downloadReport'])->name('reports.download')->whereIn('file', ['pdf', 'xlsx', 'operations']);
     Route::get('volumes', [PortalController::class, 'volumes'])->name('volumes');
     Route::get('settlements', [PortalController::class, 'settlements'])->name('settlements');
@@ -90,6 +91,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::resource('companies', CompanyController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('clients', ClientController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
         Route::get('clients/{client}/report', [ClientController::class, 'report'])->name('clients.report');
+        Route::get('clients/{client}/traffic', [ClientController::class, 'traffic'])->name('clients.traffic');
         Route::post('clients/{client}/send-report', [ClientController::class, 'send'])->name('clients.send-report');
         Route::post('clients/{client}/portal-users', [ClientPortalUserController::class, 'store'])->name('clients.portal-users.store');
         Route::put('clients/{client}/portal-users/{user}', [ClientPortalUserController::class, 'update'])->name('clients.portal-users.update');

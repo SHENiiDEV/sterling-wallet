@@ -98,6 +98,7 @@ export default function PortalReports(props: Props) {
             {props.clientDays && (
                 <PeriodReport
                     url={portal.reports.client.url()}
+                    trafficUrl={portal.reports.traffic.url()}
                     companies={props.portal.companies}
                 />
             )}

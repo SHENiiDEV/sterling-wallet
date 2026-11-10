@@ -16,6 +16,7 @@ use App\Models\MerchantOperation;
 use App\Models\MerchantTariff;
 use App\Models\Settlement;
 use App\Reports\Generation\ClientDailyStatement;
+use App\Reports\Generation\ClientTrafficReport;
 use App\Reports\Generation\ClientDays;
 use App\Reports\TerminalVolumes;
 use App\Settlements\SettlementStatementPdf;
@@ -108,6 +109,36 @@ class PortalController extends Controller
         $name = ($isPeriod ? 'report_' : 'daily-report_').preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'].($isPeriod ? '_'.$data['to'] : '');
 
         return response($xlsx ? $statement->xlsx($client, $date, $companyId, $to) : $statement->render($client, $date, $companyId, $to), 200, [
+            'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
+        ]);
+    }
+
+    /**
+     * Traffic of the client over a period for its own login.
+     */
+    public function clientTraffic(Request $request, ClientTrafficReport $traffic): HttpResponse
+    {
+        $client = $request->user()->client;
+        abort_unless($client instanceof Client, 404);
+
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date'],
+            'format' => ['sometimes', 'in:pdf,xlsx'],
+            'company' => ['nullable', 'integer'],
+        ]);
+        $from = CarbonImmutable::parse($data['date']);
+        $to = CarbonImmutable::parse($data['to']);
+        if ($from->diffInDays($to) > 92) {
+            throw ValidationException::withMessages(['to' => 'A traffic report covers at most three months.']);
+        }
+        $xlsx = ($data['format'] ?? 'pdf') === 'xlsx';
+        $companyId = isset($data['company']) ? (int) $data['company'] : null;
+        $company = $companyId === null ? null : Company::query()->where('client_id', $client->id)->findOrFail($companyId);
+        $name = 'traffic_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName().($company ? '_'.$company->name : '')).'_'.$data['date'].'_'.$data['to'];
+
+        return response($xlsx ? $traffic->xlsx($client, $from, $to, $companyId) : $traffic->render($client, $from, $to, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
         ]);

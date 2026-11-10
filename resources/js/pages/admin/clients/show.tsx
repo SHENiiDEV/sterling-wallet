@@ -193,6 +193,7 @@ export default function ClientShow({
 
                 <PeriodReport
                     url={admin.clients.report.url(client.id)}
+                    trafficUrl={admin.clients.traffic.url(client.id)}
                     companies={companies.map((c) => ({
                         id: c.id,
                         name: c.name,

@@ -59,9 +59,11 @@ function presets(): { label: string; from: string; to: string }[] {
  */
 export function PeriodReport({
     url,
+    trafficUrl,
     companies,
 }: {
     url: string;
+    trafficUrl?: string;
     companies: { id: number; name: string }[];
 }) {
     const shortcuts = presets();
@@ -69,8 +71,8 @@ export function PeriodReport({
     const [to, setTo] = useState(shortcuts[0].to);
     const [company, setCompany] = useState(ALL);
     const valid = from !== '' && to !== '' && from <= to;
-    const href = (format: 'pdf' | 'xlsx') =>
-        `${url}?date=${from}&to=${to}&format=${format}${company === ALL ? '' : `&company=${company}`}`;
+    const href = (format: 'pdf' | 'xlsx', base = url) =>
+        `${base}?date=${from}&to=${to}&format=${format}${company === ALL ? '' : `&company=${company}`}`;
 
     return (
         <section className="grid gap-3 rounded-xl border bg-card p-4 shadow-xs">
@@ -150,6 +152,25 @@ export function PeriodReport({
                         </a>
                     </Button>
                 ))}
+                {trafficUrl &&
+                    (['pdf', 'xlsx'] as const).map((format) => (
+                        <Button
+                            key={`traffic-${format}`}
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            disabled={!valid}
+                        >
+                            <a
+                                href={
+                                    valid ? href(format, trafficUrl) : undefined
+                                }
+                            >
+                                <Download />
+                                Traffic {format.toUpperCase()}
+                            </a>
+                        </Button>
+                    ))}
             </div>
         </section>
     );
