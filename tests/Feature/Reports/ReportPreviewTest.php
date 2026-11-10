@@ -87,4 +87,16 @@ class ReportPreviewTest extends TestCase
         $this->assertSame(0, MerchantOperation::query()->whereIn('id', $wrong)->where('report_date', '2026-09-16')->count());
         $this->artisan('operations:redate-gateway', ['--mid' => $this->mid->mid])->expectsOutputToContain('already on its own day')->assertSuccessful();
     }
+
+    public function test_the_reserve_comparison_takes_the_reserve_from_the_processing_amount_before_fees()
+    {
+        // 350 of sales less a refund of 30 = 320 of processing; 10% of it is 32.00, whatever the fees are.
+        $this->artisan('reserve:compare', ['--bank' => $this->mid->bankProvider->code, '--mid' => $this->mid->mid, '--detail' => true])
+            ->expectsOutputToContain($this->mid->mid)
+            ->expectsOutputToContain('32.00')
+            ->expectsOutputToContain('Total: turnover 350.00')
+            ->assertSuccessful();
+
+        $this->artisan('reserve:compare', ['--bank' => 'nobody'])->expectsOutputToContain('No MIDs for this bank')->assertSuccessful();
+    }
 }
