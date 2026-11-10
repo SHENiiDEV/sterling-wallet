@@ -52,62 +52,34 @@ export function toCsv(rows) {
     return rows.map((row) => row.map(cell).join(',')).join('\n') + '\n';
 }
 
-/** The calendar day (YYYY-MM-DD) of a UTC "YYYY-MM-DD HH:mm:ss" time in the given time zone. */
-export function localDay(utcText, timeZone) {
-    const match =
-        /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(
-            String(utcText).trim(),
-        );
-    if (!match) return null;
+/**
+ * The calendar day (YYYY-MM-DD) of a "created" cell. Corefy's export gives the dashboard's local time, so the day is
+ * simply the date part; nothing is converted.
+ */
+export function dayOf(text) {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(text).trim());
 
-    const date = new Date(
-        Date.UTC(
-            +match[1],
-            +match[2] - 1,
-            +match[3],
-            +match[4],
-            +match[5],
-            +(match[6] ?? 0),
-        ),
-    );
-
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(date);
+    return match ? match[1] : null;
 }
 
 /**
- * Splits export rows into the report periods they belong to, by the day each row's `created` time falls on in
- * `timeZone`. Returns Map(report_date -> rows) and how many rows fit no period.
+ * How many export rows fall on each report period, by the day of the row's `created` time. Returns
+ * Map(report_date -> rows); periods without rows are the days the gateway had nothing for.
  */
-export function splitByPeriod(
-    header,
-    rows,
-    periods,
-    timeZone,
-    column = 'created',
-) {
+export function countByPeriod(header, rows, periods, column = 'created') {
     const index = header.findIndex((h) => h.trim().toLowerCase() === column);
     if (index === -1) throw new Error(`The export has no "${column}" column.`);
 
-    const byPeriod = new Map(periods.map((p) => [p.report_date, []]));
-    let outside = 0;
-
+    const counts = new Map(periods.map((p) => [p.report_date, 0]));
     for (const row of rows) {
-        const day = localDay(row[index] ?? '', timeZone);
+        const day = dayOf(row[index] ?? '');
         const period =
             day === null
                 ? undefined
                 : periods.find((p) => day >= p.from && day <= p.to);
-        if (period === undefined) {
-            outside++;
-        } else {
-            byPeriod.get(period.report_date).push(row);
-        }
+        if (period !== undefined)
+            counts.set(period.report_date, counts.get(period.report_date) + 1);
     }
 
-    return { byPeriod, outside };
+    return counts;
 }

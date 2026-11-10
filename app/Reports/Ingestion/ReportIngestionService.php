@@ -15,6 +15,7 @@ use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Reports\Parsers\CardaqParser;
+use App\Reports\Parsers\CorefyParser;
 use App\Reports\Parsers\OperationRow;
 use App\Reports\Parsers\ParserRegistry;
 use App\Reports\Parsers\ReportParser;
@@ -64,16 +65,20 @@ class ReportIngestionService
         // A Cardaq file is one clearing batch: it ends a little after midnight, so it holds a few payments of the next
         // day and misses a few of its own. Its total is what the bank pays, so the whole file belongs to one day,
         // the one most of its payments were made on, however it was uploaded.
-        $anchor = $fileDate ?? $hintDate ?? ($parser instanceof CardaqParser ? $this->dominantDay($parser, $file, $timezone) : null);
+        // A gateway export (Corefy) is a window of time, not a day: every payment belongs to the day it was made on,
+        // whichever run or upload brought it. The date the caller expects only marks its MIDs as received.
+        $byRow = $parser instanceof CorefyParser;
+        $anchor = $byRow ? null : ($fileDate ?? $hintDate ?? ($parser instanceof CardaqParser ? $this->dominantDay($parser, $file, $timezone) : null));
         $filePeriod = $anchor ? $this->dates->periodFor($anchor) : null;
+        $coverPeriod = $filePeriod ?? ($byRow && $hintDate !== null ? $this->dates->periodFor($hintDate) : null);
 
-        $result = new IngestionResult($this->store($provider, $file, $filePeriod), $filePeriod?->reportDate);
+        $result = new IngestionResult($this->store($provider, $file, $coverPeriod), $coverPeriod?->reportDate);
         $covered = collect($coveredMids)->keyBy('id');
 
         /** @var array<string, array{mid: MerchantMid, period: ReportPeriod, rows: int}> $touched */
         $touched = [];
 
-        DB::transaction(function () use ($provider, $parser, $file, $timezone, $filePeriod, $covered, $result, $run, &$touched) {
+        DB::transaction(function () use ($provider, $parser, $file, $timezone, $filePeriod, $coverPeriod, $covered, $result, $run, &$touched) {
             foreach ($parser->rows($file, $timezone) as $row) {
                 $mid = $this->resolveMid($provider, $row, $covered, $result);
                 $period = $filePeriod ?? ($row->transactedOn ? $this->dates->periodFor($row->transactedOn) : null);
@@ -92,9 +97,9 @@ class ReportIngestionService
                 $touched[$key]['rows']++;
             }
 
-            if ($filePeriod !== null) {
+            if ($coverPeriod !== null) {
                 foreach ($covered as $mid) {
-                    $touched[$mid->id.'|'.$filePeriod->reportDate->toDateString()] ??= ['mid' => $mid, 'period' => $filePeriod, 'rows' => 0];
+                    $touched[$mid->id.'|'.$coverPeriod->reportDate->toDateString()] ??= ['mid' => $mid, 'period' => $coverPeriod, 'rows' => 0];
                 }
             }
 
