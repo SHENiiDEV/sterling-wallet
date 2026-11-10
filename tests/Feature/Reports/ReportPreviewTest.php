@@ -4,6 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
+use App\Models\MerchantOperation;
 use App\Reports\Generation\DailyReportGenerator;
 use App\Reports\Ingestion\ReportIngestionService;
 use Brick\Math\BigDecimal;
@@ -70,5 +71,20 @@ class ReportPreviewTest extends TestCase
             ->expectsOutputToContain($this->mid->mid)
             ->expectsOutputToContain('Total 2026-09')
             ->assertSuccessful();
+    }
+
+    public function test_gateway_payments_booked_to_the_wrong_day_are_moved_to_their_own_day()
+    {
+        // Two gateway payments sit on the 16th although they were made on the 15th (the window of a run brought them).
+        $wrong = $this->mid->operations()->where('role', 'gate')->orderBy('id')->limit(2)->pluck('id');
+        MerchantOperation::query()->whereIn('id', $wrong)->update(['report_date' => '2026-09-16']);
+
+        $this->artisan('operations:redate-gateway', ['--mid' => $this->mid->mid])->expectsOutputToContain('Dry run: 2 payment(s) would move')->assertSuccessful();
+        $this->assertSame(2, MerchantOperation::query()->whereIn('id', $wrong)->where('report_date', '2026-09-16')->count());
+
+        $this->artisan('operations:redate-gateway', ['--mid' => $this->mid->mid, '--apply' => true])->expectsOutputToContain('Moved 2 payment(s)')->assertSuccessful();
+
+        $this->assertSame(0, MerchantOperation::query()->whereIn('id', $wrong)->where('report_date', '2026-09-16')->count());
+        $this->artisan('operations:redate-gateway', ['--mid' => $this->mid->mid])->expectsOutputToContain('already on its own day')->assertSuccessful();
     }
 }

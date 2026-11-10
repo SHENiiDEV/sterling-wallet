@@ -66,6 +66,25 @@ class IngestionTest extends TestCase
         Queue::assertPushed(GenerateDailyReportJob::class, fn ($job) => $job->taskId === $task->id);
     }
 
+    public function test_gateway_payments_are_booked_to_the_day_they_were_made_whatever_the_run_or_upload_date()
+    {
+        $mid = $this->mid($this->merchantWithTariff(), $this->cardaq(), $this->corefy());
+        $file = $this->csvFile([
+            ['ID', 'Commerce account', 'Status', 'Resolution', 'Amount', 'Currency', 'Card', 'Customer email', 'Created'],
+            ['cpi_A', 'coma_TEST1', 'processed', 'ok', '10.00', 'EUR', '411111******1111', 'a@buyer.test', '2026-09-15 23:30:00'],
+            ['cpi_B', 'coma_TEST1', 'processed', 'ok', '20.00', 'EUR', '411111******2222', 'b@buyer.test', '2026-09-16 00:30:00'],
+            ['cpi_C', 'coma_TEST1', 'processed', 'ok', '30.00', 'EUR', '411111******3333', 'c@buyer.test', '2026-09-16 12:00:00'],
+        ], 'corefy.csv', ';');
+
+        // The window of "the 16th" brought the end of the 15th as well; the caller's date only marks the MID as received.
+        $this->ingest($mid->gateProvider, $file, CarbonImmutable::parse('2026-09-16'), null, [$mid]);
+
+        $days = $mid->operations()->orderBy('payment_id')->get()->mapWithKeys(fn ($op) => [$op->payment_id => $op->report_date->toDateString()]);
+        $this->assertSame(['cpi_A' => '2026-09-15', 'cpi_B' => '2026-09-16', 'cpi_C' => '2026-09-16'], $days->all());
+        // Both days have a gateway source.
+        $this->assertSame(2, DailyReportTask::query()->where('merchant_mid_id', $mid->id)->count());
+    }
+
     public function test_uploading_the_same_file_twice_does_not_duplicate_operations()
     {
         $cardaq = $this->cardaq();

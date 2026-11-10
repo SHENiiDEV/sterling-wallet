@@ -20,7 +20,7 @@ import {
     randomDelay,
     runConnector,
 } from './lib/runtime.mjs';
-import { parseCsv, splitByPeriod, toCsv } from './lib/csv.mjs';
+import { countByPeriod, parseCsv } from './lib/csv.mjs';
 import { freshTotp, nextTotpWindow, totp } from './lib/totp.mjs';
 
 const MAX_STATUS_CHECKS = 60;
@@ -256,43 +256,19 @@ await runConnector(async (input, page) => {
             };
         }
 
+        // One file for the whole window: every payment is booked to the day it was made on when it is loaded.
+        // The days the gateway had nothing for are the periods without a single payment.
         const [header, ...rows] = parseCsv(fs.readFileSync(whole.file, 'utf8'));
-        const { byPeriod, outside } = splitByPeriod(
-            header,
-            rows,
-            input.periods,
-            input.timezone || 'UTC',
-        );
-        if (outside > 0)
-            log(
-                `${outside} row(s) fall outside the requested days and are left out.`,
-            );
-
-        const files = [];
-        const fileDates = {};
-        const empty = [];
-        for (const period of input.periods) {
-            const periodRows = byPeriod.get(period.report_date) ?? [];
-            if (periodRows.length === 0) {
-                empty.push(period.report_date);
-                continue;
-            }
-            const file = path.join(
-                input.download_dir,
-                `corefy_${safeAccount}_${period.report_date}.csv`,
-            );
-            fs.writeFileSync(file, toCsv([header, ...periodRows]));
-            files.push(file);
-            fileDates[file] = period.report_date;
-            log(`${period.report_date}: ${periodRows.length} row(s)`);
-        }
-        fs.rmSync(whole.file, { force: true });
+        const counts = countByPeriod(header, rows, input.periods);
+        const empty = input.periods
+            .filter((p) => counts.get(p.report_date) === 0)
+            .map((p) => p.report_date);
+        for (const [day, count] of counts) log(`${day}: ${count} row(s)`);
 
         return {
             status: 'succeeded',
-            rows: rows.length - outside,
-            files,
-            file_dates: fileDates,
+            rows: rows.length,
+            files: [whole.file],
             empty_dates: empty,
             report_date: input.report_date,
         };

@@ -107,8 +107,10 @@ class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
             'dashboard_url' => $target->account->setting('dashboard_url', 'https://dashboard.paycore.io'),
             'commerce_account' => $target->params['commerce_account'] ?? null,
             // Day bounds in the provider's time zone, as Unix timestamps for the dashboard filter.
-            'gte' => CarbonImmutable::parse($target->period->from->toDateString(), $timezone)->startOfDay()->getTimestamp(),
-            'lt' => CarbonImmutable::parse($target->period->to->toDateString(), $timezone)->addDay()->startOfDay()->getTimestamp(),
+            // A day and a day on each side: the gateway filters by its own clock, so a window that is exactly the day
+            // can miss the last hours or bring the evening before. Every payment is booked to its own day on arrival.
+            'gte' => CarbonImmutable::parse($target->period->from->toDateString(), $timezone)->subDay()->startOfDay()->getTimestamp(),
+            'lt' => CarbonImmutable::parse($target->period->to->toDateString(), $timezone)->addDays(2)->startOfDay()->getTimestamp(),
         ];
     }
 }

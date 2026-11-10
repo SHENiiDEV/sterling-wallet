@@ -110,7 +110,10 @@ class BotRunTest extends TestCase
         $this->fakeRunner(function (string $script, array $input) use ($file, &$seen) {
             $seen[] = $input;
 
-            return new BotResult(BotRunStatus::Succeeded, files: [$file], rows: 5, reportDate: CarbonImmutable::parse($input['report_date']));
+            // The file holds the 15th's payments: the run for the 15th brings them, the 16th finds nothing of its own.
+            return $input['report_date'] === '2026-09-15'
+                ? new BotResult(BotRunStatus::Succeeded, files: [$file], rows: 5, reportDate: CarbonImmutable::parse($input['report_date']))
+                : new BotResult(BotRunStatus::Succeeded, files: [], rows: 0, reportDate: CarbonImmutable::parse($input['report_date']));
         });
         $account = $this->account();
 
@@ -122,8 +125,9 @@ class BotRunTest extends TestCase
         $this->assertSame('coma_TEST1', $seen[0]['commerce_account']);
         $this->assertSame('bot@example.test', $seen[0]['username']);
         // Riga midnight 2026-09-15 = 2026-09-14 21:00 UTC; the range ends at the next local midnight.
-        $this->assertSame(CarbonImmutable::parse('2026-09-14 21:00:00', 'UTC')->getTimestamp(), $seen[0]['gte']);
-        $this->assertSame(CarbonImmutable::parse('2026-09-15 21:00:00', 'UTC')->getTimestamp(), $seen[0]['lt']);
+        // The window is the day with a day on each side (Riga midnight of the 14th to the 17th).
+        $this->assertSame(CarbonImmutable::parse('2026-09-13 21:00:00', 'UTC')->getTimestamp(), $seen[0]['gte']);
+        $this->assertSame(CarbonImmutable::parse('2026-09-16 21:00:00', 'UTC')->getTimestamp(), $seen[0]['lt']);
 
         $task = DailyReportTask::query()->where('report_date', '2026-09-15')->sole();
         $this->assertSame($run->id, $task->sources()->sole()->bot_run_id);
