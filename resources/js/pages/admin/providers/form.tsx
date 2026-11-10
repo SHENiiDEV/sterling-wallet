@@ -397,7 +397,9 @@ export default function ProviderForm({
                                         key.startsWith('matching.'),
                                     )?.[1]
                                 }
-                                hint="Empty = defaults. Any key you set overrides the default."
+                                hint={
+                                    'Empty = defaults. Any key you set overrides the default. Reserve taken from the processing amount before fees, from a report date on: {"reserve_base": "processing", "reserve_base_from": "2026-11-10"}.'
+                                }
                                 className="sm:col-span-2"
                             >
                                 <Textarea

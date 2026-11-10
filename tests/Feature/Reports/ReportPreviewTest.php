@@ -99,4 +99,26 @@ class ReportPreviewTest extends TestCase
 
         $this->artisan('reserve:compare', ['--bank' => 'nobody'])->expectsOutputToContain('No MIDs for this bank')->assertSuccessful();
     }
+
+    public function test_an_acquirer_that_holds_the_reserve_before_fees_applies_it_only_from_its_date()
+    {
+        $bank = $this->mid->bankProvider;
+        $task = fn () => DailyReportTask::query()->where('report_date', '2026-09-15')->sole();
+        $now = (string) $task()->getRawOriginal('reserve_amount');
+
+        // From the next day on: this report keeps the reserve taken after fees.
+        $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-16']]);
+        app(DailyReportGenerator::class)->generate($task(), false);
+        $this->assertTrue(BigDecimal::of($task()->getRawOriginal('reserve_amount'))->isEqualTo($now));
+
+        // From this day on: 10% of the processing amount (350 of sales less a refund of 30), before any fee.
+        $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-15']]);
+        app(DailyReportGenerator::class)->generate($task(), false);
+
+        $report = $task();
+        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('32.00'));
+        $this->assertSame('processing', $report->summary_data['merchant_fee']['reserve_base']);
+        $afterFees = BigDecimal::of('350')->minus('30')->minus($report->getRawOriginal('total_merchant_fee'));
+        $this->assertTrue(BigDecimal::of($report->getRawOriginal('net_volume'))->isEqualTo($afterFees->minus('32.00')));
+    }
 }

@@ -157,6 +157,21 @@ class DailyReportGenerator
         $task->update(['summary_data' => $summary]);
     }
 
+    /**
+     * The bank's rules say the reserve is held from the processing amount, for reports from the date they name
+     * (`reserve_base` = processing, `reserve_base_from` = Y-m-d): reports before it keep the old way.
+     */
+    private function reserveOnProcessing(?Provider $bank, DailyReportTask $task): bool
+    {
+        $rules = $bank?->matching ?? [];
+        if (($rules['reserve_base'] ?? 'after_fees') !== 'processing') {
+            return false;
+        }
+        $from = $rules['reserve_base_from'] ?? null;
+
+        return $from === null || $task->report_date->toDateString() >= $from;
+    }
+
     private function guard(DailyReportTask $task): void
     {
         $mid = $task->merchantMid;
@@ -255,13 +270,16 @@ class DailyReportGenerator
         $bankCost = $this->providerCost($mid->bankProvider, $bankOps);
         $gateCost = $mid->gateProvider ? $this->providerCost($mid->gateProvider, $gateOps) : BigDecimal::zero();
 
-        // Rolling reserve, capped by what's left under the MID limit.
-        $reserveBase = $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount)->minus($merchantFee);
+        // Rolling reserve, capped by what's left under the MID limit. It is held from what is left after our fees,
+        // or, for an acquirer that takes it before any fee (Madfin), from the processing amount (sales less returns).
+        $afterFees = $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount)->minus($merchantFee);
+        $reserveOnProcessing = $this->reserveOnProcessing($mid->bankProvider, $task);
+        $reserveBase = $reserveOnProcessing ? $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount) : $afterFees;
         $reserve = $this->round(BigDecimal::max(BigDecimal::zero(), $reserveBase)
             ->multipliedBy($merchant->rolling_reserve_percent ?? 0)->dividedBy(100, 8, RoundingMode::HalfUp));
         $reserve = $this->capReserve($task, $reserve);
 
-        $netVolume = $reserveBase->minus($reserve);
+        $netVolume = $afterFees->minus($reserve);
         $convertible = BigDecimal::max(BigDecimal::zero(), $netVolume);
         $conversionFee = $this->round($convertible->multipliedBy($fee->percent('fiat_to_crypto'))->dividedBy(100, 8, RoundingMode::HalfUp));
         $cryptoCost = $merchant->cryptoProvider
@@ -285,7 +303,7 @@ class DailyReportGenerator
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $gap, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $gap, $reserveOnProcessing, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
@@ -334,6 +352,7 @@ class DailyReportGenerator
                         ],
                         'conversion_percent' => (string) $fee->percent('fiat_to_crypto'),
                         'reserve_percent' => (string) ($merchant->rolling_reserve_percent ?? 0),
+                        'reserve_base' => $reserveOnProcessing ? 'processing' : 'after_fees',
                     ],
                     'provider_cost' => [
                         'bank' => (string) $bankCost,
