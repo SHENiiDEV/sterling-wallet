@@ -97,7 +97,7 @@ class CorefyApiConnector extends CorefyExportConnector
         $until = CarbonImmutable::parse($target->period->to->toDateString(), $zone)->addDay()->startOfDay();
 
         try {
-            $items = $this->fetch($account, $commerce, $key, ['filter[status]' => 'processed', 'filter[processed][gte]' => $from->getTimestamp(), 'filter[processed][lte]' => $until->getTimestamp() - 1]);
+            $items = $this->fetch($account, $commerce, $key, ['filter[processed][gte]' => $from->getTimestamp(), 'filter[processed][lte]' => $until->getTimestamp() - 1]);
             if ($account->setting('fetch_declines', true)) {
                 // A failed payment has no processing time: it is found by when it was made.
                 array_push($items, ...$this->fetch($account, $commerce, $key, ['filter[status]' => 'process_failed', 'filter[created][gte]' => $from->getTimestamp(), 'filter[created][lte]' => $until->getTimestamp() - 1]));
@@ -161,7 +161,7 @@ class CorefyApiConnector extends CorefyExportConnector
         }
 
         $now = CarbonImmutable::now()->getTimestamp();
-        $items = $this->fetch($account, $commerce, $key, ['filter[status]' => 'processed', 'filter[processed][gte]' => $now - $hours * 3600, 'filter[processed][lte]' => $now], 3);
+        $items = $this->fetch($account, $commerce, $key, ['filter[processed][gte]' => $now - $hours * 3600, 'filter[processed][lte]' => $now], 3);
         $first = $items[0] ?? null;
         $attributes = (array) ($first['attributes'] ?? []);
 
