@@ -59,6 +59,16 @@ class IntegrationAccount extends Model
     }
 
     /**
+     * API keys by commerce account (Corefy API bots).
+     *
+     * @return HasMany<IntegrationCredential, $this>
+     */
+    public function credentials(): HasMany
+    {
+        return $this->hasMany(IntegrationCredential::class);
+    }
+
+    /**
      * MIDs this account can fetch reports for.
      *
      * @return Builder<MerchantMid>

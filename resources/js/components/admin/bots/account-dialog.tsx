@@ -51,6 +51,113 @@ const readSettings = (text: string): Record<string, unknown> => {
     }
 };
 
+/**
+ * The commerce accounts of the chosen MIDs (Gate MID and Additional gateway MIDs), one API key each. The keys are
+ * write-only: a saved one shows as stored, and an empty field keeps it.
+ */
+function ApiKeys({
+    mids,
+    saved,
+    value,
+    onChange,
+}: {
+    mids: BotMid[];
+    saved: string[];
+    value: Record<string, string>;
+    onChange: (keys: Record<string, string>) => void;
+}) {
+    const rows = new Map<string, string[]>();
+    for (const mid of mids) {
+        for (const commerce of mid.gate_accounts) {
+            rows.set(commerce, [...(rows.get(commerce) ?? []), mid.mid]);
+        }
+    }
+    const list = [...rows.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const missing = list.filter(
+        ([commerce]) => !saved.includes(commerce) && !value[commerce]?.trim(),
+    ).length;
+
+    return (
+        <div className="grid gap-2 sm:col-span-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">
+                    Commerce accounts and API keys
+                </span>
+                <span className="text-xs text-muted-foreground">
+                    {list.length} account(s)
+                    {missing > 0 && (
+                        <span className="text-amber-600">
+                            {' '}
+                            · {missing} without a key
+                        </span>
+                    )}
+                </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Taken from Gate MID and Additional gateway MIDs of the MIDs
+                above. Each commerce account has its own key. The bot runs every
+                day at 07:00 (Riga) for the day before.
+            </p>
+            {list.length === 0 ? (
+                <p className="rounded-lg border border-dashed px-4 py-4 text-sm text-muted-foreground">
+                    The chosen MIDs have no Gate MID yet. Set it on the MID
+                    first.
+                </p>
+            ) : (
+                <div className="overflow-hidden rounded-lg border">
+                    {list.map(([commerce, mids]) => (
+                        <div
+                            key={commerce}
+                            className="grid items-center gap-2 border-b px-3 py-2 last:border-b-0 sm:grid-cols-[14rem_1fr_9rem]"
+                        >
+                            <div className="min-w-0">
+                                <div className="truncate font-mono text-xs">
+                                    {commerce}
+                                </div>
+                                <div className="truncate text-xs text-muted-foreground">
+                                    MID {mids.join(', ')}
+                                </div>
+                            </div>
+                            <Input
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder={
+                                    saved.includes(commerce)
+                                        ? 'Stored. Type to replace.'
+                                        : 'API key'
+                                }
+                                value={value[commerce] ?? ''}
+                                onChange={(e) =>
+                                    onChange({
+                                        ...value,
+                                        [commerce]: e.target.value,
+                                    })
+                                }
+                                className="font-mono text-xs"
+                            />
+                            <span className="text-xs">
+                                {value[commerce]?.trim() ? (
+                                    <span className="text-primary">
+                                        New key
+                                    </span>
+                                ) : saved.includes(commerce) ? (
+                                    <span className="text-emerald-600">
+                                        Key stored
+                                    </span>
+                                ) : (
+                                    <span className="text-amber-600">
+                                        No key yet
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function AccountDialog({
     account,
     providers,
@@ -82,6 +189,7 @@ export function AccountDialog({
             ? JSON.stringify(account.settings, null, 2)
             : '',
         mid_ids: (account?.mid_ids ?? []).map(String),
+        api_keys: {} as Record<string, string>,
         is_active: account?.is_active ?? true,
         schedule_mode: (account?.schedule_mode ?? 'auto') as string,
         schedule_every_minutes: account?.schedule_every_minutes
@@ -91,6 +199,7 @@ export function AccountDialog({
     });
     const { data, setData, errors } = form;
     const isCardaq = data.connector === 'cardaq-export';
+    const isApi = data.connector === 'corefy-api';
     const mailProvider =
         (readSettings(data.settings).mail_provider as string | undefined) ??
         'hostinger';
@@ -110,6 +219,16 @@ export function AccountDialog({
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         const options = { preserveScroll: true, onSuccess: onClose };
+        // The API keys typed next to the commerce accounts; an empty one keeps the stored key.
+        form.transform((current) => ({
+            ...current,
+            api_keys: Object.entries(current.api_keys)
+                .filter(([, key]) => key.trim() !== '')
+                .map(([commerce_account, api_key]) => ({
+                    commerce_account,
+                    api_key,
+                })),
+        }));
 
         if (account) {
             form.put(admin.bots.accounts.update.url(account.id), options);
@@ -191,7 +310,17 @@ export function AccountDialog({
                             <Select
                                 value={data.connector}
                                 onValueChange={(value) =>
-                                    setData('connector', value)
+                                    setData((current) => ({
+                                        ...current,
+                                        connector: value,
+                                        // The API bot runs once a day, at 07:00 Riga, for the day before.
+                                        ...(value === 'corefy-api' && !account
+                                            ? {
+                                                  schedule_mode: 'daily',
+                                                  schedule_at: '07:00',
+                                              }
+                                            : {}),
+                                    }))
                                 }
                             >
                                 <SelectTrigger className="w-full">
@@ -209,84 +338,91 @@ export function AccountDialog({
                                 </SelectContent>
                             </Select>
                         </Field>
-                        <Field
-                            label="Login URL"
-                            htmlFor="login_url"
-                            error={errors.login_url}
-                            hint="Empty = the bot's default"
-                        >
-                            <Input
-                                id="login_url"
-                                value={data.login_url}
-                                onChange={(e) =>
-                                    setData('login_url', e.target.value)
-                                }
-                                placeholder="https://…"
-                            />
-                        </Field>
-                        <Field
-                            label="Login"
-                            htmlFor="username"
-                            error={errors.username}
-                            hint={secretHint(account?.has_username)}
-                        >
-                            <Input
-                                id="username"
-                                value={data.username}
-                                onChange={(e) =>
-                                    setData('username', e.target.value)
-                                }
-                                autoComplete="off"
-                            />
-                        </Field>
-                        <Field
-                            label="Password"
-                            htmlFor="password"
-                            error={errors.password}
-                            hint={secretHint(account?.has_password)}
-                        >
-                            <Input
-                                id="password"
-                                type="password"
-                                value={data.password}
-                                onChange={(e) =>
-                                    setData('password', e.target.value)
-                                }
-                                autoComplete="new-password"
-                            />
-                        </Field>
-                        <Field
-                            label="2FA secret (TOTP)"
-                            htmlFor="totp_secret"
-                            error={errors.totp_secret}
-                            hint={
-                                secretHint(account?.has_totp) ??
-                                'Base32 secret, only if the portal asks for a code'
-                            }
-                        >
-                            <Input
-                                id="totp_secret"
-                                value={data.totp_secret}
-                                onChange={(e) =>
-                                    setData('totp_secret', e.target.value)
-                                }
-                                autoComplete="off"
-                                className="font-mono"
-                            />
-                        </Field>
-                        {account?.has_totp && (
-                            <label className="flex items-center gap-3 self-end pb-2 text-sm">
-                                <Checkbox
-                                    checked={data.clear_totp_secret}
-                                    onCheckedChange={(checked) =>
-                                        setData(
-                                            'clear_totp_secret',
-                                            checked === true,
-                                        )
+                        {!isApi && (
+                            <>
+                                <Field
+                                    label="Login URL"
+                                    htmlFor="login_url"
+                                    error={errors.login_url}
+                                    hint="Empty = the bot's default"
+                                >
+                                    <Input
+                                        id="login_url"
+                                        value={data.login_url}
+                                        onChange={(e) =>
+                                            setData('login_url', e.target.value)
+                                        }
+                                        placeholder="https://…"
+                                    />
+                                </Field>
+                                <Field
+                                    label="Login"
+                                    htmlFor="username"
+                                    error={errors.username}
+                                    hint={secretHint(account?.has_username)}
+                                >
+                                    <Input
+                                        id="username"
+                                        value={data.username}
+                                        onChange={(e) =>
+                                            setData('username', e.target.value)
+                                        }
+                                        autoComplete="off"
+                                    />
+                                </Field>
+                                <Field
+                                    label="Password"
+                                    htmlFor="password"
+                                    error={errors.password}
+                                    hint={secretHint(account?.has_password)}
+                                >
+                                    <Input
+                                        id="password"
+                                        type="password"
+                                        value={data.password}
+                                        onChange={(e) =>
+                                            setData('password', e.target.value)
+                                        }
+                                        autoComplete="new-password"
+                                    />
+                                </Field>
+                                <Field
+                                    label="2FA secret (TOTP)"
+                                    htmlFor="totp_secret"
+                                    error={errors.totp_secret}
+                                    hint={
+                                        secretHint(account?.has_totp) ??
+                                        'Base32 secret, only if the portal asks for a code'
                                     }
-                                />
-                                Remove stored 2FA secret
-                            </label>
+                                >
+                                    <Input
+                                        id="totp_secret"
+                                        value={data.totp_secret}
+                                        onChange={(e) =>
+                                            setData(
+                                                'totp_secret',
+                                                e.target.value,
+                                            )
+                                        }
+                                        autoComplete="off"
+                                        className="font-mono"
+                                    />
+                                </Field>
+                                {account?.has_totp && (
+                                    <label className="flex items-center gap-3 self-end pb-2 text-sm">
+                                        <Checkbox
+                                            checked={data.clear_totp_secret}
+                                            onCheckedChange={(checked) =>
+                                                setData(
+                                                    'clear_totp_secret',
+                                                    checked === true,
+                                                )
+                                            }
+                                        />
+                                        Remove stored 2FA secret
+                                    </label>
+                                )}
+                            </>
                         )}
                         {isCardaq && (
                             <Field
@@ -418,6 +554,22 @@ export function AccountDialog({
                                 />
                             )}
                         </Field>
+                        {isApi && (
+                            <ApiKeys
+                                mids={
+                                    data.mid_ids.length > 0
+                                        ? providerMids.filter((mid) =>
+                                              data.mid_ids.includes(
+                                                  String(mid.id),
+                                              ),
+                                          )
+                                        : providerMids
+                                }
+                                saved={account?.commerce_keys ?? []}
+                                value={data.api_keys}
+                                onChange={(keys) => setData('api_keys', keys)}
+                            />
+                        )}
                         <label className="flex items-center gap-3 text-sm">
                             <Checkbox
                                 checked={data.is_active}

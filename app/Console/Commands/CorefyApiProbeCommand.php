@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * Asks the Corefy API for a few payments of an account and prints which fields it gives, so the field names the
  * connector reads can be checked against the real API before it is relied on. The key is never printed.
  */
-#[Signature('corefy:api-probe {account : Integration account id (connector corefy-api)} {--hours=24 : How far back to look}')]
+#[Signature('corefy:api-probe {account : Integration account id (bot Corefy export (API))} {--commerce= : Commerce account (default: the first one with a key)} {--hours=24 : How far back to look}')]
 #[Description('Check the Corefy API access of a bot account: how many payments it returns and which fields they carry')]
 class CorefyApiProbeCommand extends Command
 {
@@ -26,15 +26,22 @@ class CorefyApiProbeCommand extends Command
             return self::FAILURE;
         }
 
+        $commerce = $this->option('commerce') ?: $account->credentials()->orderBy('key')->value('key');
+        if (! $commerce) {
+            $this->error('This bot account has no API key yet.');
+
+            return self::FAILURE;
+        }
+
         try {
-            $result = $connector->probe($account, (int) $this->option('hours'));
+            $result = $connector->probe($account, (string) $commerce, (int) $this->option('hours'));
         } catch (ApiFailure $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->info("{$account->username}: {$result['count']} payment(s) in the last {$this->option('hours')} h (at most 3 are read).");
+        $this->info("{$commerce}: {$result['count']} payment(s) in the last {$this->option('hours')} h (at most 3 are read).");
         if ($result['count'] === 0) {
             $this->warn('Nothing returned: the access works, but there were no payments in this window.');
 

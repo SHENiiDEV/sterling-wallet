@@ -12,6 +12,7 @@ export type BotMid = {
     client: string | null;
     status: 'active' | 'inactive' | 'review';
     provider_ids: number[];
+    gate_accounts: string[];
 };
 
 const GROUPS = [
