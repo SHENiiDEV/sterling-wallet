@@ -194,6 +194,7 @@ class CorefyApiConnector extends CorefyExportConnector
         $query = [...$filters, 'sort' => '-created', 'page[size]' => $limit ?? self::PAGE_SIZE];
 
         $items = [];
+        $seen = [];
         for ($page = 1; $url !== null && $page <= self::MAX_PAGES; $page++) {
             try {
                 $response = Http::withBasicAuth($commerce, $key)
@@ -211,8 +212,17 @@ class CorefyApiConnector extends CorefyExportConnector
 
             $data = (array) $response->json();
             $batch = (array) ($data['data'] ?? []);
-            array_push($items, ...$batch);
-            if ($batch === [] || $limit !== null) {
+            // Only what is new: some APIs keep a "next" link on the last page and serve it again.
+            $fresh = [];
+            foreach ($batch as $item) {
+                $id = is_array($item) ? (string) ($item['id'] ?? '') : '';
+                if ($id !== '' && ! isset($seen[$id])) {
+                    $seen[$id] = true;
+                    $fresh[] = $item;
+                }
+            }
+            array_push($items, ...$fresh);
+            if ($fresh === [] || $limit !== null) {
                 break;
             }
 
