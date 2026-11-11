@@ -177,7 +177,7 @@ class BotRunTest extends TestCase
             ['id' => 'cpi_B', 'attributes' => ['created' => $at('2026-09-16 00:30:00'), 'processed' => $at('2026-09-16 00:31:00'), 'status' => 'processed', 'resolution' => 'ok', 'amount' => 50, 'currency' => 'EUR', 'reference_id' => 'r2', ...$card]],
         ];
         $failed = [['id' => 'cpi_C', 'attributes' => ['created' => $at('2026-09-15 12:00:00'), 'status' => 'process_failed', 'resolution' => 'timeout', 'amount' => 30, 'currency' => 'EUR', 'reference_id' => 'r3', ...$card]]];
-        Http::fake(fn ($request) => Http::response(['data' => ($request['filter']['status'] ?? '') === 'processed' ? $processed : $failed, 'links' => ['next' => null]]));
+        Http::fake(fn ($request) => Http::response(['data' => ($request['filter']['status'] ?? '') === 'process_failed' ? $failed : $processed, 'links' => ['next' => null]]));
         $run = $this->apiRun();
 
         app()->call([new RunConnectorJob($run->id), 'handle']);
@@ -191,7 +191,7 @@ class BotRunTest extends TestCase
         // The successful ones by their processing time over the report day (the day before the run), exactly the day.
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.sterling-pay.com/payment-invoices')
             && $request->hasHeader('Authorization', $auth)
-            && ($request['filter']['status'] ?? null) === 'processed'
+            && ! isset($request['filter']['status'])
             && (int) ($request['filter']['processed']['gte'] ?? 0) === $midnight
             && (int) ($request['filter']['processed']['lte'] ?? 0) === $midnight + 86399);
         // The failed ones have no processing time: by creation time.

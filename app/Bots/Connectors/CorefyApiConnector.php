@@ -97,7 +97,7 @@ class CorefyApiConnector extends CorefyExportConnector
         $until = CarbonImmutable::parse($target->period->to->toDateString(), $zone)->addDay()->startOfDay();
 
         try {
-            $items = $this->fetch($account, $commerce, $key, ['filter[status]' => 'processed', 'filter[processed][gte]' => $from->getTimestamp(), 'filter[processed][lte]' => $until->getTimestamp() - 1]);
+            $items = $this->fetch($account, $commerce, $key, ['filter[processed][gte]' => $from->getTimestamp(), 'filter[processed][lte]' => $until->getTimestamp() - 1]);
             if ($account->setting('fetch_declines', true)) {
                 // A failed payment has no processing time: it is found by when it was made.
                 array_push($items, ...$this->fetch($account, $commerce, $key, ['filter[status]' => 'process_failed', 'filter[created][gte]' => $from->getTimestamp(), 'filter[created][lte]' => $until->getTimestamp() - 1]));
@@ -107,9 +107,12 @@ class CorefyApiConnector extends CorefyExportConnector
         }
 
         $rows = [];
+        $skipped = 0;
         foreach ($items as $item) {
             if ($row = $this->row($item, $commerce, $zone)) {
                 $rows[$row['id']] = $row;
+            } else {
+                $skipped++;
             }
         }
         $rows = array_values($rows);
@@ -122,7 +125,9 @@ class CorefyApiConnector extends CorefyExportConnector
             }
         }
 
-        $log = $commerce.': '.count($items).' payment(s) from the API for '.$from->toDateString().' – '.$until->subDay()->toDateString().', '.count($rows).' kept';
+        $log = $commerce.': '.count($items).' payment(s) from the API for '.$from->toDateString().' – '.$until->subDay()->toDateString().', '.count($rows).' kept'
+            .($skipped > 0 ? ", {$skipped} skipped (no id or time)" : '')
+            .(count($items) - $skipped > count($rows) ? ', '.(count($items) - $skipped - count($rows)).' repeated ids' : '');
         if ($rows === []) {
             return new BotResult(BotRunStatus::Succeeded, rows: 0, reportDate: $target->period->reportDate, log: $log, emptyDates: $empty);
         }
@@ -156,7 +161,7 @@ class CorefyApiConnector extends CorefyExportConnector
         }
 
         $now = CarbonImmutable::now()->getTimestamp();
-        $items = $this->fetch($account, $commerce, $key, ['filter[status]' => 'processed', 'filter[processed][gte]' => $now - $hours * 3600, 'filter[processed][lte]' => $now], 3);
+        $items = $this->fetch($account, $commerce, $key, ['filter[processed][gte]' => $now - $hours * 3600, 'filter[processed][lte]' => $now], 3);
         $first = $items[0] ?? null;
         $attributes = (array) ($first['attributes'] ?? []);
 
@@ -227,7 +232,8 @@ class CorefyApiConnector extends CorefyExportConnector
     private function row(array $item, string $commerce, string $zone): ?array
     {
         $a = (array) ($item['attributes'] ?? []);
-        $created = $this->time($a['created'] ?? $a['created_at'] ?? null, $zone);
+        // The payment's own time; when the API gives no creation time, the processing time stands in for it.
+        $created = $this->time($a['created'] ?? $a['created_at'] ?? $a['processed'] ?? null, $zone);
         if ($created === null || ! isset($item['id'])) {
             return null;
         }
