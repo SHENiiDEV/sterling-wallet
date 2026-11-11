@@ -271,10 +271,10 @@ class DailyReportGenerator
         $gateCost = $mid->gateProvider ? $this->providerCost($mid->gateProvider, $gateOps) : BigDecimal::zero();
 
         // Rolling reserve, capped by what's left under the MID limit. It is held from what is left after our fees,
-        // or, for an acquirer that takes it before any fee (Madfin), from the processing amount (sales less returns).
+        // or, for an acquirer that takes it before any fee (Madfin), from the processing amount: the approved sales of the day, returns not netted (that is how Madfin's statement holds it).
         $afterFees = $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount)->minus($merchantFee);
         $reserveOnProcessing = $this->reserveOnProcessing($mid->bankProvider, $task);
-        $reserveBase = $reserveOnProcessing ? $turnover->minus($refundsAmount)->minus($chargebacksAmount)->minus($collabsAmount) : $afterFees;
+        $reserveBase = $reserveOnProcessing ? $turnover : $afterFees;
         $reserve = $this->round(BigDecimal::max(BigDecimal::zero(), $reserveBase)
             ->multipliedBy($merchant->rolling_reserve_percent ?? 0)->dividedBy(100, 8, RoundingMode::HalfUp));
         $reserve = $this->capReserve($task, $reserve);

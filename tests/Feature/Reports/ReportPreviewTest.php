@@ -111,14 +111,14 @@ class ReportPreviewTest extends TestCase
         app(DailyReportGenerator::class)->generate($task(), false);
         $this->assertTrue(BigDecimal::of($task()->getRawOriginal('reserve_amount'))->isEqualTo($now));
 
-        // From this day on: 10% of the processing amount (350 of sales less a refund of 30), before any fee.
+        // From this day on: 10% of the processing amount (350 of sales, the refund is not netted), before any fee.
         $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-15']]);
         app(DailyReportGenerator::class)->generate($task(), false);
 
         $report = $task();
-        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('32.00'));
+        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('35.00'));
         $this->assertSame('processing', $report->summary_data['merchant_fee']['reserve_base']);
         $afterFees = BigDecimal::of('350')->minus('30')->minus($report->getRawOriginal('total_merchant_fee'));
-        $this->assertTrue(BigDecimal::of($report->getRawOriginal('net_volume'))->isEqualTo($afterFees->minus('32.00')));
+        $this->assertTrue(BigDecimal::of($report->getRawOriginal('net_volume'))->isEqualTo($afterFees->minus('35.00')));
     }
 }
