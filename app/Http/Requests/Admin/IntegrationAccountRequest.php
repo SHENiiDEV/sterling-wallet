@@ -5,6 +5,8 @@ namespace App\Http\Requests\Admin;
 use App\Bots\BotSchedule;
 use App\Bots\ConnectorRegistry;
 use App\Bots\Connectors\CardaqExportConnector;
+use App\Bots\Connectors\CorefyApiConnector;
+use App\Models\IntegrationAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -31,8 +33,12 @@ class IntegrationAccountRequest extends FormRequest
             'connector' => ['required', Rule::in(array_keys(app(ConnectorRegistry::class)->all()))],
             'name' => ['required', 'string', 'max:255'],
             'login_url' => ['nullable', 'url', 'max:255'],
-            'username' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
-            'password' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            // The Corefy API bot has no login: its keys come with the commerce accounts of its MIDs.
+            'username' => [Rule::requiredIf($creating && $this->input('connector') !== CorefyApiConnector::CODE), 'nullable', 'string', 'max:255'],
+            'password' => [Rule::requiredIf($creating && $this->input('connector') !== CorefyApiConnector::CODE), 'nullable', 'string', 'max:255'],
+            'api_keys' => ['nullable', 'array', 'max:200'],
+            'api_keys.*.commerce_account' => ['required', 'string', 'max:64'],
+            'api_keys.*.api_key' => ['nullable', 'string', 'max:255'],
             'totp_secret' => ['nullable', 'string', 'max:128'],
             'settings' => ['nullable', 'array'],
             'mid_ids' => ['nullable', 'array'],
@@ -102,7 +108,43 @@ class IntegrationAccountRequest extends FormRequest
             $data['schedule_at'] = null;
         }
         $data['mid_ids'] = empty($data['mid_ids']) ? null : array_map('intval', $data['mid_ids']);
+        unset($data['api_keys']);
+
+        // The API bot runs once a day, in the morning, for the day before.
+        if (($data['connector'] ?? null) === CorefyApiConnector::CODE && ! $this->has('schedule_mode')) {
+            $data['schedule_mode'] = BotSchedule::DAILY;
+            $data['schedule_at'] = '07:00';
+        }
 
         return $data;
+    }
+
+    /**
+     * Saves the API keys typed for the commerce accounts of the account's MIDs (an empty field keeps the stored key)
+     * and drops the keys of commerce accounts that are no longer among them.
+     *
+     * @return list<string> commerce accounts whose key was written
+     */
+    public function syncCredentials(IntegrationAccount $account): array
+    {
+        if ($account->connector !== CorefyApiConnector::CODE) {
+            $account->credentials()->delete();
+
+            return [];
+        }
+
+        $allowed = array_keys(app(CorefyApiConnector::class)->commerceAccountsOf($account));
+        $written = [];
+        foreach ((array) $this->input('api_keys', []) as $row) {
+            $commerce = trim((string) ($row['commerce_account'] ?? ''));
+            $secret = trim((string) ($row['api_key'] ?? ''));
+            if ($secret !== '' && in_array($commerce, $allowed, true)) {
+                $account->credentials()->updateOrCreate(['key' => $commerce], ['secret' => $secret]);
+                $written[] = $commerce;
+            }
+        }
+        $account->credentials()->whereNotIn('key', $allowed)->delete();
+
+        return $written;
     }
 }

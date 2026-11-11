@@ -5,6 +5,7 @@ namespace App\Bots\Connectors;
 use App\Bots\RangeRuns;
 use App\Bots\Target;
 use App\Models\IntegrationAccount;
+use App\Models\MerchantMid;
 use App\Reports\ReportDateResolver;
 use App\Reports\ReportPeriod;
 use Carbon\CarbonImmutable;
@@ -28,7 +29,23 @@ class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
 
     public function targetsForPeriod(IntegrationAccount $account, ReportPeriod $period, Collection $mids): iterable
     {
-        // A MID may front several commerce accounts: each is exported on its own.
+        foreach ($this->commerceAccounts($account, $mids) as $commerceAccount => $group) {
+            yield new Target($account, $period, collect($group)->values(), [
+                'key' => (string) $commerceAccount,
+                'commerce_account' => (string) $commerceAccount,
+            ]);
+        }
+    }
+
+    /**
+     * The commerce accounts to fetch and the MIDs each fronts. A MID may front several commerce accounts: each is
+     * exported on its own.
+     *
+     * @param  Collection<int, MerchantMid>  $mids
+     * @return array<string, list<MerchantMid>>
+     */
+    protected function commerceAccounts(IntegrationAccount $account, Collection $mids): array
+    {
         $byAccount = [];
         foreach ($mids as $mid) {
             foreach ($mid->gateAccounts() ?: [$mid->mid] as $commerceAccount) {
@@ -36,12 +53,7 @@ class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
             }
         }
 
-        foreach ($byAccount as $commerceAccount => $group) {
-            yield new Target($account, $period, collect($group)->values(), [
-                'key' => (string) $commerceAccount,
-                'commerce_account' => (string) $commerceAccount,
-            ]);
-        }
+        return $byAccount;
     }
 
     /**
@@ -75,12 +87,7 @@ class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
             $chunks[] = $current;
         }
 
-        $byAccount = [];
-        foreach ($mids as $mid) {
-            foreach ($mid->gateAccounts() ?: [$mid->mid] as $commerceAccount) {
-                $byAccount[$commerceAccount][] = $mid;
-            }
-        }
+        $byAccount = $this->commerceAccounts($account, $mids);
 
         foreach ($chunks as $chunk) {
             $first = $chunk[0];

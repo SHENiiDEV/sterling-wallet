@@ -157,6 +157,76 @@ class BotRunTest extends TestCase
         $this->assertSame(5, (int) DailyReportTask::query()->where('report_date', '2026-09-15')->sole()->sources()->sole()->rows_count);
     }
 
+    private function apiRun(): BotRun
+    {
+        $account = $this->account(['connector' => 'corefy-api', 'name' => 'Corefy API', 'username' => null, 'password' => null, 'mid_ids' => [$this->mid->id]]);
+        $account->credentials()->create(['key' => 'coma_TEST1', 'secret' => 'secret-api-key']);
+
+        return BotRun::query()->create([
+            'connector' => 'corefy-api', 'integration_account_id' => $account->id, 'report_date' => '2026-09-15', 'target_key' => '2026-09-15:coma_TEST1', 'status' => BotRunStatus::Queued,
+            'target' => ['report_date' => '2026-09-15', 'from' => '2026-09-15', 'to' => '2026-09-15', 'mid_ids' => [$this->mid->id], 'params' => ['commerce_account' => 'coma_TEST1']],
+        ]);
+    }
+
+    public function test_the_corefy_api_connector_fetches_the_processed_payments_of_the_day_and_the_declines_and_books_each_to_its_own_day()
+    {
+        $at = fn (string $local) => CarbonImmutable::parse($local, 'Europe/Riga')->getTimestamp();
+        $card = ['payload' => ['payment_card' => ['mask' => '411111******1111', 'issuer_country' => 'DE', 'issuer_name' => 'SOME BANK']]];
+        $processed = [
+            ['id' => 'cpi_A', 'attributes' => ['created' => $at('2026-09-15 10:02:00'), 'processed' => $at('2026-09-15 10:03:00'), 'status' => 'processed', 'resolution' => 'ok', 'amount' => 100, 'currency' => 'EUR', 'reference_id' => 'r1', ...$card]],
+            ['id' => 'cpi_B', 'attributes' => ['created' => $at('2026-09-16 00:30:00'), 'processed' => $at('2026-09-16 00:31:00'), 'status' => 'processed', 'resolution' => 'ok', 'amount' => 50, 'currency' => 'EUR', 'reference_id' => 'r2', ...$card]],
+        ];
+        $failed = [['id' => 'cpi_C', 'attributes' => ['created' => $at('2026-09-15 12:00:00'), 'status' => 'process_failed', 'resolution' => 'timeout', 'amount' => 30, 'currency' => 'EUR', 'reference_id' => 'r3', ...$card]]];
+        Http::fake(fn ($request) => Http::response(['data' => ($request['filter']['status'] ?? '') === 'processed' ? $processed : $failed, 'links' => ['next' => null]]));
+        $run = $this->apiRun();
+
+        app()->call([new RunConnectorJob($run->id), 'handle']);
+
+        $this->assertSame(BotRunStatus::Succeeded, $run->fresh()->status);
+        $days = $this->mid->operations()->orderBy('payment_id')->get()->mapWithKeys(fn ($op) => [$op->payment_id => $op->report_date->toDateString().' '.$op->operation_type->value]);
+        $this->assertSame(['cpi_A' => '2026-09-15 sale', 'cpi_B' => '2026-09-16 sale', 'cpi_C' => '2026-09-15 decline'], $days->all());
+
+        $auth = 'Basic '.base64_encode('coma_TEST1:secret-api-key');
+        $midnight = CarbonImmutable::parse('2026-09-15', 'Europe/Riga')->getTimestamp();
+        // The successful ones by their processing time over the report day (the day before the run), exactly the day.
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.sterling-pay.com/payment-invoices')
+            && $request->hasHeader('Authorization', $auth)
+            && ($request['filter']['status'] ?? null) === 'processed'
+            && (int) ($request['filter']['processed']['gte'] ?? 0) === $midnight
+            && (int) ($request['filter']['processed']['lte'] ?? 0) === $midnight + 86399);
+        // The failed ones have no processing time: by creation time.
+        Http::assertSent(fn ($request) => ($request['filter']['status'] ?? null) === 'process_failed' && (int) ($request['filter']['created']['gte'] ?? 0) === $midnight);
+    }
+
+    public function test_a_refused_api_key_fails_the_run_without_leaking_the_key()
+    {
+        Http::fake(['api.sterling-pay.com/*' => Http::response('Unauthorized', 401)]);
+        $run = $this->apiRun();
+
+        try {
+            app()->call([new RunConnectorJob($run->id), 'handle']);
+            $this->fail('The job should throw so the queue retries it.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('HTTP 401', $e->getMessage());
+            $this->assertStringNotContainsString('secret-api-key', $e->getMessage());
+        }
+    }
+
+    public function test_a_commerce_account_without_an_api_key_is_reported_by_name()
+    {
+        Http::fake();
+        $run = $this->apiRun();
+        $run->account->credentials()->delete();
+
+        try {
+            app()->call([new RunConnectorJob($run->id), 'handle']);
+            $this->fail('The job should throw so the queue retries it.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('No API key for coma_TEST1', $e->getMessage());
+        }
+        Http::assertNothingSent();
+    }
+
     public function test_zero_rows_marks_the_day_as_received()
     {
         $this->fakeRunner(fn () => new BotResult(BotRunStatus::Succeeded, files: [], rows: 0));

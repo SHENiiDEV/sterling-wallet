@@ -36,7 +36,7 @@ class BotController extends Controller
             'account' => ['nullable', 'integer'],
         ]);
 
-        $accounts = IntegrationAccount::query()->with('provider:id,name,code')->orderBy('name')->get();
+        $accounts = IntegrationAccount::query()->with(['provider:id,name,code', 'credentials:id,integration_account_id,key'])->orderBy('name')->get();
 
         return Inertia::render('admin/bots/index', [
             'accounts' => $accounts->map(fn (IntegrationAccount $account) => [
@@ -48,6 +48,8 @@ class BotController extends Controller
                 'has_username' => $account->username !== null,
                 'has_password' => $account->password !== null,
                 'has_totp' => $account->totp_secret !== null,
+                // Commerce accounts that have an API key stored (the keys themselves never leave the server).
+                'commerce_keys' => $account->credentials->pluck('key')->values(),
                 'settings' => $account->settings,
                 'mid_ids' => $account->mid_ids ?? [],
                 'is_active' => $account->is_active,
@@ -79,6 +81,8 @@ class BotController extends Controller
                     'client' => $mid->merchant->company?->client?->name,
                     'status' => $mid->status->value,
                     'provider_ids' => $mid->requiredProviderIds(),
+                    // Gate MID and Additional gateway MIDs: the commerce accounts the API bot fetches, one key each.
+                    'gate_accounts' => $mid->gateAccounts(),
                 ]),
         ]);
     }
@@ -86,7 +90,8 @@ class BotController extends Controller
     public function store(IntegrationAccountRequest $request): RedirectResponse
     {
         $account = IntegrationAccount::query()->create($request->attributesToSave());
-        AuditLogger::log('bot_account.created', $account);
+        $keys = $request->syncCredentials($account);
+        AuditLogger::log('bot_account.created', $account, $keys === [] ? [] : ['api_keys_set' => $keys]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Account added.']);
 
@@ -96,7 +101,8 @@ class BotController extends Controller
     public function update(IntegrationAccountRequest $request, IntegrationAccount $account): RedirectResponse
     {
         $account->update($request->attributesToSave());
-        AuditLogger::log('bot_account.updated', $account, ['changed' => array_keys($account->getChanges())]);
+        $keys = $request->syncCredentials($account->refresh());
+        AuditLogger::log('bot_account.updated', $account, ['changed' => array_keys($account->getChanges()), ...($keys === [] ? [] : ['api_keys_set' => $keys])]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Account saved.']);
 

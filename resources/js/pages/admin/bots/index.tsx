@@ -79,7 +79,7 @@ function RunNowDialog({
     account: IntegrationAccount;
     onClose: () => void;
 }) {
-    const canRange = ['finbridges-api', 'corefy-export'].includes(
+    const canRange = ['finbridges-api', 'corefy-export', 'corefy-api'].includes(
         account.connector,
     );
     const [range, setRange] = useState(false);

@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Reports\Ingestion\ReportIngestionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -218,6 +219,40 @@ class OperationsAndBotsTest extends TestCase
 
         $this->post(route('admin.bots.accounts.run', $account), ['from' => '2026-08-31', 'to' => '2026-09-13']);
         $this->assertSame(2, BotRun::query()->count());
+    }
+
+    public function test_a_corefy_api_account_takes_its_commerce_accounts_from_the_mids_and_keeps_a_key_for_each()
+    {
+        $corefy = $this->corefy();
+        $first = $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy, ['mid' => 'M-1', 'gate_mid' => 'coma_A', 'extra_gate_mids' => ['coma_B']]);
+        $second = $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy, ['mid' => 'M-2', 'gate_mid' => 'coma_C']);
+
+        // No login or password: the commerce accounts come from the MIDs; a key for a stranger or an empty one is not kept.
+        $this->actingAs($this->admin)->post(route('admin.bots.accounts.store'), [
+            'provider_id' => $corefy->id, 'connector' => 'corefy-api', 'name' => 'Corefy API', 'is_active' => true,
+            'mid_ids' => [$first->id, $second->id],
+            'api_keys' => [
+                ['commerce_account' => 'coma_A', 'api_key' => 'key-a'], ['commerce_account' => 'coma_B', 'api_key' => 'key-b'],
+                ['commerce_account' => 'coma_C', 'api_key' => ''], ['commerce_account' => 'coma_STRANGER', 'api_key' => 'nope'],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $account = IntegrationAccount::query()->sole();
+        $this->assertSame(['coma_A', 'coma_B'], $account->credentials()->orderBy('key')->pluck('key')->all());
+        $this->assertSame('key-b', $account->credentials()->where('key', 'coma_B')->first()->secret);
+        $this->assertNotSame('key-b', DB::table('integration_credentials')->where('key', 'coma_B')->value('secret'));
+        $this->assertSame(['daily', '07:00'], [$account->schedule_mode, $account->schedule_at]);
+
+        $this->get(route('admin.bots.index'))->assertInertia(fn ($page) => $page
+            ->where('accounts.0.commerce_keys', ['coma_A', 'coma_B'])
+            ->where('mids', fn ($mids) => collect($mids)->firstWhere('mid', 'M-1')['gate_accounts'] === ['coma_A', 'coma_B']));
+
+        // Another key for A, none typed for B (kept); then only the second MID: the keys of A and B go with the first.
+        $this->put(route('admin.bots.accounts.update', $account), ['provider_id' => $corefy->id, 'connector' => 'corefy-api', 'name' => 'Corefy API', 'is_active' => true, 'mid_ids' => [$first->id, $second->id], 'api_keys' => [['commerce_account' => 'coma_A', 'api_key' => 'key-a2'], ['commerce_account' => 'coma_B', 'api_key' => '']]])->assertSessionHasNoErrors();
+        $this->assertSame(['key-a2', 'key-b'], [$account->credentials()->where('key', 'coma_A')->first()->secret, $account->credentials()->where('key', 'coma_B')->first()->secret]);
+
+        $this->put(route('admin.bots.accounts.update', $account), ['provider_id' => $corefy->id, 'connector' => 'corefy-api', 'name' => 'Corefy API', 'is_active' => true, 'mid_ids' => [$second->id], 'api_keys' => [['commerce_account' => 'coma_C', 'api_key' => 'key-c']]])->assertSessionHasNoErrors();
+        $this->assertSame(['coma_C'], $account->credentials()->pluck('key')->all());
     }
 
     public function test_run_now_and_retry_queue_runs()

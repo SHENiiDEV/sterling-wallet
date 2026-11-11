@@ -332,6 +332,7 @@ export type IntegrationAccount = {
     has_username: boolean;
     has_password: boolean;
     has_totp: boolean;
+    commerce_keys: string[];
     settings: Record<string, unknown> | null;
     mid_ids: number[];
     is_active: boolean;
