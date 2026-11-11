@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Bots\ConnectorRegistry;
 use App\Bots\Connectors\CardaqExportConnector;
+use App\Bots\Connectors\CorefyApiConnector;
 use App\Bots\Connectors\CorefyExportConnector;
 use App\Bots\Connectors\FinBridgesApiConnector;
 use App\Bots\Connectors\MadfinExportConnector;
@@ -39,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ConnectorRegistry::class, fn ($app) => new ConnectorRegistry([
             $app->make(CardaqExportConnector::class),
             $app->make(CorefyExportConnector::class),
+            $app->make(CorefyApiConnector::class),
             $app->make(MadfinExportConnector::class),
             $app->make(FinBridgesApiConnector::class),
         ]));
