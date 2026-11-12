@@ -29,6 +29,7 @@ type Signals = {
 };
 
 type OwnerRow = {
+    client_id?: number;
     merchant: { public_id: string | null; name: string };
     mid: string | null;
     signals: Signals | Record<string, never>;
@@ -53,13 +54,18 @@ type DayRow = {
 
 type Props = {
     days: number;
-    by: 'merchant' | 'mid';
+    by: 'merchant' | 'mid' | 'client';
     limit: number;
     warmup: number;
     from: string;
     to: string;
     owners: OwnerRow[];
-    selected: { key: string; name: string; days: DayRow[] } | null;
+    selected: {
+        key: string;
+        name: string;
+        days: DayRow[];
+        members?: (OwnerRow & { company: string | null })[] | null;
+    } | null;
 };
 
 const WINDOWS = [7, 14, 30, 60, 90];
@@ -291,13 +297,21 @@ export default function Traffic({
 }: Props) {
     const url = (query: Record<string, string | number>) =>
         admin.traffic.index.url({ query });
+    const unit = by === 'mid' ? 'MID' : by === 'client' ? 'client' : 'merchant';
     const ownerQuery = (o: OwnerRow): Record<string, string> =>
         by === 'mid'
             ? { by, mid: o.mid ?? '' }
-            : { by, merchant: o.merchant.public_id ?? '' };
+            : by === 'client'
+              ? { by, client: String(o.client_id ?? '') }
+              : { by, merchant: o.merchant.public_id ?? '' };
     const isSelected = (o: OwnerRow) =>
         selected !== null &&
-        selected.key === (by === 'mid' ? o.mid : o.merchant.public_id);
+        selected.key ===
+            (by === 'mid'
+                ? o.mid
+                : by === 'client'
+                  ? String(o.client_id)
+                  : o.merchant.public_id);
 
     return (
         <>
@@ -305,15 +319,19 @@ export default function Traffic({
             <PageBody>
                 <PageHeader
                     title="Card traffic"
-                    description={`Traffic quality per ${by === 'mid' ? 'MID' : 'merchant'}, ${formatDate(from)} – ${formatDate(to)}. Trusted traffic keeps new cards under ${limit}%.`}
+                    description={`Traffic quality per ${unit}, ${formatDate(from)} – ${formatDate(to)}. Trusted traffic keeps new cards under ${limit}%.`}
                     actions={
                         <>
                             <Switch
-                                options={['merchant', 'mid'] as const}
+                                options={['merchant', 'mid', 'client'] as const}
                                 value={by}
                                 href={(k) => url({ days, by: k })}
                                 label={(k) =>
-                                    k === 'mid' ? 'By MID' : 'By merchant'
+                                    k === 'mid'
+                                        ? 'By MID'
+                                        : k === 'client'
+                                          ? 'By client'
+                                          : 'By merchant'
                                 }
                             />
                             <Switch
@@ -327,10 +345,10 @@ export default function Traffic({
                 />
                 <p className="text-sm text-muted-foreground">
                     A card is the BIN plus the last four digits. It counts as
-                    new on the day it is first seen on that{' '}
-                    {by === 'mid' ? 'MID' : 'merchant'}. The share is new cards
-                    ÷ cards paying that day. The first {warmup} days of the
-                    history are not judged: with no history every card is new.
+                    new on the day it is first seen on that {unit}. The share is
+                    new cards ÷ cards paying that day. The first {warmup} days
+                    of the history are not judged: with no history every card is
+                    new.
                 </p>
                 <p className="text-sm text-muted-foreground">
                     Other signals over the period: one BIN carrying too much of
@@ -346,7 +364,11 @@ export default function Traffic({
                         <TableHeader>
                             <TableRow>
                                 <TableHead>
-                                    {by === 'mid' ? 'MID' : 'Merchant'}
+                                    {by === 'mid'
+                                        ? 'MID'
+                                        : by === 'client'
+                                          ? 'Client'
+                                          : 'Merchant'}
                                 </TableHead>
                                 <TableHead className="text-right">
                                     Sales
@@ -388,7 +410,11 @@ export default function Traffic({
                             )}
                             {owners.map((o) => (
                                 <TableRow
-                                    key={o.mid ?? o.merchant.public_id}
+                                    key={
+                                        o.mid ??
+                                        o.merchant.public_id ??
+                                        o.client_id
+                                    }
                                     className={cn(isSelected(o) && 'bg-accent')}
                                 >
                                     <TableCell>
@@ -510,6 +536,82 @@ export default function Traffic({
                                 </TableBody>
                             </Table>
                         </div>
+                        {selected.members && (
+                            <>
+                                <h2 className="text-sm font-semibold">
+                                    Companies and MIDs of {selected.name}
+                                </h2>
+                                <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Company</TableHead>
+                                                <TableHead>Merchant</TableHead>
+                                                <TableHead>MID</TableHead>
+                                                <TableHead className="text-right">
+                                                    Sales
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Cards
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    New share
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Top BIN
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Cards tried many times
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Night
+                                                </TableHead>
+                                                <TableHead>Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {selected.members.map((m) => (
+                                                <TableRow key={m.mid}>
+                                                    <TableCell>
+                                                        {m.company ?? '—'}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {m.merchant.name}
+                                                    </TableCell>
+                                                    <TableCell className="font-mono">
+                                                        {m.mid}
+                                                    </TableCell>
+                                                    <TableCell className="text-right tabular-nums">
+                                                        {m.sales}
+                                                    </TableCell>
+                                                    <TableCell className="text-right tabular-nums">
+                                                        {m.cards}
+                                                    </TableCell>
+                                                    <TableCell
+                                                        className={cn(
+                                                            'text-right font-medium tabular-nums',
+                                                            m.status ===
+                                                                'high' &&
+                                                                'text-rose-600',
+                                                        )}
+                                                    >
+                                                        {percent(m.new_share)}
+                                                    </TableCell>
+                                                    <SignalCells
+                                                        signals={m.signals}
+                                                    />
+                                                    <TableCell>
+                                                        <Status
+                                                            status={m.status}
+                                                        />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </>
+                        )}
                     </section>
                 )}
             </PageBody>
