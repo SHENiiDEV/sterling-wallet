@@ -92,4 +92,21 @@ class ChargebackImportTest extends TestCase
         // The paid report is untouched.
         $this->assertEqualsWithDelta(0.0, (float) DailyReportTask::query()->where('report_date', '2026-09-15')->sole()->getRawOriginal('chargebacks_amount'), 0.001);
     }
+
+    public function test_a_chargeback_the_bank_file_already_carried_is_not_charged_twice()
+    {
+        // The acquirer's daily file booked it on the 17th: same card (555555…4444) and amount, after the payment of the 15th.
+        MerchantOperation::query()->create([
+            'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->mid->bank_provider_id, 'role' => 'bank',
+            'payment_id' => 'bank-side-id', 'trn_type' => 'chargeback', 'operation_type' => OperationType::Chargeback, 'amount' => '200.00', 'currency' => 'EUR',
+            'card_bin' => '555555', 'card_last4' => '4444', 'report_date' => '2026-09-17', 'transaction_at' => CarbonImmutable::parse('2026-09-17 10:00:00', 'UTC'),
+        ]);
+
+        $result = app(ChargebackImporter::class)->import($this->mid->bankProvider, $this->list([
+            ['1001', 'A2', '15/09/2026', '555555***4444', '200,00', 'EUR', '13.1 - Merchandise/Services Not Received', 'MF-2'],
+        ]));
+
+        $this->assertSame([0, [['vrol' => '1001', 'report_date' => '2026-09-17']]], [$result['rows'], $result['already']]);
+        $this->assertSame(1, MerchantOperation::query()->where('operation_type', OperationType::Chargeback)->count());
+    }
 }
