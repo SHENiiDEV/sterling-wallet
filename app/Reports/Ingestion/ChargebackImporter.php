@@ -17,7 +17,8 @@ use SplFileInfo;
  * `chargeback` operation of that payment's MID: the amount is taken from the merchant, plus the chargeback fee.
  * It lands on the report of the original payment's day; when that report is already in a settlement (being paid or
  * paid) the amounts there are fixed, so it moves on to the next report that is not, up to today's. The rows that
- * match no payment are listed, not guessed.
+ * match no payment are listed, not guessed. A chargeback the acquirer's own daily file already carried (same MID, card
+ * and amount, after the payment) is not charged a second time: it is listed with the report that holds it.
  */
 class ChargebackImporter
 {
@@ -42,7 +43,7 @@ class ChargebackImporter
     }
 
     /**
-     * @return array{rows: int, tasks: int, not_found: list<string>, placed: list<array{vrol: string, report_date: string, amount: string, currency: string}>}
+     * @return array{rows: int, tasks: int, not_found: list<string>, already: list<array{vrol: string, report_date: string}>, placed: list<array{vrol: string, report_date: string, amount: string, currency: string}>}
      */
     public function import(Provider $provider, SplFileInfo $file): array
     {
@@ -50,10 +51,11 @@ class ChargebackImporter
         $handle = fopen($file->getPathname(), 'rb');
         $header = array_map(fn ($h) => strtoupper(trim((string) $h, "\xEF\xBB\xBF \t")), (array) fgetcsv($handle));
 
-        $result = ['rows' => 0, 'tasks' => 0, 'not_found' => [], 'placed' => []];
+        $result = ['rows' => 0, 'tasks' => 0, 'not_found' => [], 'already' => [], 'placed' => []];
         $tasks = [];
+        $claimed = [];
 
-        DB::transaction(function () use ($handle, $header, $provider, $timezone, &$result, &$tasks) {
+        DB::transaction(function () use ($handle, $header, $provider, $timezone, &$result, &$tasks, &$claimed) {
             while (($cells = fgetcsv($handle)) !== false) {
                 if (count($cells) < count($header)) {
                     continue;
@@ -77,6 +79,12 @@ class ChargebackImporter
 
                 // A chargeback that is already booked stays where it is: a second upload must not move it.
                 $booked = MerchantOperation::query()->where($key)->first();
+                if ($booked === null && ($fromBank = $this->bookedFromBankFile($mid->id, $original, $amount, $claimed)) !== null) {
+                    $claimed[] = $fromBank->id;
+                    $result['already'][] = ['vrol' => $vrol, 'report_date' => $fromBank->report_date->toDateString()];
+
+                    continue;
+                }
                 $task = $booked?->report_date !== null
                     ? $this->ingestion->ensureReport($provider, $mid, CarbonImmutable::createFromFormat('!Y-m-d', $booked->report_date->toDateString(), 'UTC'))
                     : $this->placement->reportFor($provider, $mid, $original->transaction_at, $timezone);
@@ -122,6 +130,29 @@ class ChargebackImporter
         $result['tasks'] = count($tasks);
 
         return $result;
+    }
+
+    /**
+     * A chargeback of the acquirer's own daily file for the same card and amount, made after the payment: the list is
+     * about the same event. Each such record covers one row of the list.
+     *
+     * @param  list<int>  $claimed
+     */
+    private function bookedFromBankFile(int $midId, MerchantOperation $original, string $amount, array $claimed): ?MerchantOperation
+    {
+        if ($original->card_bin === null || $original->card_last4 === null || $original->transaction_at === null) {
+            return null;
+        }
+
+        return MerchantOperation::query()
+            ->where('merchant_mid_id', $midId)->where('role', ProviderType::Bank)
+            ->where('operation_type', OperationType::Chargeback)
+            ->where('payment_id', 'not like', 'chargeback:%')
+            ->where('card_bin', $original->card_bin)->where('card_last4', $original->card_last4)
+            ->where('amount', $amount)
+            ->where('transaction_at', '>=', $original->transaction_at)
+            ->when($claimed !== [], fn ($q) => $q->whereNotIn('id', $claimed))
+            ->orderBy('transaction_at')->orderBy('id')->first();
     }
 
     /**
