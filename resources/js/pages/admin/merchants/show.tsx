@@ -46,6 +46,8 @@ import type {
     PortalUser,
 } from '@/components/admin/merchants/portal-access-section';
 import { BarChart } from '@/components/admin/bar-chart';
+import { ApprovalRate } from '@/components/admin/merchants/approval-rate';
+import type { Approval } from '@/components/admin/merchants/approval-rate';
 import { StatCard } from '@/components/admin/stat-card';
 import { Amounts } from '@/components/portal/portal';
 import {
@@ -113,6 +115,7 @@ type Props = {
     integrationStatuses: Option[];
     deletion?: MerchantDeletion;
     overview: MerchantOverview;
+    approval: Approval;
     reports: MerchantReport[];
     settlements: MerchantSettlement[];
     portalUsers: PortalUser[] | null;
@@ -433,6 +436,7 @@ export default function MerchantShow(props: Props) {
                                 />
                             </div>
                         </section>
+                        <ApprovalRate approval={props.approval} />
                         {merchant.notes && (
                             <section className="rounded-xl border bg-card p-5 text-sm whitespace-pre-line shadow-xs">
                                 {merchant.notes}
