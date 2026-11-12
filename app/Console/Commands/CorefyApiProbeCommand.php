@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * Asks the Corefy API for a few payments of an account and prints which fields it gives, so the field names the
  * connector reads can be checked against the real API before it is relied on. The key is never printed.
  */
-#[Signature('corefy:api-probe {account : Integration account id (bot Corefy export (API))} {--commerce= : Commerce account (default: the first one with a key)} {--hours=24 : How far back to look}')]
+#[Signature('corefy:api-probe {account : Integration account id (bot Corefy export (API))} {--commerce= : Commerce account (default: the first one with a key)} {--hours=24 : How far back to look} {--day= : One day (Y-m-d): how many payments each filter finds for it}')]
 #[Description('Check the Corefy API access of a bot account: how many payments it returns and which fields they carry')]
 class CorefyApiProbeCommand extends Command
 {
@@ -31,6 +31,20 @@ class CorefyApiProbeCommand extends Command
             $this->error('This bot account has no API key yet.');
 
             return self::FAILURE;
+        }
+
+        if ($day = $this->option('day')) {
+            try {
+                $counts = $connector->dayCounts($account, (string) $commerce, (string) $day);
+            } catch (ApiFailure $e) {
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
+            $this->info("{$commerce} on {$day}:");
+            $this->table(['Filter', 'Payments'], collect($counts)->map(fn ($n, $label) => [$label, $n])->values()->all());
+
+            return self::SUCCESS;
         }
 
         try {
