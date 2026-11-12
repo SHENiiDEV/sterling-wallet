@@ -107,12 +107,14 @@ const navGroups: NavGroup[] = [
                 href: admin.volumes.index(),
                 icon: ChartColumn,
                 module: 'reports',
+                unrestricted: true,
             },
             {
                 title: 'Card traffic',
                 href: admin.traffic.index(),
                 icon: ShieldCheck,
                 module: 'reports',
+                unrestricted: true,
             },
             {
                 title: 'Settlements',
@@ -207,7 +209,9 @@ export function AppSidebar() {
         .map((group) => ({
             ...group,
             items: group.items.filter(
-                (item) => !item.module || auth.modules.includes(item.module),
+                (item) =>
+                    (!item.module || auth.modules.includes(item.module)) &&
+                    !(item.unrestricted && auth.product_scope),
             ),
         }))
         .filter((group) => group.items.length > 0);

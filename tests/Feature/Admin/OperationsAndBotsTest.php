@@ -224,8 +224,9 @@ class OperationsAndBotsTest extends TestCase
     public function test_a_corefy_api_account_takes_its_commerce_accounts_from_the_mids_and_keeps_a_key_for_each()
     {
         $corefy = $this->corefy();
-        $first = $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy, ['mid' => 'M-1', 'gate_mid' => 'coma_A', 'extra_gate_mids' => ['coma_B']]);
-        $second = $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy, ['mid' => 'M-2', 'gate_mid' => 'coma_C']);
+        $bank = $this->cardaq();
+        $first = $this->mid($this->merchantWithTariff(), $bank, $corefy, ['mid' => 'M-1', 'gate_mid' => 'coma_A', 'extra_gate_mids' => ['coma_B']]);
+        $second = $this->mid($this->merchantWithTariff(), $bank, $corefy, ['mid' => 'M-2', 'gate_mid' => 'coma_C']);
 
         // No login or password: the commerce accounts come from the MIDs; a key for a stranger or an empty one is not kept.
         $this->actingAs($this->admin)->post(route('admin.bots.accounts.store'), [

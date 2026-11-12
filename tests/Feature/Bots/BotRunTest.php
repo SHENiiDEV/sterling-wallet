@@ -177,7 +177,13 @@ class BotRunTest extends TestCase
             ['id' => 'cpi_B', 'attributes' => ['created' => $at('2026-09-16 00:30:00'), 'processed' => $at('2026-09-16 00:31:00'), 'status' => 'processed', 'resolution' => 'ok', 'amount' => 50, 'currency' => 'EUR', 'reference_id' => 'r2', ...$card]],
         ];
         $failed = [['id' => 'cpi_C', 'attributes' => ['created' => $at('2026-09-15 12:00:00'), 'status' => 'process_failed', 'resolution' => 'timeout', 'amount' => 30, 'currency' => 'EUR', 'reference_id' => 'r3', ...$card]]];
-        Http::fake(fn ($request) => Http::response(['data' => ($request['filter']['status'] ?? '') === 'process_failed' ? $failed : $processed, 'links' => ['next' => null]]));
+        // The filters as the API receives them: the query of the URL.
+        $query = function ($request): array {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $parsed);
+
+            return $parsed;
+        };
+        Http::fake(fn ($request) => Http::response(['data' => ($query($request)['filter']['status'] ?? '') === 'process_failed' ? $failed : $processed, 'links' => ['next' => null]]));
         $run = $this->apiRun();
 
         app()->call([new RunConnectorJob($run->id), 'handle']);
@@ -191,11 +197,11 @@ class BotRunTest extends TestCase
         // The successful ones by their processing time over the report day (the day before the run), exactly the day.
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.sterling-pay.com/payment-invoices')
             && $request->hasHeader('Authorization', $auth)
-            && ! isset($request['filter']['status'])
-            && (int) ($request['filter']['processed']['gte'] ?? 0) === $midnight
-            && (int) ($request['filter']['processed']['lte'] ?? 0) === $midnight + 86399);
+            && ! isset($query($request)['filter']['status'])
+            && (int) ($query($request)['filter']['processed']['gte'] ?? 0) === $midnight
+            && (int) ($query($request)['filter']['processed']['lte'] ?? 0) === $midnight + 86399);
         // The failed ones have no processing time: by creation time.
-        Http::assertSent(fn ($request) => ($request['filter']['status'] ?? null) === 'process_failed' && (int) ($request['filter']['created']['gte'] ?? 0) === $midnight);
+        Http::assertSent(fn ($request) => ($query($request)['filter']['status'] ?? null) === 'process_failed' && (int) ($query($request)['filter']['created']['gte'] ?? 0) === $midnight);
     }
 
     public function test_a_refused_api_key_fails_the_run_without_leaking_the_key()

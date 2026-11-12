@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureMerchantUser;
 use App\Http\Middleware\EnsureModuleAccess;
+use App\Http\Middleware\EnsureUnrestrictedStaff;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'merchant' => EnsureMerchantUser::class,
             'bot.token' => VerifyBotReportToken::class,
             'module' => EnsureModuleAccess::class,
+            'unrestricted' => EnsureUnrestrictedStaff::class,
         ]);
 
         $middleware->web(append: [

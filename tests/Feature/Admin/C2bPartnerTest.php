@@ -199,4 +199,17 @@ class C2bPartnerTest extends TestCase
         $this->assertSame(TariffProduct::C2b, $created->productScope());
         $this->assertSame(['merchants', 'settlements'], $created->permissions);
     }
+
+    public function test_the_partner_has_no_volumes_and_no_card_traffic()
+    {
+        // The Report Control Center is a partner module, but volumes and card traffic look across every product.
+        $partner = User::factory()->withModules([...Module::forPartners()])->create(['product_scope' => TariffProduct::C2b->value]);
+
+        $this->actingAs($partner)->get(route('admin.volumes.index'))->assertForbidden();
+        $this->get(route('admin.traffic.index'))->assertForbidden();
+        $this->post(route('admin.traffic.file'))->assertForbidden();
+
+        $this->actingAs($this->admin)->get(route('admin.volumes.index'))->assertOk();
+        $this->get(route('admin.traffic.index'))->assertOk();
+    }
 }
