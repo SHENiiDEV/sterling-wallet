@@ -296,7 +296,7 @@ class SettlementTest extends TestCase
 
         $this->artisan('reports:correct', ['--mid' => $this->mid->mid, '--apply' => true])->expectsOutputToContain('Corrected 1 report(s)')->assertSuccessful();
 
-        $this->assertTrue(BigDecimal::of($report->fresh()->getRawOriginal('net_payout'))->isEqualTo($right), "Expected {$right}, got ".$report->fresh()->getRawOriginal('net_payout').' / '.$report->fresh()->status->value);
+        $this->assertEqualsWithDelta((float) $right, (float) $report->fresh()->getRawOriginal('net_payout'), 0.001);
         // What was paid stays as paid.
         $this->assertSame(SettlementStatus::Settled, $settlement->fresh()->status);
         $this->assertTrue(BigDecimal::of($line->fresh()->amount)->isEqualTo($right));

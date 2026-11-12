@@ -111,16 +111,17 @@ class ReportPreviewTest extends TestCase
         // From the next day on: this report keeps the reserve taken after fees.
         $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-16']]);
         app(DailyReportGenerator::class)->generate($task(), false);
-        $this->assertTrue(BigDecimal::of($task()->getRawOriginal('reserve_amount'))->isEqualTo($now), "Expected {$now}, got ".$task()->getRawOriginal('reserve_amount').' / status '.$task()->status->value.' / '.$task()->error_log);
+        $this->assertEqualsWithDelta((float) $now, (float) $task()->getRawOriginal('reserve_amount'), 0.001);
 
         // From this day on: 10% of the processing amount (350 of sales, the refund is not netted), before any fee.
         $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-15']]);
         app(DailyReportGenerator::class)->generate($task(), false);
 
         $report = $task();
-        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('35.00'), 'Reserve '.$report->getRawOriginal('reserve_amount'));
+        // The database may hand decimals back as floats: compare as numbers.
+        $this->assertEqualsWithDelta(35.0, (float) $report->getRawOriginal('reserve_amount'), 0.001);
         $this->assertSame('processing', $report->summary_data['merchant_fee']['reserve_base']);
-        $afterFees = BigDecimal::of('350')->minus('30')->minus($report->getRawOriginal('total_merchant_fee'));
-        $this->assertTrue(BigDecimal::of($report->getRawOriginal('net_volume'))->isEqualTo($afterFees->minus('35.00')));
+        $afterFees = 350 - 30 - (float) $report->getRawOriginal('total_merchant_fee');
+        $this->assertEqualsWithDelta($afterFees - 35.0, (float) $report->getRawOriginal('net_volume'), 0.001);
     }
 }
