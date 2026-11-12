@@ -34,7 +34,7 @@ class ClientCardListsTest extends TestCase
         $this->mid = $this->mid($this->merchantWithTariff(['company_id' => $company->id]), $this->cardaq(), $this->corefy(), ['mid' => '4400000001', 'gate_mid' => 'coma_TEST1']);
     }
 
-    private function attempt(string $last4, OperationType $type, ?string $resolution = null, string $day = '2026-11-03', string $bin = '411111'): void
+    private function payment(string $last4, OperationType $type, ?string $resolution = null, string $day = '2026-11-03', string $bin = '411111'): void
     {
         MerchantOperation::query()->create([
             'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->mid->gate_provider_id, 'role' => ProviderType::Gate,
@@ -48,17 +48,17 @@ class ClientCardListsTest extends TestCase
         // 0001 paid 3 times, 0002 once and was declined once, 0003 never paid and ran out of funds three times,
         // 0004 never paid and was declined for other reasons four times, 0005 only had a routing error.
         foreach ([1, 2, 3] as $_) {
-            $this->attempt('0001', OperationType::Sale);
+            $this->payment('0001', OperationType::Sale);
         }
-        $this->attempt('0002', OperationType::Sale);
-        $this->attempt('0002', OperationType::Decline, 'do_not_honor');
+        $this->payment('0002', OperationType::Sale);
+        $this->payment('0002', OperationType::Decline, 'do_not_honor');
         foreach ([1, 2, 3] as $_) {
-            $this->attempt('0003', OperationType::Decline, 'insufficient_funds');
+            $this->payment('0003', OperationType::Decline, 'insufficient_funds');
         }
         foreach (['do_not_honor', 'do_not_honor', 'fraud', '3ds_failed'] as $reason) {
-            $this->attempt('0004', OperationType::Decline, $reason);
+            $this->payment('0004', OperationType::Decline, $reason);
         }
-        $this->attempt('0005', OperationType::Decline, 'ROUTING_ERROR');
+        $this->payment('0005', OperationType::Decline, 'ROUTING_ERROR');
 
         $data = app(ClientCardLists::class)->data($this->client, CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-07'));
         $masks = fn (string $list) => array_column($data['lists'][$list], 'mask');
@@ -87,8 +87,8 @@ class ClientCardListsTest extends TestCase
     public function test_the_card_traffic_can_be_grouped_by_client_with_its_companies_and_mids()
     {
         config(['sterling.traffic.warmup_days' => 0]);
-        $this->attempt('0001', OperationType::Sale, day: '2026-11-03');
-        $this->attempt('0002', OperationType::Sale, day: '2026-11-03');
+        $this->payment('0001', OperationType::Sale, day: '2026-11-03');
+        $this->payment('0002', OperationType::Sale, day: '2026-11-03');
 
         $from = CarbonImmutable::parse('2026-11-01');
         $to = CarbonImmutable::parse('2026-11-07');
