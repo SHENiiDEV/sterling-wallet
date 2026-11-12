@@ -137,7 +137,7 @@ class CollabImporter
      * in a settlement (it is being paid, or was paid) the amounts there are fixed, so the charge moves on to the
      * next report that is not in one yet, and so on up to today's.
      */
-    private function reportFor(Provider $provider, MerchantMid $mid, ?CarbonImmutable $at, string $timezone): DailyReportTask
+    public function reportFor(Provider $provider, MerchantMid $mid, ?CarbonImmutable $at, string $timezone): DailyReportTask
     {
         $today = CarbonImmutable::createFromFormat('!Y-m-d', CarbonImmutable::now($timezone)->toDateString(), 'UTC');
         $day = $at !== null

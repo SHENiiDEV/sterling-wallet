@@ -294,6 +294,8 @@ class ReconciliationService
             ->when(! $withDeclines, fn ($q) => $q->where('operation_type', '!=', OperationType::Decline))
             // Collaboration cases are acquirer notices, not payments: nothing to pair them with.
             ->where('operation_type', '!=', OperationType::Collab)
+            // So are the chargebacks the acquirer lists: they are about a payment already paid, not a new one.
+            ->where('operation_type', '!=', OperationType::Chargeback)
             ->whereBetween('report_date', [$from, $to])
             ->orderBy('transaction_at')
             ->orderBy('id')
