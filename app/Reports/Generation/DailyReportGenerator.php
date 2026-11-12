@@ -335,7 +335,7 @@ class DailyReportGenerator
                         'declines' => $declines->count(),
                         'bank_operations' => $bankOps->count(),
                         'gate_operations' => $gateOps->count(),
-                        'unmatched_bank' => $bankOps->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab])->whereNull('matched_operation_id')->count(),
+                        'unmatched_bank' => $bankOps->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab, OperationType::Chargeback])->whereNull('matched_operation_id')->count(),
                         'unmatched_gate' => $gateOps->where('operation_type', '!=', OperationType::Decline)->whereNull('matched_operation_id')->count(),
                     ],
                     'merchant_fee' => [

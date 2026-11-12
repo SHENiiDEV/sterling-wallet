@@ -182,6 +182,32 @@ class CorefyApiConnector extends CorefyExportConnector
     }
 
     /**
+     * How many payments the API gives for one day by different filters, to see which one finds what the dashboard shows.
+     *
+     * @return array<string, int>
+     */
+    public function dayCounts(IntegrationAccount $account, string $commerce, string $day): array
+    {
+        $key = $account->credentials()->where('key', $commerce)->first()?->secret;
+        if ($key === null) {
+            throw new ApiFailure("No API key for {$commerce} in this bot account.");
+        }
+
+        $zone = $account->provider->timezone ?: config('sterling.timezone');
+        $local = CarbonImmutable::parse($day, $zone)->startOfDay();
+        $utc = CarbonImmutable::parse($day, 'UTC')->startOfDay();
+        $range = fn (string $field, CarbonImmutable $from) => ["filter[{$field}][gte]" => $from->getTimestamp(), "filter[{$field}][lte]" => $from->addDay()->getTimestamp() - 1];
+        $count = fn (array $filters) => count($this->fetch($account, $commerce, $key, $filters));
+
+        return [
+            "processed in the {$zone} day" => $count($range('processed', $local)),
+            'processed in the UTC day' => $count($range('processed', $utc)),
+            "created in the {$zone} day" => $count($range('created', $local)),
+            "failed, created in the {$zone} day" => $count(['filter[status]' => 'process_failed', ...$range('created', $local)]),
+        ];
+    }
+
+    /**
      * Every payment of one query, all pages.
      *
      * @param  array<string, mixed>  $filters

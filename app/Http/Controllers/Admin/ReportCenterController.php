@@ -19,6 +19,7 @@ use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\ReserveLedgerEntry;
 use App\Models\SettlementLine;
+use App\Reports\Ingestion\ChargebackImporter;
 use App\Reports\Ingestion\CollabImporter;
 use App\Reports\Ingestion\ReportIngestionService;
 use App\Reports\ReportDateResolver;
@@ -319,7 +320,7 @@ class ReportCenterController extends Controller
     /**
      * Manual upload of a provider file — same pipeline as the bots.
      */
-    public function upload(Request $request, ReportIngestionService $ingestion, CollabImporter $collabs): RedirectResponse
+    public function upload(Request $request, ReportIngestionService $ingestion, CollabImporter $collabs, ChargebackImporter $chargebacks): RedirectResponse
     {
         $data = $request->validate([
             'provider_id' => ['required', 'exists:providers,id'],
@@ -332,6 +333,20 @@ class ReportCenterController extends Controller
         // The acquirer's Mastercard Collaboration list is not a clearing file: it becomes its own charge.
         if ($provider->type === ProviderType::Bank && CollabImporter::looksLikeCollab($request->file('file'))) {
             return $this->uploadCollab($request, $provider, $collabs);
+        }
+
+        // The acquirer's chargeback list: each row is found among its payments and charged to a report not yet paid.
+        if ($provider->type === ProviderType::Bank && ChargebackImporter::looksLikeChargebacks($request->file('file'))) {
+            $result = $chargebacks->import($provider, $request->file('file'));
+            AuditLogger::log('report.chargebacks_uploaded', $provider, ['rows' => $result['rows'], 'not_found' => $result['not_found'], 'placed' => $result['placed']]);
+
+            $message = "{$result['rows']} chargeback(s) charged on {$result['tasks']} report(s): ".collect($result['placed'])->map(fn ($p) => "{$p['amount']} {$p['currency']} on {$p['report_date']}")->implode(', ').'.';
+            if ($result['not_found']) {
+                $message .= ' No payment found for VROL '.implode(', ', $result['not_found']).' (not charged).';
+            }
+            Inertia::flash('toast', ['type' => $result['rows'] > 0 ? 'success' : 'warning', 'message' => $message]);
+
+            return back();
         }
 
         try {
