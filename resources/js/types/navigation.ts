@@ -17,6 +17,8 @@ export type NavItem = {
     soon?: boolean;
     /** Access module required to see the item (App\\Enums\\Module value). */
     module?: string;
+    /** Hidden from a product-restricted partner (a C2B partner). */
+    unrestricted?: boolean;
 };
 
 export type NavGroup = {
