@@ -53,6 +53,17 @@ function presets(): { label: string; from: string; to: string }[] {
     ];
 }
 
+const CARD_LISTS: [string, string][] = [
+    ['all', 'All cards'],
+    ['white1', 'White list · 1+ successful'],
+    ['white3', 'White list · 3+ successful'],
+    ['white5', 'White list · 5+ successful'],
+    ['white7', 'White list · 7+ successful'],
+    ['white10', 'White list · 10+ successful'],
+    ['black', 'Black list · always declined'],
+    ['insufficient', 'Black list · insufficient funds'],
+];
+
 /**
  * One statement for a whole period (a week, a month, any dates) for a client, or one of its companies, as PDF or
  * XLSX. Built from the finished daily reports, so it always agrees with the payouts.
@@ -60,19 +71,22 @@ function presets(): { label: string; from: string; to: string }[] {
 export function PeriodReport({
     url,
     trafficUrl,
+    cardsUrl,
     companies,
 }: {
     url: string;
     trafficUrl?: string;
+    cardsUrl?: string;
     companies: { id: number; name: string }[];
 }) {
     const shortcuts = presets();
     const [from, setFrom] = useState(shortcuts[0].from);
     const [to, setTo] = useState(shortcuts[0].to);
     const [company, setCompany] = useState(ALL);
+    const [list, setList] = useState('white3');
     const valid = from !== '' && to !== '' && from <= to;
-    const href = (format: 'pdf' | 'xlsx', base = url) =>
-        `${base}?date=${from}&to=${to}&format=${format}${company === ALL ? '' : `&company=${company}`}`;
+    const href = (format: 'pdf' | 'xlsx' | 'csv', base = url) =>
+        `${base}?date=${from}&to=${to}&format=${format}${company === ALL ? '' : `&company=${company}`}${format === 'csv' ? `&list=${list}` : ''}`;
 
     return (
         <section className="grid gap-3 rounded-xl border bg-card p-4 shadow-xs">
@@ -172,6 +186,55 @@ export function PeriodReport({
                         </Button>
                     ))}
             </div>
+            {cardsUrl && (
+                <div className="grid gap-2 border-t pt-3">
+                    <p className="text-xs text-muted-foreground">
+                        Cards of the client as masks (123456*7890) for white and
+                        black lists. The XLSX has every list; the CSV is one
+                        list.
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            disabled={!valid}
+                        >
+                            <a
+                                href={
+                                    valid ? href('xlsx', cardsUrl) : undefined
+                                }
+                            >
+                                <Download />
+                                Cards XLSX
+                            </a>
+                        </Button>
+                        <Select value={list} onValueChange={setList}>
+                            <SelectTrigger className="w-56">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CARD_LISTS.map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>
+                                        {label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            disabled={!valid}
+                        >
+                            <a href={valid ? href('csv', cardsUrl) : undefined}>
+                                <Download />
+                                List CSV
+                            </a>
+                        </Button>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }

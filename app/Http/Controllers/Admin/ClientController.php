@@ -9,6 +9,7 @@ use App\Models\Client;
 use App\Models\Company;
 use App\Models\Merchant;
 use App\Models\User;
+use App\Reports\Generation\ClientCardLists;
 use App\Reports\Generation\ClientDailyStatement;
 use App\Reports\Generation\ClientDays;
 use App\Reports\Generation\ClientTrafficReport;
@@ -18,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -169,6 +171,36 @@ class ClientController extends Controller
         return response($xlsx ? $traffic->xlsx($client, $from, $to, $companyId) : $traffic->render($client, $from, $to, $companyId), 200, [
             'Content-Type' => $xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$name.($xlsx ? '.xlsx' : '.pdf').'"',
+        ]);
+    }
+
+    /**
+     * The client's cards as masks (123456*7890) for white and black lists: an XLSX with every list, or one list as CSV.
+     */
+    public function cards(Request $request, Client $client, ClientCardLists $cards): HttpResponse
+    {
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date'],
+            'format' => ['sometimes', 'in:xlsx,csv'],
+            'list' => ['sometimes', Rule::in(ClientCardLists::lists())],
+            'company' => ['nullable', 'integer'],
+        ]);
+        $from = CarbonImmutable::parse($data['date']);
+        $to = CarbonImmutable::parse($data['to']);
+        if ($from->diffInDays($to) > 366) {
+            throw ValidationException::withMessages(['to' => 'A card list covers at most a year.']);
+        }
+        $companyId = isset($data['company']) ? (int) $data['company'] : null;
+        $result = $cards->data($client, $from, $to, $companyId);
+        $csv = ($data['format'] ?? 'xlsx') === 'csv';
+        $list = $data['list'] ?? 'all';
+        AuditLogger::log('client.cards_exported', $client, ['from' => $data['date'], 'to' => $data['to'], 'list' => $csv ? $list : 'all', 'cards' => count($result['cards'])]);
+        $name = 'cards_'.preg_replace('/[^A-Za-z0-9_-]/', '_', $client->invoiceName()).($csv ? '_'.$list : '').'_'.$data['date'].'_'.$data['to'];
+
+        return response($csv ? $cards->csv($result, $list) : $cards->xlsx($result), 200, [
+            'Content-Type' => $csv ? 'text/csv; charset=UTF-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$name.($csv ? '.csv' : '.xlsx').'"',
         ]);
     }
 

@@ -269,6 +269,12 @@ return [
         'ignore_resolutions' => ['routing_error'],
     ],
 
+    // Card lists of a client (masks 123456*7890): white lists by successful payments, black list by declines without a success.
+    'card_lists' => [
+        'white_tiers' => [1, 3, 5, 7, 10],
+        'blacklist_min_declines' => 3,
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Card traffic control

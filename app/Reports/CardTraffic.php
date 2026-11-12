@@ -4,6 +4,7 @@ namespace App\Reports;
 
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
+use App\Models\Client;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
@@ -27,6 +28,9 @@ class CardTraffic
     public const BY_MERCHANT = 'merchant';
 
     public const BY_MID = 'mid';
+
+    /** All the companies and MIDs under one client. */
+    public const BY_CLIENT = 'client';
 
     /**
      * Per owner (merchant or MID) and day, within the range.
@@ -93,7 +97,8 @@ class CardTraffic
         $signals = $this->signals($from, $to, $by);
         $labels = $this->labels($by);
 
-        return $this->daily($from, $to, null, $by)->groupBy('owner_id')->map(function (Collection $days, int|string $id) use ($labels, $signals, $limit) {
+        // Merchants that no client owns have no line when the traffic is grouped by client.
+        return $this->daily($from, $to, null, $by)->reject(fn (array $d) => $by === self::BY_CLIENT && $d['owner_id'] === 0)->groupBy('owner_id')->map(function (Collection $days, int|string $id) use ($labels, $signals, $limit) {
             $judged = $days->where('warming', false);
             $cards = $judged->sum('cards');
             $new = $judged->sum('new_cards');
@@ -186,6 +191,11 @@ class CardTraffic
      */
     private function labels(string $by): array
     {
+        if ($by === self::BY_CLIENT) {
+            return Client::query()->get(['id', 'name'])
+                ->mapWithKeys(fn (Client $c) => [$c->id => ['merchant' => ['public_id' => null, 'name' => $c->name], 'mid' => null, 'client_id' => $c->id]])->all();
+        }
+
         if ($by === self::BY_MID) {
             return MerchantMid::query()->with('merchant:id,public_id,name')->get(['id', 'mid', 'merchant_id', 'currency'])
                 ->mapWithKeys(fn (MerchantMid $m) => [$m->id => [
@@ -209,6 +219,8 @@ class CardTraffic
     {
         return MerchantOperation::query()
             ->join('merchant_mids as m', 'm.id', '=', 'merchant_operations.merchant_mid_id')
+            ->join('merchants as mer', 'mer.id', '=', 'merchant_operations.merchant_id')
+            ->leftJoin('companies as co', 'co.id', '=', 'mer.company_id')
             ->whereIn('merchant_operations.operation_type', array_map(fn (OperationType $t) => $t->value, $types))
             ->whereNotNull('merchant_operations.card_bin')
             ->whereNotNull('merchant_operations.card_last4')
@@ -217,7 +229,11 @@ class CardTraffic
 
     private function ownerColumn(string $by): string
     {
-        return $by === self::BY_MID ? 'merchant_operations.merchant_mid_id' : 'merchant_operations.merchant_id';
+        return match ($by) {
+            self::BY_MID => 'merchant_operations.merchant_mid_id',
+            self::BY_CLIENT => 'co.client_id',
+            default => 'merchant_operations.merchant_id',
+        };
     }
 
     private function cardKey(): string

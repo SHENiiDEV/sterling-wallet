@@ -61,14 +61,15 @@ class ReserveCompareCommand extends Command
                 $returns = BigDecimal::of($report->getRawOriginal('refunds_amount') ?? 0)
                     ->plus($report->getRawOriginal('chargebacks_amount') ?? 0)
                     ->plus($report->getRawOriginal('collabs_amount') ?? 0);
-                $processing = BigDecimal::max(BigDecimal::zero(), $turnover->minus($returns));
+                // Madfin holds the reserve from the approved sales of the day: returns are not netted.
+                $processing = $turnover;
                 $merchantFee = BigDecimal::of($report->getRawOriginal('total_merchant_fee') ?? 0);
 
                 $now = BigDecimal::of($report->getRawOriginal('reserve_amount') ?? 0);
                 $new = $processing->multipliedBy($percent)->dividedBy(100, 8, RoundingMode::HalfUp)->toScale(2, RoundingMode::HalfUp);
 
                 // The net volume is what is left after the fees and the reserve; the conversion fee follows it.
-                $netNew = BigDecimal::max(BigDecimal::zero(), $processing->minus($merchantFee)->minus($new));
+                $netNew = BigDecimal::max(BigDecimal::zero(), $turnover->minus($returns)->minus($merchantFee)->minus($new));
                 $payoutNew = $netNew->minus($netNew->multipliedBy($conversionPercent)->dividedBy(100, 8, RoundingMode::HalfUp))->toScale(2, RoundingMode::HalfUp);
                 $payoutNow = BigDecimal::of($report->getRawOriginal('net_payout') ?? 0);
 
