@@ -184,7 +184,7 @@ class BotRunTest extends TestCase
 
         $this->assertSame(BotRunStatus::Succeeded, $run->fresh()->status);
         $days = $this->mid->operations()->orderBy('payment_id')->get()->mapWithKeys(fn ($op) => [$op->payment_id => $op->report_date->toDateString().' '.$op->operation_type->value]);
-        $this->assertSame(['cpi_A' => '2026-09-15 sale', 'cpi_B' => '2026-09-16 sale', 'cpi_C' => '2026-09-15 decline'], $days->all());
+        $this->assertSame(['cpi_A' => '2026-09-15 sale', 'cpi_B' => '2026-09-16 sale', 'cpi_C' => '2026-09-15 decline'], $days->all(), (string) $run->fresh()->log.' / '.$run->fresh()->error);
 
         $auth = 'Basic '.base64_encode('coma_TEST1:secret-api-key');
         $midnight = CarbonImmutable::parse('2026-09-15', 'Europe/Riga')->getTimestamp();

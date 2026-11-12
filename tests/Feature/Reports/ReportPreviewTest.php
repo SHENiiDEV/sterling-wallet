@@ -10,6 +10,7 @@ use App\Reports\Ingestion\ReportIngestionService;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsReportFixtures;
@@ -90,12 +91,13 @@ class ReportPreviewTest extends TestCase
 
     public function test_the_reserve_comparison_takes_the_reserve_from_the_processing_amount_before_fees()
     {
-        // 350 of sales less a refund of 30 = 320 of processing; 10% of it is 32.00, whatever the fees are.
-        $this->artisan('reserve:compare', ['--bank' => $this->mid->bankProvider->code, '--mid' => $this->mid->mid, '--detail' => true])
-            ->expectsOutputToContain($this->mid->mid)
-            ->expectsOutputToContain('32.00')
-            ->expectsOutputToContain('Total: turnover 350.00')
-            ->assertSuccessful();
+        // 350 of sales (the refund of 30 is not netted): 10% of it is 35.00, whatever the fees are.
+        $exit = Artisan::call('reserve:compare', ['--bank' => $this->mid->bankProvider->code, '--mid' => $this->mid->mid, '--detail' => true]);
+        $output = Artisan::output();
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString($this->mid->mid, $output, $output);
+        $this->assertStringContainsString('35.00', $output, $output);
+        $this->assertStringContainsString('Total: turnover 350.00', $output, $output);
 
         $this->artisan('reserve:compare', ['--bank' => 'nobody'])->expectsOutputToContain('No MIDs for this bank')->assertSuccessful();
     }
@@ -109,14 +111,14 @@ class ReportPreviewTest extends TestCase
         // From the next day on: this report keeps the reserve taken after fees.
         $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-16']]);
         app(DailyReportGenerator::class)->generate($task(), false);
-        $this->assertTrue(BigDecimal::of($task()->getRawOriginal('reserve_amount'))->isEqualTo($now));
+        $this->assertTrue(BigDecimal::of($task()->getRawOriginal('reserve_amount'))->isEqualTo($now), "Expected {$now}, got ".$task()->getRawOriginal('reserve_amount').' / status '.$task()->status->value.' / '.$task()->error_log);
 
         // From this day on: 10% of the processing amount (350 of sales, the refund is not netted), before any fee.
         $bank->update(['matching' => ['reserve_base' => 'processing', 'reserve_base_from' => '2026-09-15']]);
         app(DailyReportGenerator::class)->generate($task(), false);
 
         $report = $task();
-        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('35.00'));
+        $this->assertTrue(BigDecimal::of($report->getRawOriginal('reserve_amount'))->isEqualTo('35.00'), 'Reserve '.$report->getRawOriginal('reserve_amount'));
         $this->assertSame('processing', $report->summary_data['merchant_fee']['reserve_base']);
         $afterFees = BigDecimal::of('350')->minus('30')->minus($report->getRawOriginal('total_merchant_fee'));
         $this->assertTrue(BigDecimal::of($report->getRawOriginal('net_volume'))->isEqualTo($afterFees->minus('35.00')));
