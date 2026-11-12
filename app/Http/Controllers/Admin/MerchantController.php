@@ -30,6 +30,7 @@ use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
 use App\Models\Settlement;
+use App\Reports\Generation\MerchantApprovalRate;
 use App\Support\ProductScope;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -196,6 +197,8 @@ class MerchantController extends Controller
             'walletTypes' => WalletType::options(),
             'canManageSeeds' => $request->user()->role === UserRole::SuperAdmin,
             'overview' => app(MerchantOverview::class)->for(collect([$merchant])),
+            // Approval rate of the gateway's attempts, by day, week or month (?approval=day|week|month).
+            'approval' => app(MerchantApprovalRate::class)->for($merchant, (string) $request->query('approval', 'week')),
             'reports' => DailyReportTask::query()
                 ->with('merchantMid:id,mid')
                 ->where('merchant_id', $merchant->id)
