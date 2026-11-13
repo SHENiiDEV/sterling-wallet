@@ -128,6 +128,14 @@ class CorefyApiConnector extends CorefyExportConnector
         $log = $commerce.': '.count($items).' payment(s) from the API for '.$from->toDateString().' – '.$until->subDay()->toDateString().', '.count($rows).' kept'
             .($skipped > 0 ? ", {$skipped} skipped (no id or time)" : '')
             .(count($items) - $skipped > count($rows) ? ', '.(count($items) - $skipped - count($rows)).' repeated ids' : '');
+        // Where the payments fall, by the provider's day and kind, to see at a glance what a run really brought.
+        $byDay = [];
+        foreach ($rows as $row) {
+            $kind = $row['status'] === 'process_failed' ? 'failed' : 'ok';
+            $byDay[substr($row['created'], 0, 10)][$kind] = ($byDay[substr($row['created'], 0, 10)][$kind] ?? 0) + 1;
+        }
+        ksort($byDay);
+        $log .= ' · by day: '.implode(', ', array_map(fn ($day, $n) => "{$day} ".($n['ok'] ?? 0).' ok/'.($n['failed'] ?? 0).' failed', array_keys($byDay), $byDay));
         if ($rows === []) {
             return new BotResult(BotRunStatus::Succeeded, rows: 0, reportDate: $target->period->reportDate, log: $log, emptyDates: $empty);
         }
