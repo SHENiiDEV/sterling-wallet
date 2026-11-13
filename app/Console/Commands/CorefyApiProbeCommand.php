@@ -42,7 +42,7 @@ class CorefyApiProbeCommand extends Command
                 return self::FAILURE;
             }
             $this->info("{$commerce} on {$day}:");
-            $this->table(['Filter', 'Payments'], collect($counts)->map(fn ($n, $label) => [$label, $n])->values()->all());
+            $this->table(['Filter', 'Payments', 'Statuses', 'Created (UTC)', 'Processed (UTC)'], collect($counts)->map(fn ($r, $label) => [$label, $r['count'], $r['statuses'], $r['created'], $r['processed']])->values()->all());
 
             return self::SUCCESS;
         }
