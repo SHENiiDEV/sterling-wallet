@@ -190,9 +190,10 @@ class CorefyApiConnector extends CorefyExportConnector
     }
 
     /**
-     * How many payments the API gives for one day by different filters, to see which one finds what the dashboard shows.
+     * What the API gives for one day by different filters: how many payments, of which statuses, and between which
+     * creation and processing times (UTC), to see whether a filter finds what it should or lets others through.
      *
-     * @return array<string, int>
+     * @return array<string, array{count: int, statuses: string, created: string, processed: string}>
      */
     public function dayCounts(IntegrationAccount $account, string $commerce, string $day): array
     {
@@ -205,13 +206,28 @@ class CorefyApiConnector extends CorefyExportConnector
         $local = CarbonImmutable::parse($day, $zone)->startOfDay();
         $utc = CarbonImmutable::parse($day, 'UTC')->startOfDay();
         $range = fn (string $field, CarbonImmutable $from) => ["filter[{$field}][gte]" => $from->getTimestamp(), "filter[{$field}][lte]" => $from->addDay()->getTimestamp() - 1];
-        $count = fn (array $filters) => count($this->fetch($account, $commerce, $key, $filters));
+        $stamp = fn (mixed $v) => is_numeric($v) ? CarbonImmutable::createFromTimestampUTC((int) $v)->format('m-d H:i') : (string) $v;
+
+        $summary = function (array $filters) use ($account, $commerce, $key, $stamp): array {
+            $items = $this->fetch($account, $commerce, $key, $filters);
+            $attributes = array_map(fn ($i) => (array) ($i['attributes'] ?? []), $items);
+            $range = fn (string $field) => ($values = array_filter(array_column($attributes, $field), fn ($v) => $v !== null && $v !== '')) === []
+                ? '—'
+                : $stamp(min($values)).' … '.$stamp(max($values));
+
+            return [
+                'count' => count($items),
+                'statuses' => collect($attributes)->pluck('status')->countBy()->map(fn ($n, $s) => "{$s} {$n}")->implode(', '),
+                'created' => $range('created'),
+                'processed' => $range('processed'),
+            ];
+        };
 
         return [
-            "processed in the {$zone} day" => $count($range('processed', $local)),
-            'processed in the UTC day' => $count($range('processed', $utc)),
-            "created in the {$zone} day" => $count($range('created', $local)),
-            "failed, created in the {$zone} day" => $count(['filter[status]' => 'process_failed', ...$range('created', $local)]),
+            "processed in the {$zone} day" => $summary($range('processed', $local)),
+            'processed in the UTC day' => $summary($range('processed', $utc)),
+            "created in the {$zone} day" => $summary($range('created', $local)),
+            "failed, created in the {$zone} day" => $summary(['filter[status]' => 'process_failed', ...$range('created', $local)]),
         ];
     }
 
