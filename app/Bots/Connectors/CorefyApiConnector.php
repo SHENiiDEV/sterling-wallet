@@ -98,6 +98,9 @@ class CorefyApiConnector extends CorefyExportConnector
 
         try {
             $items = $this->fetch($account, $commerce, $key, ['filter[processed][gte]' => $from->getTimestamp(), 'filter[processed][lte]' => $until->getTimestamp() - 1]);
+            // A payment made just before midnight can be processed just after it: by processing time it belongs to the next
+            // run. Each payment is booked to the day it was made on, so the day's own are asked for by creation time too.
+            array_push($items, ...$this->fetch($account, $commerce, $key, ['filter[status]' => 'processed', 'filter[created][gte]' => $from->getTimestamp(), 'filter[created][lte]' => $until->getTimestamp() - 1]));
             if ($account->setting('fetch_declines', true)) {
                 // A failed payment has no processing time: it is found by when it was made.
                 array_push($items, ...$this->fetch($account, $commerce, $key, ['filter[status]' => 'process_failed', 'filter[created][gte]' => $from->getTimestamp(), 'filter[created][lte]' => $until->getTimestamp() - 1]));
