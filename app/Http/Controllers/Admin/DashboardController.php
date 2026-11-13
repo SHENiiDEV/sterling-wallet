@@ -7,6 +7,7 @@ use App\Enums\Module;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
+use App\Enums\SettlementLineType;
 use App\Enums\SettlementStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
@@ -281,6 +282,12 @@ class DashboardController extends Controller
                 ->with(['merchant:id,name,company_id', 'merchant.company:id,name', 'merchantMid:id,mid,currency'])
                 ->where('status', ReportStatus::Completed)
                 ->where('summary_data->gateway_check->level', 'high')
+                // A report that is already in an approved or paid settlement cannot be changed: what came after it is
+                // found by reports:late-operations, so it does not stay on the dashboard.
+                ->whereNotIn('id', SettlementLine::query()
+                    ->where('type', SettlementLineType::Report)
+                    ->whereHas('settlement', fn ($q) => $q->whereIn('status', [SettlementStatus::Approved, SettlementStatus::Settled]))
+                    ->select('daily_report_task_id'))
                 ->where('report_date', '>=', now(config('sterling.timezone'))->subDays(30)->toDateString())
                 ->orderByDesc('report_date')
                 ->get();
@@ -299,7 +306,7 @@ class DashboardController extends Controller
                     'report_id' => $t->id,
                 ])->values()->all();
 
-                $alerts[] = ['key' => 'gateway_gap', 'label' => 'report(s) where the gateway and the acquirer disagree on successful sales (last 30 days)', 'count' => $gaps->count(), 'detail' => null, 'to' => null, 'rows' => $rows];
+                $alerts[] = ['key' => 'gateway_gap', 'label' => 'report(s) not yet paid where the gateway and the acquirer disagree on successful sales (last 30 days)', 'count' => $gaps->count(), 'detail' => null, 'to' => null, 'rows' => $rows];
             }
         }
 
