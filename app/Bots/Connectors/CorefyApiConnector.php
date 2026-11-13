@@ -247,10 +247,12 @@ class CorefyApiConnector extends CorefyExportConnector
         $seen = [];
         for ($page = 1; $url !== null && $page <= self::MAX_PAGES; $page++) {
             try {
-                $response = Http::withBasicAuth($commerce, $key)
+                $request = Http::withBasicAuth($commerce, $key)
                     ->withHeaders(['Accept' => 'application/vnd.api+json'])
-                    ->timeout(60)->retry(2, 500, throw: false)
-                    ->get($url, $page === 1 ? $query : []);
+                    ->timeout(60)->retry(2, 500, throw: false);
+                // The next page is the API's own link, filters and page number in it. Passing a query array with it,
+                // even an empty one, replaces that query string: the page then comes back unfiltered, as the first one.
+                $response = $page === 1 ? $request->get($url, $query) : $request->get($url);
             } catch (ConnectionException $e) {
                 throw new ApiFailure('Corefy API is not reachable: '.mb_substr($e->getMessage(), 0, 150));
             }

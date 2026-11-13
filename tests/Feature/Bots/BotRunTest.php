@@ -204,6 +204,36 @@ class BotRunTest extends TestCase
         Http::assertSent(fn ($request) => ($query($request)['filter']['status'] ?? null) === 'process_failed' && (int) ($query($request)['filter']['created']['gte'] ?? 0) === $midnight);
     }
 
+    public function test_the_next_pages_of_the_api_keep_their_filters()
+    {
+        $at = fn (string $local) => CarbonImmutable::parse($local, 'Europe/Riga')->getTimestamp();
+        $item = fn (string $id, string $time) => ['id' => $id, 'attributes' => ['created' => $at($time), 'processed' => $at($time), 'status' => 'processed', 'resolution' => 'ok', 'amount' => 10, 'currency' => 'EUR', 'reference_id' => 'r-'.$id, 'payload' => ['payment_card' => ['mask' => '411111******1111']]]];
+        $query = function ($request): array {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $parsed);
+
+            return $parsed;
+        };
+        // The first page has a link to the second one, with the filter and the page number in it, like the real API.
+        Http::fake(function ($request) use ($item, $query) {
+            $q = $query($request);
+            if (($q['filter']['status'] ?? '') === 'process_failed') {
+                return Http::response(['data' => [], 'links' => ['next' => null]]);
+            }
+            if (($q['page']['number'] ?? null) === '2') {
+                return Http::response(['data' => [$item('cpi_PAGE2', '2026-09-15 11:00:00')], 'links' => ['next' => null]]);
+            }
+
+            return Http::response(['data' => [$item('cpi_PAGE1', '2026-09-15 10:00:00')], 'links' => ['next' => '/payment-invoices?filter%5Bprocessed%5D%5Bgte%5D=1&filter%5Bprocessed%5D%5Blte%5D=2&page%5Bnumber%5D=2']]);
+        });
+        $run = $this->apiRun();
+
+        app()->call([new RunConnectorJob($run->id), 'handle']);
+
+        $this->assertSame(['cpi_PAGE1', 'cpi_PAGE2'], $this->mid->operations()->orderBy('payment_id')->pluck('payment_id')->all());
+        // The second request carries the page number and the filter of the link.
+        Http::assertSent(fn ($request) => ($query($request)['page']['number'] ?? null) === '2' && (int) ($query($request)['filter']['processed']['lte'] ?? 0) === 2);
+    }
+
     public function test_a_refused_api_key_fails_the_run_without_leaking_the_key()
     {
         Http::fake(['api.sterling-pay.com/*' => Http::response('Unauthorized', 401)]);
