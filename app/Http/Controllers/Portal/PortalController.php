@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Portal;
 
+use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Enums\SettlementStatus;
@@ -245,10 +246,10 @@ class PortalController extends Controller
         if (($data['format'] ?? null) === 'csv') {
             return response()->streamDownload(function () use ($query) {
                 $out = fopen('php://output', 'wb');
-                fputcsv($out, ['Report date', 'Type', 'Amount', 'Currency', 'Merchant', 'MID', 'Payment time (UTC)', 'Card', 'Payment ID', 'Reference', 'sp_id', 'ARN', 'Reason'], escape: '');
+                fputcsv($out, ['Report date', 'Type', 'Amount', 'Currency', 'Merchant', 'MID', 'Refund / case time (UTC)', 'Card', 'sp_id (original payment)', 'Original payment ID', 'Original payment time (UTC)', 'Refund ID', 'Case number', 'ARN', 'Reason'], escape: '');
                 (clone $query)->reorder()->chunkById(500, function ($chunk) use ($out) {
                     foreach ($this->refundRows($chunk) as $row) {
-                        fputcsv($out, [$row['report_date'], $row['type'], $row['amount'], $row['currency'], $row['merchant'], $row['mid'], $row['time'], $row['card'], $row['payment_id'], $row['reference'], $row['sp_id'], $row['arn'], $row['reason']], escape: '');
+                        fputcsv($out, [$row['report_date'], $row['type'], $row['amount'], $row['currency'], $row['merchant'], $row['mid'], $row['time'], $row['card'], $row['sp_id'], $row['original_payment_id'], $row['original_time'], $row['payment_id'], $row['reference'], $row['arn'], $row['reason']], escape: '');
                     }
                 });
                 fclose($out);
@@ -275,7 +276,8 @@ class PortalController extends Controller
 
     /**
      * What the merchant needs to find a refund or chargeback in its own system: the payment it is about and the ids
-     * the acquirer and the gateway use. For a chargeback the payment is the original sale it was found on.
+     * the acquirer and the gateway use. The payment is the original sale: for a chargeback the one it was found on,
+     * for a refund the sale of the same card and amount before it. `sp_id` is the gateway's id (cpi_…) of that payment.
      *
      * @param  iterable<int, MerchantOperation>  $operations
      * @return list<array<string, mixed>>
@@ -283,13 +285,19 @@ class PortalController extends Controller
     private function refundRows(iterable $operations): array
     {
         $operations = collect($operations);
-        $ids = $operations->flatMap(fn (MerchantOperation $o) => [$o->raw['original_operation_id'] ?? null, $o->matched_operation_id])->filter()->unique()->all();
-        $related = MerchantOperation::query()->whereIn('id', $ids)->get()->keyBy('id');
+        $sales = [];
+        foreach ($operations as $o) {
+            $sales[$o->id] = ($id = $o->raw['original_operation_id'] ?? null)
+                ? MerchantOperation::query()->find($id)
+                : ($o->operation_type === OperationType::Refund ? $this->saleOfRefund($o) : null);
+        }
 
-        return $operations->map(function (MerchantOperation $o) use ($related) {
-            $original = ($id = $o->raw['original_operation_id'] ?? null) ? $related->get($id) : null;
-            $pair = $o->matched_operation_id ? $related->get($o->matched_operation_id) : null;
-            $paired = $original?->matched_operation_id ? $related->get($original->matched_operation_id) : null;
+        // The gateway side of the pairs: of the line itself and of the original sale.
+        $pairIds = $operations->map(fn (MerchantOperation $o) => $o->matched_operation_id)->merge(collect($sales)->map(fn (?MerchantOperation $s) => $s?->matched_operation_id))->filter()->unique()->all();
+        $pairs = MerchantOperation::query()->whereIn('id', $pairIds)->get()->keyBy('id');
+
+        return $operations->map(function (MerchantOperation $o) use ($sales, $pairs) {
+            $sale = $sales[$o->id] ?? null;
             $own = (string) $o->payment_id;
             $reference = str_contains($own, ':') ? substr($own, strpos($own, ':') + 1) : null;
 
@@ -303,14 +311,33 @@ class PortalController extends Controller
                 'mid' => $o->merchantMid?->mid,
                 'time' => $o->transaction_at?->toIso8601String(),
                 'card' => $o->card_bin && $o->card_last4 ? $o->card_bin.'••'.$o->card_last4 : ($o->card_mask ?? ''),
-                // The payment the line is about (the original sale for a chargeback), and the case number when there is one.
-                'payment_id' => $original?->payment_id ?? ($reference === null ? $own : (string) $o->reference),
+                // The line's own id (a refund's, or a chargeback's case number) and the payment it is about.
+                'payment_id' => $reference === null ? $own : '',
                 'reference' => $reference ?? '',
-                'sp_id' => (string) ($o->sp_id ?? $pair?->payment_id ?? $original?->sp_id ?? $paired?->payment_id ?? ''),
+                'original_payment_id' => (string) ($sale?->payment_id ?? ''),
+                'original_time' => $sale?->transaction_at?->toIso8601String(),
+                'sp_id' => (string) ($sale?->sp_id ?? $pairs->get($sale?->matched_operation_id)?->payment_id ?? $o->sp_id ?? $pairs->get($o->matched_operation_id)?->payment_id ?? ''),
                 'arn' => (string) ($o->arn ?? ''),
                 'reason' => $o->operation_type->value === 'chargeback' ? (string) ($o->resolution ?? '') : '',
             ];
         })->all();
+    }
+
+    /**
+     * The sale a refund gives money back for: the latest one of the same MID, card and amount before it.
+     */
+    private function saleOfRefund(MerchantOperation $refund): ?MerchantOperation
+    {
+        if ($refund->card_bin === null || $refund->card_last4 === null) {
+            return null;
+        }
+
+        return MerchantOperation::query()
+            ->where('merchant_mid_id', $refund->merchant_mid_id)->where('role', ProviderType::Bank)->where('operation_type', OperationType::Sale)
+            ->where('card_bin', $refund->card_bin)->where('card_last4', $refund->card_last4)
+            ->where('amount', abs((float) $refund->getRawOriginal('amount')))
+            ->when($refund->transaction_at, fn ($q, $at) => $q->where('transaction_at', '<=', $at))
+            ->orderByDesc('transaction_at')->orderByDesc('id')->first();
     }
 
     public function downloadReport(Request $request, DailyReportTask $report, string $file): StreamedResponse

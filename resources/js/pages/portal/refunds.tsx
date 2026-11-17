@@ -37,6 +37,8 @@ type Row = {
     card: string;
     payment_id: string;
     reference: string;
+    original_payment_id: string;
+    original_time: string | null;
     sp_id: string;
     arn: string;
     reason: string;
@@ -196,21 +198,18 @@ export default function PortalRefunds(props: Props) {
                                 <TableHead className="text-right">
                                     Amount
                                 </TableHead>
+                                <TableHead>sp_id (original payment)</TableHead>
                                 <TableHead className="hidden md:table-cell">
-                                    MID
+                                    Original payment ID
                                 </TableHead>
                                 <TableHead className="hidden lg:table-cell">
-                                    Payment time (UTC)
+                                    Refund ID / case no.
                                 </TableHead>
                                 <TableHead>Card</TableHead>
-                                <TableHead>Payment ID</TableHead>
-                                <TableHead className="hidden xl:table-cell">
-                                    sp_id
+                                <TableHead className="hidden lg:table-cell">
+                                    Original payment time (UTC)
                                 </TableHead>
-                                <TableHead className="hidden xl:table-cell">
-                                    Reference
-                                </TableHead>
-                                <TableHead className="hidden pr-5 lg:table-cell">
+                                <TableHead className="hidden pr-5 xl:table-cell">
                                     Reason
                                 </TableHead>
                             </TableRow>
@@ -231,25 +230,24 @@ export default function PortalRefunds(props: Props) {
                                     <TableCell className="text-right font-medium tabular-nums">
                                         −{formatMoney(r.amount, r.currency)}
                                     </TableCell>
-                                    <TableCell className="hidden font-mono text-xs md:table-cell">
-                                        {r.mid ?? '—'}
+                                    <TableCell className="font-mono text-xs font-medium break-all">
+                                        {r.sp_id || '—'}
                                     </TableCell>
-                                    <TableCell className="hidden text-sm whitespace-nowrap lg:table-cell">
-                                        {formatDateTime(r.time)}
+                                    <TableCell className="hidden font-mono text-xs break-all md:table-cell">
+                                        {r.original_payment_id || '—'}
+                                    </TableCell>
+                                    <TableCell className="hidden font-mono text-xs break-all lg:table-cell">
+                                        {r.reference || r.payment_id || '—'}
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">
                                         {r.card || '—'}
                                     </TableCell>
-                                    <TableCell className="font-mono text-xs break-all">
-                                        {r.payment_id}
+                                    <TableCell className="hidden text-sm whitespace-nowrap lg:table-cell">
+                                        {formatDateTime(
+                                            r.original_time ?? r.time,
+                                        )}
                                     </TableCell>
-                                    <TableCell className="hidden font-mono text-xs break-all xl:table-cell">
-                                        {r.sp_id || '—'}
-                                    </TableCell>
-                                    <TableCell className="hidden font-mono text-xs xl:table-cell">
-                                        {r.reference || '—'}
-                                    </TableCell>
-                                    <TableCell className="hidden pr-5 text-xs lg:table-cell">
+                                    <TableCell className="hidden pr-5 text-xs xl:table-cell">
                                         {r.reason || '—'}
                                     </TableCell>
                                 </TableRow>
