@@ -58,13 +58,13 @@ TO=$(TZ=Europe/Riga date -d "2026-11-11 00:00:00" +%s); TO=$((TO-1))
 
 ## 3. Filters
 
-| Parameter | Meaning |
-|---|---|
-| `filter[processed][gte]`, `filter[processed][lte]` | Processing time, from / to (Unix seconds, inclusive) |
-| `filter[created][gte]`, `filter[created][lte]` | Creation time, from / to (Unix seconds, inclusive) |
-| `filter[status]` | Status of the payment: `processed` (successful) or `process_failed` (declined) |
-| `sort` | `-created` newest first, `created` oldest first |
-| `page[size]` | Payments per page. `100` works; without it you get 20 |
+| Parameter                                          | Meaning                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `filter[processed][gte]`, `filter[processed][lte]` | Processing time, from / to (Unix seconds, inclusive)                           |
+| `filter[created][gte]`, `filter[created][lte]`     | Creation time, from / to (Unix seconds, inclusive)                             |
+| `filter[status]`                                   | Status of the payment: `processed` (successful) or `process_failed` (declined) |
+| `sort`                                             | `-created` newest first, `created` oldest first                                |
+| `page[size]`                                       | Payments per page. `100` works; without it you get 20                          |
 
 Notes:
 
@@ -86,17 +86,17 @@ curl -sS -u "$CMA:$KEY" \
 
 Each item of `data[]` has an `id` (`cpi_…`, the payment reference you also see in your reports as `sp_id`) and `attributes`:
 
-| Field | Meaning |
-|---|---|
-| `attributes.created` | Creation time, Unix seconds (UTC) |
-| `attributes.processed` | Processing time, Unix seconds (UTC); not present on declined payments |
-| `attributes.status` | `processed` or `process_failed` |
-| `attributes.resolution` | Result text, `ok` for a successful payment, otherwise the decline reason |
-| `attributes.amount`, `attributes.currency` | Amount and currency of the payment |
-| `attributes.reference_id` | Your own reference of the order |
-| `attributes.payload.payment_card.mask` | Masked card number |
-| `attributes.payload.payment_card.issuer_country` | Country of the issuing bank |
-| `attributes.payload.payment_card.issuer_name` | Issuing bank |
+| Field                                            | Meaning                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `attributes.created`                             | Creation time, Unix seconds (UTC)                                        |
+| `attributes.processed`                           | Processing time, Unix seconds (UTC); not present on declined payments    |
+| `attributes.status`                              | `processed` or `process_failed`                                          |
+| `attributes.resolution`                          | Result text, `ok` for a successful payment, otherwise the decline reason |
+| `attributes.amount`, `attributes.currency`       | Amount and currency of the payment                                       |
+| `attributes.reference_id`                        | Your own reference of the order                                          |
+| `attributes.payload.payment_card.mask`           | Masked card number                                                       |
+| `attributes.payload.payment_card.issuer_country` | Country of the issuing bank                                              |
+| `attributes.payload.payment_card.issuer_name`    | Issuing bank                                                             |
 
 Other attributes may be present; ignore the ones you do not need.
 

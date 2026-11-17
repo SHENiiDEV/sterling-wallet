@@ -211,6 +211,108 @@ class PortalController extends Controller
         ]);
     }
 
+    /**
+     * Refunds, chargebacks and Mastercard collaboration cases of the merchant's MIDs, with the ids to find or block
+     * the payer by. They arrive with the acquirer's files, so a line shows once the acquirer has reported it.
+     */
+    public function refunds(Request $request): Response|StreamedResponse
+    {
+        [$merchants, $selected] = $this->scope($request);
+        $data = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'type' => ['nullable', 'in:refund,chargeback,collab'],
+            'format' => ['sometimes', 'in:csv'],
+        ]);
+
+        $timezone = config('sterling.timezone');
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+        $to = isset($data['to']) ? CarbonImmutable::parse($data['to'], $timezone) : $today;
+        $from = isset($data['from']) ? CarbonImmutable::parse($data['from'], $timezone) : $to->subDays(29);
+        if ($from->diffInDays($to) > 366) {
+            throw ValidationException::withMessages(['from' => 'A list covers at most a year.']);
+        }
+
+        $types = isset($data['type']) ? [$data['type']] : ['refund', 'chargeback', 'collab'];
+        $query = MerchantOperation::query()
+            ->with(['merchant:id,name', 'merchantMid:id,mid'])
+            ->where('role', ProviderType::Bank)
+            ->whereIn('merchant_id', $selected->pluck('id'))
+            ->whereIn('operation_type', $types)
+            ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('report_date')->orderByDesc('id');
+
+        if (($data['format'] ?? null) === 'csv') {
+            return response()->streamDownload(function () use ($query) {
+                $out = fopen('php://output', 'wb');
+                fputcsv($out, ['Report date', 'Type', 'Amount', 'Currency', 'Merchant', 'MID', 'Payment time (UTC)', 'Card', 'Payment ID', 'Reference', 'sp_id', 'ARN', 'Reason'], escape: '');
+                (clone $query)->reorder()->chunkById(500, function ($chunk) use ($out) {
+                    foreach ($this->refundRows($chunk) as $row) {
+                        fputcsv($out, [$row['report_date'], $row['type'], $row['amount'], $row['currency'], $row['merchant'], $row['mid'], $row['time'], $row['card'], $row['payment_id'], $row['reference'], $row['sp_id'], $row['arn'], $row['reason']], escape: '');
+                    }
+                });
+                fclose($out);
+            }, 'refunds_chargebacks_'.$from->toDateString().'_'.$to->toDateString().'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }
+
+        $totals = (clone $query)->toBase()->reorder()
+            ->selectRaw('operation_type, currency, count(*) as total, sum(abs(amount)) as amount')
+            ->groupBy('operation_type', 'currency')->get()
+            ->map(fn ($r) => ['type' => $r->operation_type, 'currency' => $r->currency, 'count' => (int) $r->total, 'amount' => (string) round((float) $r->amount, 2)])->values();
+
+        $page = $query->paginate(50)->withQueryString();
+        $rows = collect($this->refundRows($page->getCollection()))->values();
+
+        return Inertia::render('portal/refunds', [
+            ...$this->shared($request, $merchants, $selected),
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'type' => $data['type'] ?? null,
+            'totals' => $totals,
+            'rows' => $page->setCollection($rows),
+        ]);
+    }
+
+    /**
+     * What the merchant needs to find a refund or chargeback in its own system: the payment it is about and the ids
+     * the acquirer and the gateway use. For a chargeback the payment is the original sale it was found on.
+     *
+     * @param  iterable<int, MerchantOperation>  $operations
+     * @return list<array<string, mixed>>
+     */
+    private function refundRows(iterable $operations): array
+    {
+        $operations = collect($operations);
+        $ids = $operations->flatMap(fn (MerchantOperation $o) => [$o->raw['original_operation_id'] ?? null, $o->matched_operation_id])->filter()->unique()->all();
+        $related = MerchantOperation::query()->whereIn('id', $ids)->get()->keyBy('id');
+
+        return $operations->map(function (MerchantOperation $o) use ($related) {
+            $original = ($id = $o->raw['original_operation_id'] ?? null) ? $related->get($id) : null;
+            $pair = $o->matched_operation_id ? $related->get($o->matched_operation_id) : null;
+            $paired = $original?->matched_operation_id ? $related->get($original->matched_operation_id) : null;
+            $own = (string) $o->payment_id;
+            $reference = str_contains($own, ':') ? substr($own, strpos($own, ':') + 1) : null;
+
+            return [
+                'id' => $o->id,
+                'report_date' => $o->report_date->toDateString(),
+                'type' => $o->operation_type->value,
+                'amount' => (string) round(abs((float) $o->getRawOriginal('amount')), 2),
+                'currency' => $o->currency,
+                'merchant' => $o->merchant?->name,
+                'mid' => $o->merchantMid?->mid,
+                'time' => $o->transaction_at?->toIso8601String(),
+                'card' => $o->card_bin && $o->card_last4 ? $o->card_bin.'••'.$o->card_last4 : ($o->card_mask ?? ''),
+                // The payment the line is about (the original sale for a chargeback), and the case number when there is one.
+                'payment_id' => $original?->payment_id ?? ($reference === null ? $own : (string) $o->reference),
+                'reference' => $reference ?? '',
+                'sp_id' => (string) ($o->sp_id ?? $pair?->payment_id ?? $original?->sp_id ?? $paired?->payment_id ?? ''),
+                'arn' => (string) ($o->arn ?? ''),
+                'reason' => $o->operation_type->value === 'chargeback' ? (string) ($o->resolution ?? '') : '',
+            ];
+        })->all();
+    }
+
     public function downloadReport(Request $request, DailyReportTask $report, string $file): StreamedResponse
     {
         abort_unless($report->status === ReportStatus::Completed && $this->owns($request, $report->merchant), 404);
