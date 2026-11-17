@@ -71,7 +71,9 @@ class PortalRefundsTest extends TestCase
             ->has('rows.data', 2)
             ->where('rows.data', fn ($rows) => collect($rows)->pluck('type')->sort()->values()->all() === ['chargeback', 'refund'])
             ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'chargeback')['reference'] === '1001')
-            ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'chargeback')['payment_id'] === 'CQ-1')
+            ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'chargeback')['original_payment_id'] === 'CQ-1')
+            // The gateway's id (cpi_…) of the original payment CQ-1 (100.00, card 4111…1111).
+            ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'chargeback')['sp_id'] === 'coma_TEST1_pi_1')
             ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'chargeback')['reason'] === '13.1 - Merchandise/Services Not Received')
             ->where('rows.data', fn ($rows) => collect($rows)->firstWhere('type', 'refund')['amount'] === '30')
             ->has('totals', 2));
