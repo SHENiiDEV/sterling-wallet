@@ -4,6 +4,7 @@ namespace App\Reports\Ingestion;
 
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
+use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Jobs\GenerateDailyReportJob;
@@ -305,12 +306,33 @@ class ReportIngestionService
             ...array_filter($row->fees, fn ($fee) => $fee !== null),
         ];
 
-        MerchantOperation::query()->updateOrCreate([
+        $key = [
             'provider_id' => $provider->id,
             'payment_id' => $this->paymentId($row),
             'trn_type' => $row->trnType !== null ? Str::limit($row->trnType, 16, '') : null,
             'amount' => $row->amount,
-        ], $attributes);
+        ];
+
+        // The same refund can arrive twice in two layouts (the clearing file and the acquirer's refund list): the same
+        // payment, reference number and amount, but not the same type column or ARN. One event is one operation: the
+        // fuller record (the one with the time) is kept, and the poorer one is not stored beside it.
+        if (in_array($attributes['operation_type'], [OperationType::Refund, OperationType::Chargeback], true) && $row->rrn !== null && ! MerchantOperation::query()->where($key)->exists()) {
+            $twin = MerchantOperation::query()
+                ->where('provider_id', $provider->id)->where('merchant_mid_id', $mid->id)
+                ->where('operation_type', $attributes['operation_type'])
+                ->where('payment_id', $key['payment_id'])->where('rrn', $row->rrn)->where('amount', $row->amount)
+                ->orderBy('id')->first();
+
+            if ($twin !== null) {
+                if ($twin->transaction_at === null && $attributes['transaction_at'] !== null) {
+                    $twin->fill([...$key, ...$attributes])->save();
+                }
+
+                return;
+            }
+        }
+
+        MerchantOperation::query()->updateOrCreate($key, $attributes);
     }
 
     /**
