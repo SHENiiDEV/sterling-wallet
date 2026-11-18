@@ -96,4 +96,24 @@ class GatewayGapTest extends TestCase
         $this->assertSame('ok', $this->task()->summary_data['gateway_check']['level']);
         Http::assertNothingSent();
     }
+
+    public function test_a_payment_the_two_sides_put_on_neighbouring_days_is_not_a_gap()
+    {
+        // The acquirer counts its day differently: this payment is on the 15th at the bank and on the 16th at the gateway.
+        MerchantOperation::query()->create([
+            'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->mid->bank_provider_id,
+            'role' => ProviderType::Bank, 'payment_id' => 'CQ-EDGE', 'operation_type' => OperationType::Sale, 'amount' => '77.00', 'currency' => 'EUR',
+            'card_bin' => '400000', 'card_last4' => '0077', 'report_date' => '2026-09-15', 'transaction_at' => CarbonImmutable::parse('2026-09-15 21:59:30', 'UTC'),
+        ]);
+        MerchantOperation::query()->create([
+            'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->mid->gate_provider_id,
+            'role' => ProviderType::Gate, 'payment_id' => 'cpi_EDGE', 'operation_type' => OperationType::Sale, 'amount' => '77.00', 'currency' => 'EUR',
+            'card_bin' => '400000', 'card_last4' => '0077', 'report_date' => '2026-09-16', 'transaction_at' => CarbonImmutable::parse('2026-09-15 21:59:20', 'UTC'),
+        ]);
+
+        app(DailyReportGenerator::class)->generate($this->task());
+
+        $gap = $this->task()->summary_data['gateway_check'];
+        $this->assertSame([4, 4, 'none'], [$gap['gate_sales'], $gap['bank_sales'], $gap['direction']]);
+    }
 }

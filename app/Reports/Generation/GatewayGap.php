@@ -13,6 +13,11 @@ use Illuminate\Support\Collection;
  * payments, so a real difference means payments that the gateway accepted and the bank did not complete (or
  * the other way round): money we expected and did not get. Small gaps are normal, a gap that is big in both
  * share and amount is worth a look.
+ *
+ * A payment belongs to its pair, not to a day. The two sides do not cut the day at the same moment (Madfin counts
+ * UTC days, a Cardaq batch ends after midnight, the gateway is booked by Riga days), so the same payment can sit on
+ * neighbouring days at the two sides. The gateway side of a report is therefore the gateway sales paired with the
+ * report's bank sales, wherever their own day is, plus the gateway sales of the report nobody paired.
  */
 class GatewayGap
 {
@@ -23,8 +28,8 @@ class GatewayGap
      */
     public static function check(Collection $bankOps, Collection $gateOps): array
     {
-        $gate = $gateOps->where('operation_type', OperationType::Sale);
         $bank = $bankOps->where('operation_type', OperationType::Sale);
+        $gate = self::gateSide($bank, $gateOps->where('operation_type', OperationType::Sale));
 
         $gateAmount = self::sum($gate);
         $bankAmount = self::sum($bank);
@@ -48,6 +53,31 @@ class GatewayGap
             'direction' => $diff->isZero() ? 'none' : ($diff->isPositive() ? 'gateway_more' : 'bank_more'),
             'level' => $high ? 'high' : 'ok',
         ];
+    }
+
+    /**
+     * The gateway sales that stand against these bank sales: the partners of the bank sales (on any day) and the
+     * gateway sales of the report whose bank side is missing or is not a sale.
+     *
+     * @param  Collection<int, MerchantOperation>  $bank
+     * @param  Collection<int, MerchantOperation>  $gate  the gateway sales booked on the report's days
+     * @return Collection<int, MerchantOperation>
+     */
+    private static function gateSide(Collection $bank, Collection $gate): Collection
+    {
+        $partners = MerchantOperation::query()
+            ->whereIn('id', $bank->pluck('matched_operation_id')->filter()->unique()->all())
+            ->where('operation_type', OperationType::Sale)
+            ->get()->keyBy('id');
+
+        // Of the report's own gateway sales, the ones with no bank sale beside them stand alone. One paired with a bank
+        // sale of another day is that day's: it is not counted here, and it is not alone.
+        $bankSides = MerchantOperation::query()
+            ->whereIn('id', $gate->pluck('matched_operation_id')->filter()->unique()->all())
+            ->get()->keyBy('id');
+        $alone = $gate->filter(fn (MerchantOperation $op) => ($bankSides->get($op->matched_operation_id)?->operation_type ?? null) !== OperationType::Sale);
+
+        return $partners->values()->merge($alone->values())->unique('id')->values();
     }
 
     /**
