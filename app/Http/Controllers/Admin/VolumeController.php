@@ -27,7 +27,11 @@ class VolumeController extends Controller
             'day' => ['nullable', 'date_format:Y-m-d'],
             'month' => ['nullable', 'date_format:Y-m'],
             'mid' => ['nullable', 'integer'],
+            'tz' => ['nullable', 'in:riga,utc'],
         ]);
+        // Days in the gateway's own time (Riga), or in UTC as an acquirer such as Madfin counts them.
+        $tz = $data['tz'] ?? 'riga';
+        $zone = $tz === 'utc' ? 'UTC' : null;
 
         $timezone = config('sterling.timezone');
         $today = CarbonImmutable::now($timezone)->startOfDay();
@@ -36,6 +40,7 @@ class VolumeController extends Controller
         if ($view === 'plan') {
             return Inertia::render('admin/volumes/index', [
                 'view' => 'plan',
+                'tz' => $tz,
                 'day' => null,
                 'month' => $today->format('Y-m'),
                 'today' => $today->toDateString(),
@@ -71,10 +76,11 @@ class VolumeController extends Controller
             $next = $to->lessThan($today) ? $to->addDay()->toDateString() : null;
         }
 
-        $rows = $volumes->rows($from, $to);
+        $rows = $volumes->rows($from, $to, zone: $zone);
 
         return Inertia::render('admin/volumes/index', [
             'view' => $view,
+            'tz' => $tz,
             'day' => $view === 'day' ? $to->toDateString() : null,
             'month' => $view === 'month' ? $from->format('Y-m') : $to->format('Y-m'),
             'today' => $today->toDateString(),
@@ -86,7 +92,7 @@ class VolumeController extends Controller
             'rows' => $rows,
             'totals' => $this->totals($rows),
             'selected' => isset($data['mid']) && ($row = $rows->firstWhere('id', (int) $data['mid'])) !== null
-                ? ['terminal' => $row, 'days' => $volumes->series($row['id'], $seriesFrom, $seriesTo)]
+                ? ['terminal' => $row, 'days' => $volumes->series($row['id'], $seriesFrom, $seriesTo, $zone)]
                 : null,
         ]);
     }

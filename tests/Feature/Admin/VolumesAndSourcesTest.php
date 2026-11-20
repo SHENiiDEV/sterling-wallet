@@ -107,6 +107,26 @@ class VolumesAndSourcesTest extends TestCase
         $this->assertEqualsWithDelta(450, $volume('2026-10-18'), 0.01);
     }
 
+    public function test_the_days_can_be_counted_in_utc_as_an_acquirer_cabinet_counts_them()
+    {
+        // 22:30 UTC on the 17th is 01:30 on the 18th in Riga: another day by Riga time, the same day in UTC.
+        foreach ([['S1', '200.00', '2026-10-17 10:00:00'], ['S2', '50.00', '2026-10-17 22:30:00'], ['U1', '400.00', '2026-10-18 10:00:00']] as [$payment, $amount, $at]) {
+            MerchantOperation::query()->create([
+                'merchant_id' => $this->mid->merchant_id, 'merchant_mid_id' => $this->mid->id, 'provider_id' => $this->gate->id,
+                'role' => ProviderType::Gate, 'mid' => $this->mid->mid, 'payment_id' => $payment, 'operation_type' => 'sale',
+                'trn_type' => 'sale', 'ips' => 'visa', 'amount' => $amount, 'currency' => 'EUR', 'transaction_at' => $at, 'report_date' => '2026-10-18',
+            ]);
+        }
+        $volume = fn (string $day, string $tz) => $this->get(route('admin.volumes.index', ['day' => $day, 'tz' => $tz]))->viewData('page')['props']['rows'][0]['volume'];
+
+        $this->actingAs($this->admin);
+        $this->assertEqualsWithDelta(200, $volume('2026-10-17', 'riga'), 0.01);
+        $this->assertEqualsWithDelta(450, $volume('2026-10-18', 'riga'), 0.01);
+        $this->assertEqualsWithDelta(250, $volume('2026-10-17', 'utc'), 0.01);
+        $this->assertEqualsWithDelta(400, $volume('2026-10-18', 'utc'), 0.01);
+        $this->get(route('admin.volumes.index', ['day' => '2026-10-17', 'tz' => 'utc']))->assertInertia(fn ($page) => $page->where('tz', 'utc'));
+    }
+
     public function test_a_single_day_is_compared_with_the_daily_norm()
     {
         $this->mid->update(['daily_norm' => 150]);

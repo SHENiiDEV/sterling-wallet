@@ -55,6 +55,8 @@ type PlanBucket = {
 
 type Props = {
     view: 'day' | 'month' | 'plan';
+    /** How the days are counted: the gateway's own time (Riga) or UTC. */
+    tz: 'riga' | 'utc';
     plan: {
         as_of: string;
         days_left: number;
@@ -275,6 +277,7 @@ function PlanTable({ plan }: { plan: NonNullable<Props['plan']> }) {
 
 export default function VolumesIndex({
     view,
+    tz,
     plan,
     day,
     month,
@@ -288,10 +291,18 @@ export default function VolumesIndex({
     selected,
 }: Props) {
     const daily = view === 'day';
-    const go = (query: Record<string, string | number | null>) =>
+    const go = (
+        query: Record<string, string | number | null>,
+        zone: 'riga' | 'utc' = tz,
+    ) =>
         router.get(
             admin.volumes.index.url(),
-            Object.fromEntries(Object.entries(query).filter(([, v]) => v)),
+            Object.fromEntries(
+                Object.entries({
+                    ...query,
+                    tz: zone === 'utc' ? 'utc' : null,
+                }).filter(([, v]) => v),
+            ),
             { preserveScroll: true, preserveState: true },
         );
     const current: Record<string, string | null> = daily
@@ -306,34 +317,64 @@ export default function VolumesIndex({
                     title="Volumes"
                     description="Successful gateway volume per terminal (MID) against its daily norm and monthly limit."
                     actions={
-                        <div className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs">
-                            {(['day', 'month', 'plan'] as const).map((v) => (
-                                <button
-                                    key={v}
-                                    type="button"
-                                    onClick={() =>
-                                        go(
-                                            v === 'day'
-                                                ? { view: 'day', day: today }
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div
+                                className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs"
+                                title="How the days are counted: Riga time (our reports), or UTC (as the Madfin cabinet counts them)"
+                            >
+                                {(['riga', 'utc'] as const).map((z) => (
+                                    <button
+                                        key={z}
+                                        type="button"
+                                        onClick={() => go(current, z)}
+                                        className={cn(
+                                            'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                                            tz === z
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'text-muted-foreground hover:text-foreground',
+                                        )}
+                                    >
+                                        {z === 'riga' ? 'Riga time' : 'UTC'}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs">
+                                {(['day', 'month', 'plan'] as const).map(
+                                    (v) => (
+                                        <button
+                                            key={v}
+                                            type="button"
+                                            onClick={() =>
+                                                go(
+                                                    v === 'day'
+                                                        ? {
+                                                              view: 'day',
+                                                              day: today,
+                                                          }
+                                                        : v === 'month'
+                                                          ? {
+                                                                view: 'month',
+                                                                month,
+                                                            }
+                                                          : { view: 'plan' },
+                                                )
+                                            }
+                                            className={cn(
+                                                'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                                                view === v
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground',
+                                            )}
+                                        >
+                                            {v === 'day'
+                                                ? 'By day'
                                                 : v === 'month'
-                                                  ? { view: 'month', month }
-                                                  : { view: 'plan' },
-                                        )
-                                    }
-                                    className={cn(
-                                        'rounded-md px-3 py-1.5 text-sm font-medium transition',
-                                        view === v
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:text-foreground',
-                                    )}
-                                >
-                                    {v === 'day'
-                                        ? 'By day'
-                                        : v === 'month'
-                                          ? 'By month'
-                                          : 'Plan'}
-                                </button>
-                            ))}
+                                                  ? 'By month'
+                                                  : 'Plan'}
+                                        </button>
+                                    ),
+                                )}
+                            </div>
                         </div>
                     }
                 />
