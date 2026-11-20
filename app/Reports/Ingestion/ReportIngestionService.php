@@ -4,7 +4,6 @@ namespace App\Reports\Ingestion;
 
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
-use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Jobs\GenerateDailyReportJob;
@@ -313,14 +312,15 @@ class ReportIngestionService
             'amount' => $row->amount,
         ];
 
-        // The same refund can arrive twice in two layouts (the clearing file and the acquirer's refund list): the same
-        // payment, reference number and amount, but not the same type column or ARN. One event is one operation: the
-        // fuller record (the one with the time) is kept, and the poorer one is not stored beside it.
-        if (in_array($attributes['operation_type'], [OperationType::Refund, OperationType::Chargeback], true) && $row->rrn !== null && ! MerchantOperation::query()->where($key)->exists()) {
+        // The same operation can arrive twice in two layouts or at two loads (the clearing file and a refund list, a late
+        // file with the same payment): the same payment id, type and amount, but another type column, ARN or time.
+        // One payment is one operation: the record that is already there is kept (a fuller one fills its gaps) and a
+        // second is not stored beside it, so a late file cannot count a payment twice in a report that was paid.
+        if (! MerchantOperation::query()->where($key)->exists()) {
             $twin = MerchantOperation::query()
                 ->where('provider_id', $provider->id)->where('merchant_mid_id', $mid->id)
                 ->where('operation_type', $attributes['operation_type'])
-                ->where('payment_id', $key['payment_id'])->where('rrn', $row->rrn)->where('amount', $row->amount)
+                ->where('payment_id', $key['payment_id'])->where('amount', $row->amount)
                 ->orderBy('id')->first();
 
             if ($twin !== null) {
