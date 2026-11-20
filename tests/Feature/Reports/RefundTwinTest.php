@@ -44,4 +44,25 @@ class RefundTwinTest extends TestCase
         $this->assertSame('6', $refunds->first()->trn_type);
         $this->assertNotNull($refunds->first()->transaction_at);
     }
+
+    public function test_a_late_file_with_a_payment_that_is_already_there_does_not_count_it_twice()
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $mid = $this->mid($this->merchantWithTariff(), $this->cardaq(), $this->corefy());
+        $ingestion = app(ReportIngestionService::class);
+        $day = CarbonImmutable::parse('2026-09-15');
+        $sale = fn (string $trnType, string $time) => $this->csvFile([
+            ['Merchant name', 'MID', 'Transaction ID', 'ARN', 'Card number', 'Card brand', 'Region', 'Trn type', 'Amount', 'Currency', 'Trn date'],
+            ['SHOP LTD', '4400000001', 'P-SALE', 'ARN-1', '411111******1111', 'VISA', 'EU', $trnType, '1047.50', 'EUR', $time],
+        ], 'sale.csv');
+
+        // The payment, and later the same payment again in another layout and an hour earlier on the clock.
+        $ingestion->ingest($mid->bankProvider, $sale('5', '2026-09-15 10:28:00'), $day);
+        $ingestion->ingest($mid->bankProvider, $sale('', '2026-09-15 09:28:00'), $day);
+
+        $sales = MerchantOperation::query()->where('merchant_mid_id', $mid->id)->where('operation_type', OperationType::Sale)->where('payment_id', 'P-SALE')->get();
+        $this->assertCount(1, $sales);
+        $this->assertSame('5', $sales->first()->trn_type);
+    }
 }
