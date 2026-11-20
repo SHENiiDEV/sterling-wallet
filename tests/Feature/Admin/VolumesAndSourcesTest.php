@@ -99,7 +99,7 @@ class VolumesAndSourcesTest extends TestCase
             ]);
         }
 
-        $volume = fn (string $day) => $this->get(route('admin.volumes.index', ['day' => $day]))->viewData('page')['props']['rows'][0]['volume'];
+        $volume = fn (string $day) => $this->get(route('admin.volumes.index', ['day' => $day, 'tz' => 'riga']))->viewData('page')['props']['rows'][0]['volume'];
 
         $this->actingAs($this->admin);
         $this->assertEqualsWithDelta(100, $volume('2026-10-16'), 0.01);
@@ -124,7 +124,9 @@ class VolumesAndSourcesTest extends TestCase
         $this->assertEqualsWithDelta(450, $volume('2026-10-18', 'riga'), 0.01);
         $this->assertEqualsWithDelta(250, $volume('2026-10-17', 'utc'), 0.01);
         $this->assertEqualsWithDelta(400, $volume('2026-10-18', 'utc'), 0.01);
-        $this->get(route('admin.volumes.index', ['day' => '2026-10-17', 'tz' => 'utc']))->assertInertia(fn ($page) => $page->where('tz', 'utc'));
+        // UTC is the default; Riga time has to be asked for.
+        $this->get(route('admin.volumes.index', ['day' => '2026-10-17']))->assertInertia(fn ($page) => $page->where('tz', 'utc'));
+        $this->get(route('admin.volumes.index', ['day' => '2026-10-17', 'tz' => 'riga']))->assertInertia(fn ($page) => $page->where('tz', 'riga'));
     }
 
     public function test_a_single_day_is_compared_with_the_daily_norm()

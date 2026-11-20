@@ -300,7 +300,7 @@ export default function VolumesIndex({
             Object.fromEntries(
                 Object.entries({
                     ...query,
-                    tz: zone === 'utc' ? 'utc' : null,
+                    tz: zone === 'riga' ? 'riga' : null,
                 }).filter(([, v]) => v),
             ),
             { preserveScroll: true, preserveState: true },
@@ -320,9 +320,9 @@ export default function VolumesIndex({
                         <div className="flex flex-wrap items-center gap-2">
                             <div
                                 className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs"
-                                title="How the days are counted: Riga time (our reports), or UTC (as the Madfin cabinet counts them)"
+                                title="How the days are counted: UTC (as the Madfin cabinet counts them) or Riga time (as our reports do)"
                             >
-                                {(['riga', 'utc'] as const).map((z) => (
+                                {(['utc', 'riga'] as const).map((z) => (
                                     <button
                                         key={z}
                                         type="button"
@@ -334,7 +334,7 @@ export default function VolumesIndex({
                                                 : 'text-muted-foreground hover:text-foreground',
                                         )}
                                     >
-                                        {z === 'riga' ? 'Riga time' : 'UTC'}
+                                        {z === 'utc' ? 'UTC' : 'Riga time'}
                                     </button>
                                 ))}
                             </div>

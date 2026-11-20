@@ -29,11 +29,11 @@ class VolumeController extends Controller
             'mid' => ['nullable', 'integer'],
             'tz' => ['nullable', 'in:riga,utc'],
         ]);
-        // Days in the gateway's own time (Riga), or in UTC as an acquirer such as Madfin counts them.
-        $tz = $data['tz'] ?? 'riga';
+        // Days in UTC, as an acquirer cabinet such as Madfin counts them (the default), or in the gateway's own time (Riga).
+        $tz = $data['tz'] ?? 'utc';
         $zone = $tz === 'utc' ? 'UTC' : null;
 
-        $timezone = config('sterling.timezone');
+        $timezone = $tz === 'utc' ? 'UTC' : config('sterling.timezone');
         $today = CarbonImmutable::now($timezone)->startOfDay();
         $view = $data['view'] ?? 'day';
 
