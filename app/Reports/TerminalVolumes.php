@@ -19,14 +19,15 @@ use Illuminate\Support\Collection;
 class TerminalVolumes
 {
     /**
-     * One row per terminal that has a gateway, optionally only of some merchants (the merchant portal).
+     * One row per terminal that has a gateway, optionally only of some merchants (the merchant portal). The days are
+     * counted in each gateway's own time zone, or all in `$zone` (UTC, to line up with an acquirer's cabinet).
      *
      * @param  list<int>|null  $merchantIds
      * @return Collection<int, array<string, mixed>>
      */
-    public function rows(CarbonImmutable $from, CarbonImmutable $to, ?int $midId = null, ?array $merchantIds = null): Collection
+    public function rows(CarbonImmutable $from, CarbonImmutable $to, ?int $midId = null, ?array $merchantIds = null, ?string $zone = null): Collection
     {
-        $stats = $this->withinDays(MerchantOperation::query()->toBase()->where('role', ProviderType::Gate->value), $from, $to)
+        $stats = $this->withinDays(MerchantOperation::query()->toBase()->where('role', ProviderType::Gate->value), $from, $to, $zone)
             ->whereNotNull('merchant_mid_id')
             ->when($midId, fn ($q, int $id) => $q->where('merchant_mid_id', $id))
             ->when($merchantIds !== null, fn ($q) => $q->whereIn('merchant_id', $merchantIds))
@@ -83,10 +84,10 @@ class TerminalVolumes
      *
      * @return list<array<string, mixed>>
      */
-    public function series(int $midId, CarbonImmutable $from, CarbonImmutable $to): array
+    public function series(int $midId, CarbonImmutable $from, CarbonImmutable $to, ?string $zone = null): array
     {
         $mid = MerchantMid::query()->with('gateProvider:id,timezone')->find($midId);
-        $zone = $this->zone($mid?->gateProvider?->timezone);
+        $zone ??= $this->zone($mid?->gateProvider?->timezone);
 
         // Each day is a window of the gateway's local day, so a Fri–Sun bundle report still lands on its own days.
         $cases = [];
@@ -255,8 +256,12 @@ class TerminalVolumes
      * Restricts the rows to days `$from`..`$to`, each gateway's days counted in its own timezone.
      * Rows without a time fall back to their report date.
      */
-    private function withinDays(Builder $query, CarbonImmutable $from, CarbonImmutable $to): Builder
+    private function withinDays(Builder $query, CarbonImmutable $from, CarbonImmutable $to, ?string $override = null): Builder
     {
+        if ($override !== null) {
+            return $this->betweenDays($query, $from, $to, $override);
+        }
+
         $zones = Provider::query()->ofType(ProviderType::Gate)->get(['id', 'timezone'])
             ->groupBy(fn (Provider $p) => $this->zone($p->timezone));
 
