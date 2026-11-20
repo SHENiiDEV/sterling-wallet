@@ -20,3 +20,5 @@ Schedule::command('bots:dispatch --custom')->everyMinute()->withoutOverlapping()
 Schedule::command('reports:release-due')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reports:reconcile')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('reserve:release')->dailyAt('06:10')->withoutOverlapping();
+// The same payment stored twice (a late file in another layout): looked for every night, told by message, removed by hand.
+Schedule::command('operations:dedupe --notify')->dailyAt('05:30')->withoutOverlapping();
