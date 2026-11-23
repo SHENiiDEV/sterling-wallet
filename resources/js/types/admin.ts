@@ -428,5 +428,7 @@ export type Client = {
     invoice_address: string | null;
     invoice_email: string | null;
     notes: string | null;
+    reserve_pool_enabled: boolean;
+    reserve_pool_limit: string | null;
     companies: CompanyRef[];
 };

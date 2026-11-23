@@ -40,6 +40,8 @@ class ClientController extends Controller
                     'invoice_address' => $client->invoice_address,
                     'invoice_email' => $client->invoice_email,
                     'notes' => $client->notes,
+                    'reserve_pool_enabled' => $client->reserve_pool_enabled,
+                    'reserve_pool_limit' => $client->reserve_pool_limit,
                     'companies' => $client->companies->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values(),
                 ]),
             'defaultDate' => now()->subDay()->toDateString(),
@@ -96,6 +98,8 @@ class ClientController extends Controller
                 'invoice_address' => $client->invoice_address,
                 'invoice_email' => $client->invoice_email,
                 'notes' => $client->notes,
+                'reserve_pool_enabled' => $client->reserve_pool_enabled,
+                'reserve_pool_limit' => $client->reserve_pool_limit,
             ],
             'companies' => $client->companies->map(fn (Company $company) => [
                 'id' => $company->id,

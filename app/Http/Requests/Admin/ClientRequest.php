@@ -22,6 +22,8 @@ class ClientRequest extends FormRequest
             'invoice_address' => ['nullable', 'string', 'max:1000'],
             'invoice_email' => ['nullable', 'email', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'reserve_pool_enabled' => ['boolean'],
+            'reserve_pool_limit' => ['nullable', 'required_if_accepted:reserve_pool_enabled', 'numeric', 'min:0', 'max:1000000000'],
         ];
     }
 }

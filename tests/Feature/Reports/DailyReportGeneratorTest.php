@@ -7,7 +7,10 @@ use App\Enums\MidStatus;
 use App\Enums\ReportStatus;
 use App\Enums\ReserveEntryType;
 use App\Mail\DailyReportMail;
+use App\Models\Client;
+use App\Models\Company;
 use App\Models\DailyReportTask;
+use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\ReserveLedgerEntry;
@@ -270,5 +273,24 @@ class DailyReportGeneratorTest extends TestCase
 
         $this->assertMoney('5.00', $task->reserve_amount); // 995 − 990 left under the cap
         $this->assertMoney('300.20', $task->net_volume); // the rest of 305.20 is paid out
+    }
+
+    public function test_a_client_wide_reserve_ignores_the_mid_limit_and_merchant_cap_and_counts_all_its_companies()
+    {
+        $client = Client::query()->create(['name' => 'Pool client', 'reserve_pool_enabled' => true, 'reserve_pool_limit' => 995]);
+        $company = Company::query()->create(['name' => 'Company A', 'client_id' => $client->id]);
+        $other = Company::query()->create(['name' => 'Company B', 'client_id' => $client->id]);
+        $sister = Merchant::factory()->create(['company_id' => $other->id]);
+        // The sister company already holds 990; this merchant's own MID limit (1) and cap (1) would stop it at once.
+        ReserveLedgerEntry::query()->create([
+            'merchant_id' => $sister->id, 'currency' => 'EUR', 'type' => ReserveEntryType::Hold, 'amount' => '990.00',
+        ]);
+        $merchant = $this->merchantWithTariff(['company_id' => $company->id, 'rolling_reserve_cap' => 1]);
+        $mid = $this->mid($merchant, $this->cardaq(), $this->corefy(), ['rolling_reserve_limit' => 1]);
+
+        $task = $this->ingestPair($mid, $this->cardaqCsv())->fresh();
+
+        $this->assertMoney('5.00', $task->reserve_amount); // 995 − 990 left in the client's pool
+        $this->assertMoney('300.20', $task->net_volume);
     }
 }

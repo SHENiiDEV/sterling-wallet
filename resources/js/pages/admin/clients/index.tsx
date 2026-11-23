@@ -16,6 +16,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
@@ -214,6 +215,8 @@ function ClientDialog({
         invoice_address: client?.invoice_address ?? '',
         invoice_email: client?.invoice_email ?? '',
         notes: client?.notes ?? '',
+        reserve_pool_enabled: client?.reserve_pool_enabled ?? false,
+        reserve_pool_limit: client?.reserve_pool_limit ?? '',
     });
 
     const submit = (e: React.FormEvent) => {
@@ -298,6 +301,49 @@ function ClientDialog({
                             }
                         />
                     </Field>
+                    <div className="grid gap-3 rounded-lg border p-3">
+                        <label className="flex items-start gap-3 text-sm">
+                            <Checkbox
+                                checked={form.data.reserve_pool_enabled}
+                                onCheckedChange={(checked) =>
+                                    form.setData(
+                                        'reserve_pool_enabled',
+                                        checked === true,
+                                    )
+                                }
+                            />
+                            <span>
+                                One rolling reserve for the whole client
+                                <span className="block text-xs text-muted-foreground">
+                                    The MID limits and merchant caps are
+                                    ignored: every report holds its percent
+                                    until the balance over all the client's
+                                    companies reaches this amount.
+                                </span>
+                            </span>
+                        </label>
+                        {form.data.reserve_pool_enabled && (
+                            <Field
+                                label="Reserve limit (per currency)"
+                                htmlFor="client-pool"
+                                error={form.errors.reserve_pool_limit}
+                            >
+                                <Input
+                                    id="client-pool"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={form.data.reserve_pool_limit}
+                                    onChange={(e) =>
+                                        form.setData(
+                                            'reserve_pool_limit',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                        )}
+                    </div>
                     <Field
                         label="Notes"
                         htmlFor="client-notes"
