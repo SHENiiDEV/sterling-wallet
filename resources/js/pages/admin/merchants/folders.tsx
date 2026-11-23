@@ -234,6 +234,17 @@ function ReservePanel({ reserve }: { reserve: ReserveSummary }) {
                     </span>
                 </h2>
                 <div className="flex flex-wrap gap-x-4 text-sm font-medium tabular-nums">
+                    {reserve.totals.length === 0 && (
+                        <span>
+                            0
+                            {reserve.pool && reserve.limit && (
+                                <span className="font-normal text-muted-foreground">
+                                    {' '}
+                                    / {reserve.limit}
+                                </span>
+                            )}
+                        </span>
+                    )}
                     {reserve.totals.map((t) => (
                         <span key={t.currency}>
                             {formatMoney(t.amount, t.currency)}
@@ -310,9 +321,11 @@ export default function MerchantFolders({ folders, open }: Props) {
                             {open.name}
                         </span>
                     </nav>
-                    {open.reserve && open.reserve.totals.length > 0 && (
-                        <ReservePanel reserve={open.reserve} />
-                    )}
+                    {open.reserve &&
+                        (open.reserve.pool ||
+                            open.reserve.totals.length > 0) && (
+                            <ReservePanel reserve={open.reserve} />
+                        )}
                     {open.groups.length === 0 ? (
                         <EmptyState
                             icon={Building2}
