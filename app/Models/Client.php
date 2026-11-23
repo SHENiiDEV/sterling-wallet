@@ -20,11 +20,18 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
  * @property string|null $invoice_address
  * @property string|null $invoice_email
  * @property string|null $notes
+ * @property bool $reserve_pool_enabled
+ * @property string|null $reserve_pool_limit
  */
-#[Fillable(['name', 'invoice_name', 'invoice_address', 'invoice_email', 'notes'])]
+#[Fillable(['name', 'invoice_name', 'invoice_address', 'invoice_email', 'notes', 'reserve_pool_enabled', 'reserve_pool_limit'])]
 class Client extends Model
 {
     use RestrictedToProduct;
+
+    protected function casts(): array
+    {
+        return ['reserve_pool_enabled' => 'boolean', 'reserve_pool_limit' => 'decimal:2'];
+    }
 
     /**
      * The legal name printed on reports and e-mails; `name` is for the admin only.

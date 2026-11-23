@@ -457,6 +457,21 @@ class DailyReportGenerator
         $others = fn () => ReserveLedgerEntry::query()
             ->where(fn ($q) => $q->whereNull('daily_report_task_id')->orWhere('daily_report_task_id', '!=', $task->id));
 
+        // A reserve agreed for the whole client: one limit over all its companies, the MID limits and merchant caps are not used.
+        $client = $task->merchantMid->merchant->company?->client;
+        if ($client?->reserve_pool_enabled) {
+            $pool = BigDecimal::of($client->reserve_pool_limit ?? 0);
+            if ($pool->isPositive()) {
+                $balance = BigDecimal::of((string) $others()
+                    ->whereIn('merchant_id', $client->merchants()->withoutGlobalScopes()->select('merchants.id'))
+                    ->where('currency', $task->merchantMid->currency->value)
+                    ->sum('amount'));
+                $reserve = BigDecimal::min($reserve, BigDecimal::max(BigDecimal::zero(), $pool->minus($balance)));
+            }
+
+            return $reserve->toScale(self::SCALE, RoundingMode::HalfUp);
+        }
+
         $limit = BigDecimal::of($task->merchantMid->rolling_reserve_limit ?? 0);
         if ($limit->isPositive()) {
             $balance = BigDecimal::of((string) $others()->where('merchant_mid_id', $task->merchant_mid_id)->sum('amount'));
