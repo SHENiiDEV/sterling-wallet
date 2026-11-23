@@ -44,6 +44,7 @@ export function MidDialog({
 }) {
     const form = useForm({
         mid: mid?.mid ?? '',
+        bank_mid: mid?.bank_mid ?? '',
         provider_login: mid?.provider_login ?? '',
         currency: mid?.currency ?? 'EUR',
         label: mid?.label ?? '',
@@ -140,6 +141,31 @@ export function MidDialog({
                                 className="font-mono"
                                 autoFocus={!mid}
                             />
+                        </Field>
+                        <Field
+                            label="Shared terminal (optional)"
+                            htmlFor="bank_mid"
+                            error={errors.bank_mid}
+                        >
+                            <Input
+                                id="bank_mid"
+                                value={data.bank_mid}
+                                onChange={(e) =>
+                                    setData('bank_mid', e.target.value)
+                                }
+                                placeholder="Terminal number of another merchant's MID"
+                                className="font-mono"
+                            />
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Gives this merchant a share of a terminal that
+                                is already another merchant&apos;s. Enter the
+                                number the bank has for it, choose the same
+                                acquirer and give this merchant its own gateway
+                                account below; the MID field can stay empty (the
+                                key is made from the terminal number). The
+                                bank&apos;s rows are told apart by the gateway
+                                payments they pair with.
+                            </p>
                         </Field>
                         <Field label="Currency" error={errors.currency}>
                             <Select

@@ -310,6 +310,29 @@ class DashboardController extends Controller
             }
         }
 
+        // Acquirer rows of a terminal shared by several merchants that wait for their gateway payment: nobody's, in no report.
+        if ($withOperations) {
+            $waiting = MerchantOperation::query()->toBase()->where('unassigned', true)->where('role', ProviderType::Bank->value)
+                ->selectRaw('merchant_mid_id, count(*) as n, sum(abs(amount)) as total, min(report_date) as since')->groupBy('merchant_mid_id')->get();
+            if ($waiting->isNotEmpty()) {
+                $mids = MerchantMid::query()->with(['merchant:id,name,company_id', 'merchant.company:id,name'])->whereIn('id', $waiting->pluck('merchant_mid_id'))->get()->keyBy('id');
+                $rows = $waiting->map(fn ($w) => [
+                    'mid_id' => (int) $w->merchant_mid_id,
+                    'mid' => $mids->get($w->merchant_mid_id)?->terminalNumber(),
+                    'merchant' => $mids->get($w->merchant_mid_id)?->merchant->name,
+                    'company' => $mids->get($w->merchant_mid_id)?->merchant->company?->name,
+                    'pair' => 'shared terminal',
+                    'bank' => (int) $w->n,
+                    'gate' => 0,
+                    'count' => (int) $w->n,
+                    'note' => number_format((float) $w->total, 2, '.', '').' since '.CarbonImmutable::parse($w->since)->format('d M'),
+                    'report_id' => null,
+                ])->sortByDesc('count')->values()->take(15)->all();
+
+                $alerts[] = ['key' => 'unassigned_operations', 'label' => 'acquirer row(s) of shared terminals wait for their gateway payment', 'count' => (int) $waiting->sum('n'), 'detail' => null, 'to' => null, 'rows' => $rows];
+            }
+        }
+
         // Mastercard collaboration cases we dispute (at or above the merchant's threshold) that must be answered soon.
         if ($withOperations) {
             $soon = MerchantOperation::query()

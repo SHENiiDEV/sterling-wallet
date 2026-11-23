@@ -236,7 +236,7 @@ class PortalController extends Controller
 
         $types = isset($data['type']) ? [$data['type']] : ['refund', 'chargeback', 'collab'];
         $query = MerchantOperation::query()
-            ->with(['merchant:id,name', 'merchantMid:id,mid'])
+            ->with(['merchant:id,name', 'merchantMid:id,mid,bank_mid'])
             ->where('role', ProviderType::Bank)
             ->whereIn('merchant_id', $selected->pluck('id'))
             ->whereIn('operation_type', $types)
@@ -308,7 +308,7 @@ class PortalController extends Controller
                 'amount' => (string) round(abs((float) $o->getRawOriginal('amount')), 2),
                 'currency' => $o->currency,
                 'merchant' => $o->merchant?->name,
-                'mid' => $o->merchantMid?->mid,
+                'mid' => $o->merchantMid?->terminalNumber(),
                 'time' => $o->transaction_at?->toIso8601String(),
                 'card' => $o->card_bin && $o->card_last4 ? $o->card_bin.'••'.$o->card_last4 : ($o->card_mask ?? ''),
                 // The line's own id (a refund's, or a chargeback's case number) and the payment it is about.
@@ -501,7 +501,7 @@ class PortalController extends Controller
             'reserve_days' => $m->rolling_reserve_days,
             // Fixed fees are in the currency of the MID they ran on: the symbol follows from it.
             'currencies' => $m->mids->map(fn ($mid) => $mid->currency->value)->unique()->sort()->values(),
-            'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->mid, 'currency' => $mid->currency->value, 'status' => $mid->status->label()])->values(),
+            'mids' => $m->mids->map(fn ($mid) => ['mid' => $mid->terminalNumber(), 'currency' => $mid->currency->value, 'status' => $mid->status->label()])->values(),
         ];
     }
 
@@ -516,7 +516,7 @@ class PortalController extends Controller
     private function reportsQuery(Collection $merchants)
     {
         return DailyReportTask::query()
-            ->with(['merchant:id,name,company_id,website', 'merchant.company:id,name', 'merchantMid:id,mid'])
+            ->with(['merchant:id,name,company_id,website', 'merchant.company:id,name', 'merchantMid:id,mid,bank_mid'])
             ->whereIn('merchant_id', $merchants->pluck('id'))
             ->where('status', ReportStatus::Completed)
             ->orderByDesc('report_date')->orderBy('merchant_mid_id');
@@ -552,7 +552,7 @@ class PortalController extends Controller
             'merchant' => $r->merchant->name,
             'website' => $r->merchant->website,
             'company' => $r->merchant->company?->name,
-            'mid' => $r->merchantMid->mid,
+            'mid' => $r->merchantMid->terminalNumber(),
             'currency' => $r->currency,
             'sales_count' => $r->sales_count,
             'turnover' => $r->turnover,

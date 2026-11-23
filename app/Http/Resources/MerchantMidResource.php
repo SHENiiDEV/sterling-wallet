@@ -19,6 +19,12 @@ class MerchantMidResource extends JsonResource
         return [
             'id' => $this->id,
             'mid' => $this->mid,
+            // The number the bank has for the terminal, and the other merchants it is shared with.
+            'bank_mid' => $this->bank_mid,
+            'terminal' => $this->terminalNumber(),
+            'shared_with' => $this->bank_provider_id
+                ? $this->terminalMates()->whereKeyNot($this->id)->with('merchant:id,name')->get()->map(fn (MerchantMid $m) => $m->merchant?->name)->filter()->values()->all()
+                : [],
             'provider_login' => $this->provider_login,
             'currency' => $this->currency->value,
             'label' => $this->label,

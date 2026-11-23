@@ -192,7 +192,7 @@ class SettlementService
             $settlement->lines()->create([
                 'type' => SettlementLineType::Report,
                 'daily_report_task_id' => $report->id,
-                'description' => sprintf('Daily report %s · MID %s', $report->report_date->toDateString(), $report->merchantMid->mid),
+                'description' => sprintf('Daily report %s · MID %s', $report->report_date->toDateString(), $report->merchantMid->terminalNumber()),
                 'currency' => $report->currency,
                 'amount' => $report->getRawOriginal('net_payout'),
             ]);
@@ -208,7 +208,7 @@ class SettlementService
             'type' => SettlementLineType::ReserveRelease,
             'reserve_ledger_entry_id' => $release->id,
             'daily_report_task_id' => $release->daily_report_task_id,
-            'description' => 'Rolling reserve release · MID '.($release->merchantMid->mid ?? '—').($release->note ? ' · '.$release->note : ''),
+            'description' => 'Rolling reserve release · MID '.($release->merchantMid?->terminalNumber() ?? '—').($release->note ? ' · '.$release->note : ''),
             'currency' => $release->currency,
             'amount' => (string) BigDecimal::of($release->amount)->abs(),
         ]);

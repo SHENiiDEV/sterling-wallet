@@ -49,6 +49,11 @@ type Report = {
         counts?: Record<string, number>;
         merchant_fee?: { percent: string; fixed: string };
         provider_cost?: { bank: string; gate: string; crypto: string };
+        terminal?: {
+            shared: boolean;
+            unassigned: number;
+            unassigned_amount: string;
+        } | null;
         gateway_check?: {
             gate_sales: number;
             gate_amount: string;
@@ -399,6 +404,19 @@ export default function ReportShow({
                                 value={`${report.summary?.counts?.unmatched_bank ?? 0} / ${report.summary?.counts?.unmatched_gate ?? 0}`}
                             />
                         </dl>
+                        {report.summary?.terminal?.shared && (
+                            <div className="mt-3 rounded-lg border bg-sky-500/5 p-3 text-sm">
+                                <p className="font-medium">Shared terminal</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    The bank&apos;s rows of this terminal belong
+                                    to the merchant of the gateway payment they
+                                    pair with.
+                                    {report.summary.terminal.unassigned > 0
+                                        ? ` ${report.summary.terminal.unassigned} row(s) (${formatMoney(report.summary.terminal.unassigned_amount, report.currency)}) wait for their gateway payment: they are in no report yet and come with the right merchant's report when it pairs.`
+                                        : ' Every row is assigned.'}
+                                </p>
+                            </div>
+                        )}
                         {report.summary?.gateway_check && (
                             <div
                                 className={

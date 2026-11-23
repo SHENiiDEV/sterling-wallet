@@ -20,7 +20,7 @@ class DailyReportMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: sprintf('Daily report %s — MID %s', $this->task->report_date->toDateString(), $this->task->merchantMid->mid),
+            subject: sprintf('Daily report %s — MID %s', $this->task->report_date->toDateString(), $this->task->merchantMid->terminalNumber()),
         );
     }
 

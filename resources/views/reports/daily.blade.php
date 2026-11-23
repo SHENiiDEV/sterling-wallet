@@ -2,10 +2,10 @@
 @php($percent = fn ($v) => \App\Support\PdfRenderer::percent($v))
 @extends('pdf.layout')
 
-@section('title', 'Daily report '.$task->merchantMid->mid.' '.$task->report_date->toDateString())
+@section('title', 'Daily report '.$task->merchantMid->terminalNumber().' '.$task->report_date->toDateString())
 @section('doc-title', 'Daily Processing Report')
-@section('doc-sub', $task->report_date->toDateString().' · MID '.$task->merchantMid->mid)
-@section('footer', 'Daily report · '.$merchant->name.' · MID '.$task->merchantMid->mid.' · '.$task->report_date->toDateString())
+@section('doc-sub', $task->report_date->toDateString().' · MID '.$task->merchantMid->terminalNumber())
+@section('footer', 'Daily report · '.$merchant->name.' · MID '.$task->merchantMid->terminalNumber().' · '.$task->report_date->toDateString())
 
 @section('content')
     <table class="meta">
@@ -27,7 +27,7 @@
                 <div class="label">Report</div>
                 <div class="value">{{ $task->report_date->format('l, j F Y') }}</div>
                 <table class="kv" style="margin-top: 4px">
-                    <tr><td class="k">MID</td><td>{{ $task->merchantMid->mid }}</td></tr>
+                    <tr><td class="k">MID</td><td>{{ $task->merchantMid->terminalNumber() }}</td></tr>
                     <tr>
                         <td class="k">Period</td>
                         <td>

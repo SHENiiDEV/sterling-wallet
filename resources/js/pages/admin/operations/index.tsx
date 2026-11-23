@@ -69,6 +69,7 @@ type Filters = {
     from?: string;
     to?: string;
     unmatched?: string;
+    unassigned?: string;
     client?: string;
     company?: string;
     mid?: string;
@@ -273,6 +274,7 @@ export default function OperationsIndex({
         );
     };
     const unmatched = filters.unmatched === '1';
+    const unassigned = filters.unassigned === '1';
 
     const select = (
         key: keyof Filters,
@@ -406,6 +408,15 @@ export default function OperationsIndex({
                             >
                                 <Link2Off />
                                 Without pair
+                            </Button>
+                            <Button
+                                variant={unassigned ? 'default' : 'outline'}
+                                title="Acquirer rows of a shared terminal that wait for their gateway payment"
+                                onClick={() =>
+                                    apply({ unassigned: unassigned ? '' : '1' })
+                                }
+                            >
+                                Unassigned
                             </Button>
                             <Button asChild>
                                 <Link href={admin.operations.create()}>

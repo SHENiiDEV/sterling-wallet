@@ -148,6 +148,11 @@ export type CurrencyCode = 'USD' | 'EUR' | 'GBP';
 export type Mid = {
     id: number;
     mid: string;
+    /** The number the bank has for the terminal when it is shared (the record's own key differs). */
+    bank_mid?: string | null;
+    terminal?: string;
+    /** The other merchants this terminal is shared with. */
+    shared_with?: string[];
     provider_login: string | null;
     currency: CurrencyCode;
     label: string | null;
