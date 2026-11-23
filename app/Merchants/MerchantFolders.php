@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Company;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
+use App\Models\ReserveLedgerEntry;
 use Illuminate\Support\Collection;
 
 /**
@@ -68,7 +69,39 @@ final class MerchantFolders
             $groups->push(['id' => null, 'name' => 'No company', 'parent' => null, 'merchants' => $orphans->map(fn (Merchant $m) => $this->merchant($m))->values()->all()]);
         }
 
-        return [...$folder, 'groups' => $groups->values()->all()];
+        return [...$folder, 'reserve' => isset($client) ? $this->reserve($client, $companies) : null, 'groups' => $groups->values()->all()];
+    }
+
+    /**
+     * What the client's reserve holds now: per currency, with the agreed pool when one is set, and who holds how much.
+     *
+     * @param  Collection<int, Company>  $companies
+     * @return array<string, mixed>
+     */
+    private function reserve(Client $client, Collection $companies): array
+    {
+        $merchants = $companies->flatMap->merchants->keyBy('id');
+        $rows = ReserveLedgerEntry::query()
+            ->whereIn('merchant_id', $merchants->keys())
+            ->selectRaw('merchant_id, currency, sum(amount) as total')
+            ->groupBy('merchant_id', 'currency')
+            ->get();
+
+        $limit = $client->reserve_pool_enabled ? $client->reserve_pool_limit : null;
+
+        return [
+            'pool' => $client->reserve_pool_enabled,
+            'limit' => $limit,
+            'totals' => $rows->groupBy('currency')->map(fn (Collection $r, string $currency) => [
+                'currency' => $currency,
+                'amount' => number_format((float) $r->sum('total'), 2, '.', ''),
+            ])->sortKeys()->values()->all(),
+            'by_merchant' => $rows->groupBy('merchant_id')->map(fn (Collection $r, int|string $id) => [
+                'merchant' => $merchants->get((int) $id)?->name,
+                'company' => $companies->first(fn (Company $c) => $c->merchants->contains('id', (int) $id))?->name,
+                'amounts' => $r->map(fn ($e) => ['currency' => $e->currency, 'amount' => number_format((float) $e->total, 2, '.', '')])->sortBy('currency')->values()->all(),
+            ])->sortBy('merchant')->values()->all(),
+        ];
     }
 
     /**
