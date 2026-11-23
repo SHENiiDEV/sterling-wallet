@@ -17,6 +17,7 @@ import {
     MidStatusBadge,
 } from '@/components/admin/tone-badge';
 import { Button } from '@/components/ui/button';
+import { formatMoney } from '@/lib/money';
 import admin from '@/routes/admin';
 import type { MerchantStatus, MidStatus } from '@/types';
 
@@ -60,7 +61,19 @@ type FolderMerchant = {
     mids: FolderMid[];
 };
 
+type ReserveSummary = {
+    pool: boolean;
+    limit: string | null;
+    totals: { currency: string; amount: string }[];
+    by_merchant: {
+        merchant: string | null;
+        company: string | null;
+        amounts: { currency: string; amount: string }[];
+    }[];
+};
+
 type OpenFolder = FolderSummary & {
+    reserve: ReserveSummary | null;
     groups: {
         id: number | null;
         name: string;
@@ -208,6 +221,59 @@ function MerchantCard({ merchant }: { merchant: FolderMerchant }) {
     );
 }
 
+function ReservePanel({ reserve }: { reserve: ReserveSummary }) {
+    return (
+        <section className="grid gap-3 rounded-xl border bg-card p-4 shadow-xs">
+            <header className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold">
+                    Rolling reserve
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        {reserve.pool
+                            ? 'one reserve for the whole client'
+                            : 'held per MID'}
+                    </span>
+                </h2>
+                <div className="flex flex-wrap gap-x-4 text-sm font-medium tabular-nums">
+                    {reserve.totals.map((t) => (
+                        <span key={t.currency}>
+                            {formatMoney(t.amount, t.currency)}
+                            {reserve.pool && reserve.limit && (
+                                <span className="font-normal text-muted-foreground">
+                                    {' '}
+                                    / {formatMoney(reserve.limit, t.currency)}
+                                </span>
+                            )}
+                        </span>
+                    ))}
+                </div>
+            </header>
+            <ul className="grid gap-1 text-sm">
+                {reserve.by_merchant.map((m, i) => (
+                    <li
+                        key={i}
+                        className="flex items-center justify-between gap-3"
+                    >
+                        <span className="truncate">
+                            {m.merchant}
+                            {m.company && m.company !== m.merchant && (
+                                <span className="text-xs text-muted-foreground">
+                                    {' '}
+                                    · {m.company}
+                                </span>
+                            )}
+                        </span>
+                        <span className="tabular-nums">
+                            {m.amounts
+                                .map((a) => formatMoney(a.amount, a.currency))
+                                .join(' · ')}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+}
+
 export default function MerchantFolders({ folders, open }: Props) {
     const switcher = (
         <>
@@ -244,6 +310,9 @@ export default function MerchantFolders({ folders, open }: Props) {
                             {open.name}
                         </span>
                     </nav>
+                    {open.reserve && open.reserve.totals.length > 0 && (
+                        <ReservePanel reserve={open.reserve} />
+                    )}
                     {open.groups.length === 0 ? (
                         <EmptyState
                             icon={Building2}
