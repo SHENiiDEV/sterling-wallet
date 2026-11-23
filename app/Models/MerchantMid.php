@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $merchant_id
  * @property string $mid
+ * @property string|null $bank_mid
  * @property string|null $provider_login
  * @property Currency $currency
  * @property string|null $label
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read Merchant $merchant
  */
 #[Fillable([
-    'mid', 'provider_login', 'currency', 'label', 'status', 'bank_provider_id', 'gate_provider_id', 'gate_mid', 'extra_gate_mids',
+    'mid', 'bank_mid', 'provider_login', 'currency', 'label', 'status', 'bank_provider_id', 'gate_provider_id', 'gate_mid', 'extra_gate_mids',
     'reports_start_date', 'rolling_reserve_limit', 'processing_limit', 'processing_limit_visa', 'processing_limit_mastercard', 'daily_norm', 'notes',
     'reported_balance', 'reported_hold', 'balance_reported_at',
 ])]
@@ -59,6 +60,38 @@ class MerchantMid extends Model
             'reported_hold' => 'decimal:2',
             'balance_reported_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The number the bank has for this terminal in its files: the record's own `mid`, or `bank_mid` when the terminal
+     * is shared and this record is one of its other assignments.
+     */
+    public function terminalNumber(): string
+    {
+        return $this->bank_mid ?: $this->mid;
+    }
+
+    /**
+     * Every MID record on the same bank terminal (one terminal given to several merchants), this one included.
+     *
+     * @return Builder<MerchantMid>
+     */
+    public function terminalMates(): Builder
+    {
+        $number = $this->terminalNumber();
+
+        return static::query()->withoutGlobalScopes()
+            ->where('bank_provider_id', $this->bank_provider_id)
+            ->where(fn (Builder $q) => $q->where('bank_mid', $number)->orWhere(fn (Builder $z) => $z->whereNull('bank_mid')->where('mid', $number)))
+            ->where(fn (Builder $q) => $q->where('status', '!=', MidStatus::Inactive->value)->orWhereKey($this->id));
+    }
+
+    /**
+     * Whether the bank's rows of this terminal belong to more than one merchant.
+     */
+    public function isSharedTerminal(): bool
+    {
+        return $this->bank_provider_id !== null && $this->terminalMates()->count() > 1;
     }
 
     /**

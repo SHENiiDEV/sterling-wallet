@@ -41,7 +41,7 @@ use Illuminate\Support\Carbon;
     'payment_id', 'reference', 'sp_id', 'matched_operation_id', 'arn', 'rrn', 'approval_code', 'card_mask', 'card_bin', 'card_last4', 'customer_email',
     'ips', 'wallet', 'region', 'issuer_country', 'issuer_name',
     'trn_type', 'operation_type', 'processing_code', 'resolution',
-    'report_date', 'transaction_at', 'processing_at', 'amount', 'currency',
+    'report_date', 'transaction_at', 'processing_at', 'amount', 'currency', 'unassigned',
     'eu_fee', 'non_eu_fee', 'ic_fee', 'ic_interchange', 'ic_scheme_fee', 'approve_fee', 'decline_fee', 'refund_fee', 'raw',
 ])]
 class MerchantOperation extends Model
@@ -53,6 +53,7 @@ class MerchantOperation extends Model
         return [
             'role' => ProviderType::class,
             'raw' => 'array',
+            'unassigned' => 'boolean',
             'operation_type' => OperationType::class,
             'report_date' => DateOnly::class,
             'transaction_at' => 'datetime',
