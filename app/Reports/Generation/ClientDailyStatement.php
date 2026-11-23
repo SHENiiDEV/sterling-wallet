@@ -57,7 +57,7 @@ class ClientDailyStatement
 
         $done = $tasks->where('status', ReportStatus::Completed);
         $pending = $tasks->where('status', '!=', ReportStatus::Completed)
-            ->map(fn (DailyReportTask $t) => ['mid' => $t->merchantMid->mid, 'merchant' => $t->merchant->name, 'status' => $t->status->value, 'date' => $t->report_date->toDateString()])
+            ->map(fn (DailyReportTask $t) => ['mid' => $t->merchantMid->terminalNumber(), 'merchant' => $t->merchant->name, 'status' => $t->status->value, 'date' => $t->report_date->toDateString()])
             ->values()->all();
 
         $companies = [];
@@ -70,7 +70,7 @@ class ClientDailyStatement
             $row = [
                 'merchant' => $task->merchant->name,
                 'website' => $task->merchant->website,
-                'mid' => $task->merchantMid->mid,
+                'mid' => $task->merchantMid->terminalNumber(),
                 'label' => $task->merchantMid->label,
                 'currency' => $task->currency,
                 'sales' => (int) $task->sales_count,

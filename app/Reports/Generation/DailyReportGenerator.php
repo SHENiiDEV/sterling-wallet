@@ -12,6 +12,7 @@ use App\Enums\ReserveEntryType;
 use App\Enums\TariffProduct;
 use App\Mail\DailyReportMail;
 use App\Models\DailyReportTask;
+use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
 use App\Models\ReserveLedgerEntry;
@@ -172,6 +173,28 @@ class DailyReportGenerator
         return $from === null || $task->report_date->toDateString() >= $from;
     }
 
+    /**
+     * For a terminal shared by several merchants: how many acquirer rows of it still wait for their gateway pair.
+     *
+     * @return array{shared: bool, unassigned: int, unassigned_amount: string}|null
+     */
+    private function terminalState(MerchantMid $mid, DailyReportTask $task): ?array
+    {
+        $mates = $mid->terminalMates()->pluck('id')->all();
+        if (count($mates) < 2) {
+            return null;
+        }
+
+        $waiting = MerchantOperation::query()->whereIn('merchant_mid_id', $mates)->where('role', ProviderType::Bank)->where('unassigned', true)
+            ->whereBetween('report_date', [$task->period_from->toDateString(), $task->period_to->toDateString()])->get();
+
+        return [
+            'shared' => true,
+            'unassigned' => $waiting->count(),
+            'unassigned_amount' => (string) $this->round($waiting->reduce(fn (BigDecimal $c, MerchantOperation $o) => $c->plus(BigDecimal::of((string) $o->getRawOriginal('amount'))->abs()), BigDecimal::zero())),
+        ];
+    }
+
     private function guard(DailyReportTask $task): void
     {
         $mid = $task->merchantMid;
@@ -203,12 +226,16 @@ class DailyReportGenerator
         $merchant = $mid->merchant;
         $currency = $mid->currency->value;
 
-        $this->reconciler->reconcile($mid, $task->period_from, $task->period_to);
+        $this->reconciler->reconcile($mid, $task->period_from, $task->period_to, rebuildOwn: false);
 
+        // An acquirer row of a shared terminal that is not paired with a gateway payment yet belongs to nobody: it is in
+        // no report until its pair says whose it is (then it comes with the merchant's next report).
         $operations = MerchantOperation::query()
             ->where('merchant_mid_id', $mid->id)
+            ->where('unassigned', false)
             ->whereBetween('report_date', [$task->period_from->toDateString(), $task->period_to->toDateString()])
             ->get();
+        $terminal = $this->terminalState($mid, $task);
 
         $bankOps = $operations->where('provider_id', $mid->bank_provider_id)->where('role', ProviderType::Bank);
         $gateOps = $mid->gate_provider_id ? $operations->where('provider_id', $mid->gate_provider_id)->where('role', ProviderType::Gate) : collect();
@@ -360,6 +387,7 @@ class DailyReportGenerator
                         'crypto' => (string) $cryptoCost,
                     ],
                     'gateway_check' => $gap,
+                    'terminal' => $terminal,
                     'provider_fx_markup' => (string) $fxCost,
                     'by_scheme' => $this->breakdown($sales, $fee),
                 ],

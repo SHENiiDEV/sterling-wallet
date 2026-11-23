@@ -803,7 +803,20 @@ function MidRow({
                     <span className="font-mono text-sm font-medium">
                         {mid.mid}
                     </span>
+                    {mid.shared_with && mid.shared_with.length > 0 && (
+                        <span
+                            className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-400"
+                            title={`Terminal ${mid.terminal ?? mid.mid} is shared with ${mid.shared_with.join(', ')}`}
+                        >
+                            Shared terminal {mid.terminal ?? mid.mid}
+                        </span>
+                    )}
                 </div>
+                {mid.shared_with && mid.shared_with.length > 0 && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                        with {mid.shared_with.join(', ')}
+                    </p>
+                )}
                 {(mid.label || mid.provider_login) && (
                     <p className="mt-0.5 text-xs text-muted-foreground">
                         {[

@@ -174,6 +174,16 @@ export default function Dashboard({
                                             Open operations
                                         </Link>
                                     )}
+                                    {alert.key === 'unassigned_operations' && (
+                                        <Link
+                                            href={admin.operations.index({
+                                                query: { unassigned: 1 },
+                                            })}
+                                            className="text-primary hover:underline"
+                                        >
+                                            Open operations
+                                        </Link>
+                                    )}
                                     {alert.rows && alert.rows.length > 0 && (
                                         <ul className="mt-1 mb-2 grid w-full gap-0.5 border-l-2 pl-3 text-xs text-muted-foreground">
                                             {alert.rows.map((row) => (
@@ -189,10 +199,17 @@ export default function Dashboard({
                                                                 : admin.operations.index(
                                                                       {
                                                                           query: {
-                                                                              unmatched: 1,
-                                                                              type: 'sale',
+                                                                              ...(alert.key ===
+                                                                              'unassigned_operations'
+                                                                                  ? {
+                                                                                        unassigned: 1,
+                                                                                    }
+                                                                                  : {
+                                                                                        unmatched: 1,
+                                                                                        type: 'sale',
+                                                                                        to: alert.to,
+                                                                                    }),
                                                                               mid: row.mid_id,
-                                                                              to: alert.to,
                                                                           },
                                                                       },
                                                                   )

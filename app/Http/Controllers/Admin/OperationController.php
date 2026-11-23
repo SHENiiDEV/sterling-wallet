@@ -56,6 +56,7 @@ class OperationController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'unmatched' => ['nullable', 'boolean'],
+            'unassigned' => ['nullable', 'boolean'],
             'client' => ['nullable', 'integer'],
             'company' => ['nullable', 'integer'],
             'mid' => ['nullable', 'integer'],
@@ -538,6 +539,7 @@ class OperationController extends Controller
             ->when($filters['currency'] ?? null, fn (Builder $q, string $currency) => $q->where('currency', strtoupper($currency)))
             ->when($filters['from'] ?? null, fn (Builder $q, string $from) => $q->where('report_date', '>=', $from))
             ->when($filters['to'] ?? null, fn (Builder $q, string $to) => $q->where('report_date', '<=', $to))
+            ->when($filters['unassigned'] ?? false, fn (Builder $q) => $q->where('unassigned', true))
             ->when($filters['unmatched'] ?? false, fn (Builder $q) => $q
                 ->whereNull('matched_operation_id')
                 ->whereNotIn('operation_type', [OperationType::Decline, OperationType::Collab])

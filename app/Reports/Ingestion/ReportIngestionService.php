@@ -4,6 +4,7 @@ namespace App\Reports\Ingestion;
 
 use App\Enums\MerchantStatus;
 use App\Enums\MidStatus;
+use App\Enums\OperationType;
 use App\Enums\ProviderType;
 use App\Enums\ReportStatus;
 use App\Jobs\GenerateDailyReportJob;
@@ -25,6 +26,7 @@ use App\Services\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\File;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -59,6 +61,7 @@ class ReportIngestionService
         }
 
         $this->midCache = [];
+        $this->sharedCache = [];
         $parser = $this->parsers->for($provider);
         $timezone = $provider->timezone ?: config('sterling.timezone');
         $fileDate = $parser->reportDate($file);
@@ -222,7 +225,9 @@ class ReportIngestionService
             ->where($isGate ? 'gate_provider_id' : 'bank_provider_id', $provider->id)
             ->where(fn ($q) => $isGate
                 ? $q->where('gate_mid', $row->mid)->orWhereJsonContains('extra_gate_mids', $row->mid)->orWhere('mid', $row->mid)
-                : $q->where('mid', $row->mid))
+                // A terminal given to several merchants: its own record (the first one) and the other assignments by `bank_mid`.
+                : $q->where('mid', $row->mid)->orWhere('bank_mid', $row->mid))
+            ->orderByRaw('bank_mid is null desc')->orderBy('id')
             ->get();
 
         // One gateway account can front several MIDs, one per currency.
@@ -265,6 +270,14 @@ class ReportIngestionService
         AuditLogger::log('mid.auto_created', $mid, ['provider' => $provider->code]);
 
         return $mid;
+    }
+
+    /** @var array<int, bool> per MID id, for this load */
+    private array $sharedCache = [];
+
+    private function isSharedTerminal(MerchantMid $mid): bool
+    {
+        return $this->sharedCache[$mid->id] ??= $mid->isSharedTerminal();
     }
 
     private function upsertOperation(Provider $provider, MerchantMid $mid, ReportPeriod $period, OperationRow $row): void
@@ -311,6 +324,18 @@ class ReportIngestionService
             'trn_type' => $row->trnType !== null ? Str::limit($row->trnType, 16, '') : null,
             'amount' => $row->amount,
         ];
+
+        // A terminal given to several merchants: the bank's row does not say whose it is. It waits, in no report, for its
+        // pair from the gateway (which does: the commerce account); a row that is already homed stays where it is.
+        if ($provider->type === ProviderType::Bank && $this->isSharedTerminal($mid)) {
+            $existing = MerchantOperation::query()->where($key)->first();
+            if ($existing !== null) {
+                $existing->update(Arr::except($attributes, ['merchant_id', 'merchant_mid_id', 'unassigned']));
+
+                return;
+            }
+            $attributes['unassigned'] = in_array($attributes['operation_type'], [OperationType::Sale, OperationType::Refund], true);
+        }
 
         // The same operation can arrive twice in two layouts or at two loads (the clearing file and a refund list, a late
         // file with the same payment): the same payment id, type and amount, but another type column, ARN or time.

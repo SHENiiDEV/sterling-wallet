@@ -5,6 +5,7 @@ namespace App\Reports\Reconciliation;
 use App\Enums\MidStatus;
 use App\Enums\OperationType;
 use App\Enums\ProviderType;
+use App\Models\DailyReportTask;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
 use App\Models\Provider;
@@ -25,6 +26,10 @@ use Illuminate\Validation\ValidationException;
  * One gateway account can feed several terminals (MIDs of different banks).
  * Its rows are first booked to one of them; when a bank operation of another
  * MID pairs with such a row, the row moves to that MID.
+ *
+ * The other way round, one bank terminal can be given to several merchants (MID records sharing a terminal). The
+ * bank's row does not say whose it is, the gateway's payment does (its commerce account): the bank row waits as
+ * `unassigned` and moves to the MID of the gateway payment it pairs with, by card, amount and time.
  */
 class ReconciliationService
 {
@@ -37,9 +42,10 @@ class ReconciliationService
     private const LEFTOVER_MAX_GAP_SECONDS = 86400;
 
     /**
+     * @param  bool  $rebuildOwn  build again the report of this MID when a row moved to it (a caller that is calculating it passes false)
      * @return int number of new pairs
      */
-    public function reconcile(MerchantMid $mid, DateTimeInterface|string $from, DateTimeInterface|string $to): int
+    public function reconcile(MerchantMid $mid, DateTimeInterface|string $from, DateTimeInterface|string $to, bool $rebuildOwn = true): int
     {
         if ($mid->bank_provider_id === null || $mid->gate_provider_id === null) {
             return 0;
@@ -54,9 +60,18 @@ class ReconciliationService
         // Clearing lags the payment by a few days, so the gateway side is
         // searched in a wider range than the acquirer's report period.
         $declines = (bool) $rules['include_declines'];
-        $bank = $this->unmatched([$mid->id], ProviderType::Bank, $from->toDateString(), $to->toDateString(), $declines);
-        $gate = $this->unmatched([$mid->id, ...$this->sharingGate($mid)], ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString(), $declines);
+        // A shared terminal pairs as one: the rows of every merchant on it against the payments of every one of them.
+        $mates = $mid->terminalMates()->get();
+        $shared = $mates->count() > 1;
+        $bankIds = $shared ? $mates->pluck('id')->all() : [$mid->id];
+        $gateIds = collect($bankIds)->flatMap(fn (int $id) => [$id, ...$this->sharingGate($mates->firstWhere('id', $id) ?? $mid)])->unique()->values()->all();
+        $bank = $this->unmatched($bankIds, ProviderType::Bank, $from->toDateString(), $to->toDateString(), $declines);
+        $gate = $this->unmatched($gateIds, ProviderType::Gate, $from->subDays(self::GATE_SLACK_DAYS)->toDateString(), $to->addDays(self::GATE_SLACK_DAYS)->toDateString(), $declines);
         if ($bank->isEmpty() || $gate->isEmpty()) {
+            if ($shared) {
+                $this->rebuild($this->homeRefunds($mates, $bankIds, $from, $to), $mid, $rebuildOwn);
+            }
+
             return 0;
         }
 
@@ -91,12 +106,27 @@ class ReconciliationService
             [$pairs, $taken] = $this->pairLeftovers($bank, $gate, $pairs, $taken);
         }
 
-        DB::transaction(function () use ($pairs, $mid) {
+        $moved = [];
+        DB::transaction(function () use ($pairs, $mid, $mates, $shared, &$moved) {
             foreach ($pairs as [$bankOp, $gateOp]) {
                 // An acquirer file without a region (Madfin's portal export) takes it from the gateway's issuer country;
                 // unknown is priced as non-EU, so the fee would otherwise be too high for EU cards.
                 $bankOp->update(['matched_operation_id' => $gateOp->id, 'sp_id' => $gateOp->payment_id, ...($bankOp->region === null && $gateOp->region !== null ? ['region' => $gateOp->region] : [])]);
                 $gateOp->update(['matched_operation_id' => $bankOp->id, 'sp_id' => $bankOp->payment_id]);
+
+                // A shared terminal: the gateway payment knows its merchant, so the bank row goes to it.
+                $owner = $shared ? $mates->firstWhere('id', (int) $gateOp->merchant_mid_id) : null;
+                if ($owner !== null) {
+                    if ($bankOp->unassigned || (int) $bankOp->merchant_mid_id !== $owner->id) {
+                        $bankOp->update(['merchant_id' => $owner->merchant_id, 'merchant_mid_id' => $owner->id, 'unassigned' => false]);
+                        if ($bankOp->report_date !== null) {
+                            $task = app(ReportIngestionService::class)->ensureReport($owner->bankProvider ?? $mid->bankProvider, $owner, CarbonImmutable::parse($bankOp->report_date));
+                            $moved[$task->id] = $task;
+                        }
+                    }
+
+                    continue;
+                }
 
                 // The gateway row was booked to a sibling terminal: it belongs to this MID.
                 if ((int) $gateOp->merchant_mid_id !== $mid->id) {
@@ -108,7 +138,67 @@ class ReconciliationService
             }
         });
 
+        if ($shared) {
+            $moved += $this->homeRefunds($mates, $bankIds, $from, $to);
+        }
+        $this->rebuild($moved, $mid, $rebuildOwn);
+
         return count($pairs);
+    }
+
+    /**
+     * The reports a row moved into have to be built again to carry it (a paid one is left as it is: it is found by
+     * reports:late-operations).
+     *
+     * @param  array<int, DailyReportTask>  $tasks
+     */
+    private function rebuild(array $tasks, MerchantMid $mid, bool $rebuildOwn): void
+    {
+        foreach ($tasks as $task) {
+            if (! $rebuildOwn && (int) $task->merchant_mid_id === $mid->id) {
+                continue;
+            }
+            app(ReportIngestionService::class)->advance($task);
+        }
+    }
+
+    /**
+     * A refund of a shared terminal cannot pair with a payment: it belongs to the merchant whose sale it gives back,
+     * the latest sale of the same card and amount before it. One that finds no sale stays unassigned.
+     *
+     * @param  Collection<int, MerchantMid>  $mates
+     * @param  list<int>  $ids
+     * @return array<int, DailyReportTask> the reports the refunds moved into
+     */
+    private function homeRefunds(Collection $mates, array $ids, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $homed = [];
+        $refunds = MerchantOperation::query()->whereIn('merchant_mid_id', $ids)->where('role', ProviderType::Bank)
+            ->where('operation_type', OperationType::Refund)->where('unassigned', true)
+            ->whereBetween('report_date', [$from->toDateString(), $to->toDateString()])->get();
+
+        foreach ($refunds as $refund) {
+            if ($refund->card_bin === null || $refund->card_last4 === null) {
+                continue;
+            }
+            $sale = MerchantOperation::query()
+                ->whereIn('merchant_mid_id', $ids)->where('role', ProviderType::Bank)->where('operation_type', OperationType::Sale)->where('unassigned', false)
+                ->where('card_bin', $refund->card_bin)->where('card_last4', $refund->card_last4)->where('amount', abs((float) $refund->getRawOriginal('amount')))
+                ->when($refund->transaction_at, fn ($q, $at) => $q->where('transaction_at', '<=', $at))
+                ->orderByDesc('transaction_at')->orderByDesc('id')->first();
+            $owner = $sale ? $mates->firstWhere('id', (int) $sale->merchant_mid_id) : null;
+            if ($owner === null) {
+                continue;
+            }
+
+            $refund->update(['merchant_id' => $owner->merchant_id, 'merchant_mid_id' => $owner->id, 'unassigned' => false]);
+            if ($refund->report_date !== null) {
+                $task = app(ReportIngestionService::class)->ensureReport($owner->bankProvider, $owner, CarbonImmutable::parse($refund->report_date));
+                $homed[$task->id] = $task;
+            }
+        }
+
+        return $homed;
     }
 
     /**
@@ -217,13 +307,26 @@ class ReconciliationService
 
         [$bank, $gate] = $a->role === ProviderType::Bank ? [$a, $b] : [$b, $a];
         $mid = $bank->merchantMid;
-        if ($mid === null || ! in_array($gate->merchant_mid_id, [$mid->id, ...$this->sharingGate($mid)], true)) {
+        $mates = $mid?->terminalMates()->get() ?? collect();
+        if ($mid === null || ! in_array($gate->merchant_mid_id, [$mid->id, ...$this->sharingGate($mid), ...$mates->pluck('id')->all()], true)) {
             throw ValidationException::withMessages(['pair' => 'The two operations are not on the same terminal or on terminals sharing a gateway account.']);
         }
 
-        DB::transaction(function () use ($bank, $gate, $mid) {
+        $moved = [];
+        DB::transaction(function () use ($bank, $gate, $mid, $mates, &$moved) {
             $bank->update(['matched_operation_id' => $gate->id, 'sp_id' => $gate->payment_id]);
             $gate->update(['matched_operation_id' => $bank->id, 'sp_id' => $bank->payment_id]);
+
+            // A shared terminal: the bank row goes to the merchant of the gateway payment.
+            if ($mates->count() > 1 && ($owner = $mates->firstWhere('id', (int) $gate->merchant_mid_id)) !== null) {
+                $bank->update(['merchant_id' => $owner->merchant_id, 'merchant_mid_id' => $owner->id, 'unassigned' => false]);
+                if ($bank->report_date !== null) {
+                    $task = app(ReportIngestionService::class)->ensureReport($owner->bankProvider, $owner, CarbonImmutable::parse($bank->report_date));
+                    $moved[$task->id] = $task;
+                }
+
+                return;
+            }
 
             if ((int) $gate->merchant_mid_id !== $mid->id) {
                 $gate->update(['merchant_id' => $mid->merchant_id, 'merchant_mid_id' => $mid->id]);
@@ -232,6 +335,8 @@ class ReconciliationService
                 }
             }
         });
+
+        $this->rebuild($moved, $mid, true);
     }
 
     public function unpair(MerchantOperation $op): void

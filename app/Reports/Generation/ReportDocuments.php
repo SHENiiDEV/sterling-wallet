@@ -56,7 +56,7 @@ class ReportDocuments
 
         return [
             ['Merchant', $task->merchant->name],
-            ['MID', $task->merchantMid->mid],
+            ['MID', $task->merchantMid->terminalNumber()],
             ['Currency', $task->currency],
             ['Report date', $task->report_date->toDateString()],
             ['Period', $task->period_from->toDateString().' — '.$task->period_to->toDateString()],
