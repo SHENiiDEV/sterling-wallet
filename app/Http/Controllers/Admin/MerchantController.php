@@ -29,7 +29,10 @@ use App\Models\Merchant;
 use App\Models\MerchantAcquirer;
 use App\Models\MerchantCryptoWallet;
 use App\Models\Provider;
+use App\Enums\SettlementLineType;
+use App\Enums\SettlementStatus;
 use App\Models\Settlement;
+use App\Models\SettlementLine;
 use App\Reports\Generation\MerchantApprovalRate;
 use App\Support\ProductScope;
 use Closure;
@@ -199,25 +202,7 @@ class MerchantController extends Controller
             'overview' => app(MerchantOverview::class)->for(collect([$merchant])),
             // Approval rate of the gateway's attempts, by day, week or month (?approval=day|week|month).
             'approval' => app(MerchantApprovalRate::class)->for($merchant, (string) $request->query('approval', 'week')),
-            'reports' => DailyReportTask::query()
-                ->with('merchantMid:id,mid')
-                ->where('merchant_id', $merchant->id)
-                ->orderByDesc('report_date')->orderBy('merchant_mid_id')
-                ->limit(60)
-                ->get()
-                ->map(fn (DailyReportTask $r) => [
-                    'id' => $r->id,
-                    'report_date' => $r->report_date->toDateString(),
-                    'mid' => $r->merchantMid->mid,
-                    'currency' => $r->currency,
-                    'status' => $r->status->value,
-                    'status_label' => $r->status->label(),
-                    'sales_count' => $r->sales_count,
-                    'turnover' => $r->turnover,
-                    'net_payout' => $r->net_payout,
-                    'net_profit' => ProductScope::current() !== null ? null : $r->net_profit,
-                    'has_pdf' => $r->generated_pdf_path !== null,
-                ]),
+            'reports' => $this->reportRows($merchant),
             'settlements' => Settlement::query()
                 ->where('merchant_id', $merchant->id)
                 ->withCount('lines')
@@ -322,5 +307,54 @@ class MerchantController extends Controller
             'status_note' => $acquirer->status_note,
             'stale_days' => AcquirerIntegration::staleDays($acquirer),
         ];
+    }
+
+    /**
+     * The merchant's latest daily reports; under the payout, what was actually paid in crypto, taken from the report's
+     * line of an approved or settled settlement.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function reportRows(Merchant $merchant)
+    {
+        $reports = DailyReportTask::query()
+            ->with('merchantMid:id,mid')
+            ->where('merchant_id', $merchant->id)
+            ->orderByDesc('report_date')->orderBy('merchant_mid_id')
+            ->limit(60)
+            ->get();
+
+        $paid = SettlementLine::query()
+            ->where('type', SettlementLineType::Report)
+            ->whereIn('daily_report_task_id', $reports->pluck('id'))
+            ->whereHas('settlement', fn ($q) => $q->whereIn('status', [SettlementStatus::Approved, SettlementStatus::Settled]))
+            ->with('settlement:id,number,status,payout_currency')
+            ->get()
+            ->groupBy('daily_report_task_id')
+            ->map(function ($lines) {
+                $line = $lines->sortByDesc(fn (SettlementLine $l) => $l->settlement->status === SettlementStatus::Settled)->first();
+
+                return [
+                    'number' => $line->settlement->number,
+                    'settled' => $line->settlement->status === SettlementStatus::Settled,
+                    'currency' => $line->settlement->payout_currency,
+                    'amount' => $line->amount_payout,
+                ];
+            });
+
+        return $reports->map(fn (DailyReportTask $r) => [
+            'id' => $r->id,
+            'report_date' => $r->report_date->toDateString(),
+            'mid' => $r->merchantMid->mid,
+            'currency' => $r->currency,
+            'status' => $r->status->value,
+            'status_label' => $r->status->label(),
+            'sales_count' => $r->sales_count,
+            'turnover' => $r->turnover,
+            'net_payout' => $r->net_payout,
+            'net_profit' => ProductScope::current() !== null ? null : $r->net_profit,
+            'has_pdf' => $r->generated_pdf_path !== null,
+            'paid' => $paid->get($r->id),
+        ]);
     }
 }

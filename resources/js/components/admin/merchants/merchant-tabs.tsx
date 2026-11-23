@@ -46,6 +46,12 @@ export type MerchantReport = {
     net_payout: string | null;
     net_profit: string | null;
     has_pdf: boolean;
+    paid: {
+        number: string;
+        settled: boolean;
+        currency: string;
+        amount: string;
+    } | null;
 };
 
 export type MerchantSettlement = {
@@ -146,6 +152,20 @@ export function ReportsTab({ reports }: { reports: MerchantReport[] }) {
                                     {r.net_payout !== null
                                         ? formatMoney(r.net_payout, r.currency)
                                         : '—'}
+                                    {r.paid && (
+                                        <span className="block text-xs font-normal text-muted-foreground">
+                                            {Number(
+                                                r.paid.amount,
+                                            ).toLocaleString('en-US', {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}{' '}
+                                            {r.paid.currency} · {r.paid.number}
+                                            {r.paid.settled
+                                                ? ''
+                                                : ' (approved)'}
+                                        </span>
+                                    )}
                                 </TableCell>
                                 <TableCell className="hidden text-right text-muted-foreground tabular-nums md:table-cell">
                                     {r.net_profit !== null
