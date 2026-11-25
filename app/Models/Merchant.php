@@ -32,7 +32,7 @@ use Illuminate\Support\Str;
     'fee_success_fixed', 'fee_decline_fixed', 'fee_refund_fixed', 'fee_chargeback_fixed', 'fee_collab_fixed', 'collab_dispute_threshold', 'fee_fiat_to_crypto_percent',
     'fee_wallet_percent', 'fee_settlement_fx_percent', 'fee_settlement_fixed', 'min_settlement_amount', 'rolling_reserve_cap', 'settlement_terms', 'settlement_lag_days',
     'rolling_reserve_percent', 'rolling_reserve_days',
-    'invoice_email', 'mcc', 'onboarding_status', 'notes',
+    'invoice_email', 'mcc', 'fee_currency', 'onboarding_status', 'notes',
 ])]
 class Merchant extends Model
 {

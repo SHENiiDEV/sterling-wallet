@@ -9,6 +9,11 @@ return [
     'base_currency' => env('STERLING_BASE_CURRENCY', 'EUR'),
 
     /*
+    | Daily rates from the free Frankfurter API (the European Central Bank's reference rates, no key).
+    */
+    'fx_api_url' => env('STERLING_FX_API_URL', 'https://api.frankfurter.dev'),
+
+    /*
     | Currency the acquirer settles in. A MID in another currency is
     | converted on settlement, which carries the settlement FX markup.
     */

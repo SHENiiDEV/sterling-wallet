@@ -10,6 +10,7 @@ use App\Mail\DailyReportMail;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\DailyReportTask;
+use App\Models\FxRate;
 use App\Models\Merchant;
 use App\Models\MerchantMid;
 use App\Models\MerchantOperation;
@@ -292,5 +293,35 @@ class DailyReportGeneratorTest extends TestCase
 
         $this->assertMoney('5.00', $task->reserve_amount); // 995 − 990 left in the client's pool
         $this->assertMoney('300.20', $task->net_volume);
+    }
+
+    public function test_a_contract_in_another_currency_has_its_fixed_fees_converted_at_the_days_rate()
+    {
+        // 1 GBP = 1.25 EUR, so EUR 0.20 per success is GBP 0.16; the report itself is in GBP.
+        FxRate::query()->create(['rate_date' => '2026-09-01', 'base' => 'GBP', 'quote' => 'EUR', 'rate' => '1.25']);
+        $merchant = $this->merchantWithTariff(['fee_currency' => 'EUR']);
+        $mid = $this->mid($merchant, $this->cardaq(), $this->corefy(), ['currency' => Currency::Gbp]);
+
+        $task = $this->ingestPair($mid, $this->cardaqCsv(currency: 'GBP'))->fresh();
+
+        $this->assertSame(ReportStatus::Completed, $task->status);
+        $fee = $task->summary_data['merchant_fee'];
+        $this->assertSame('EUR', $fee['contract_currency']);
+        $this->assertEqualsWithDelta(0.8, (float) $fee['contract_rate'], 0.000001);
+        $this->assertEqualsWithDelta(0.16, (float) $fee['fixed_lines']['success']['unit'], 0.000001);
+        $this->assertEqualsWithDelta(0.8, (float) $fee['fixed_lines']['refund']['unit'], 0.000001); // EUR 1.00
+    }
+
+    public function test_a_contract_in_another_currency_blocks_the_report_when_there_is_no_rate()
+    {
+        FxRate::query()->create(['rate_date' => '2026-09-01', 'base' => 'GBP', 'quote' => 'EUR', 'rate' => '1.25']);
+        // The GBP→EUR rate exists for the report, but the contract is in USD and nothing converts it to GBP.
+        $merchant = $this->merchantWithTariff(['fee_currency' => 'USD']);
+        $mid = $this->mid($merchant, $this->cardaq(), $this->corefy(), ['currency' => Currency::Gbp]);
+
+        $task = $this->ingestPair($mid, $this->cardaqCsv(currency: 'GBP'))->fresh();
+
+        $this->assertSame(ReportStatus::Blocked, $task->status);
+        $this->assertStringContainsString('USD→GBP', $task->error_log);
     }
 }

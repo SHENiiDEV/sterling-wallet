@@ -23,6 +23,7 @@ type Props = {
     companies: CompanyRef[];
     cryptoProviders: CompanyRef[];
     statuses: Option[];
+    currencies: Option[];
     products: Option[];
     defaults: {
         rolling_reserve_percent: number;
@@ -60,6 +61,7 @@ export default function MerchantForm({
     companies,
     cryptoProviders,
     statuses,
+    currencies,
     products,
     defaults,
 }: Props) {
@@ -101,6 +103,7 @@ export default function MerchantForm({
         fee_settlement_fixed: str(merchant?.fee_settlement_fixed, '0'),
         min_settlement_amount: str(merchant?.min_settlement_amount),
         rolling_reserve_cap: str(merchant?.rolling_reserve_cap),
+        fee_currency: merchant?.fee_currency ?? '',
         settlement_terms: merchant?.settlement_terms ?? '',
         settlement_lag_days:
             merchant?.settlement_lag_days != null
@@ -632,6 +635,38 @@ export default function MerchantForm({
                                             )
                                         }
                                     />
+                                </Field>
+                                <Field
+                                    label="Contract currency"
+                                    error={errors.fee_currency}
+                                    hint="The currency the contract names the fixed fees and the reserve cap in. Set it when it is not the MID's own (a EUR contract on a GBP terminal): they are converted at the day's rate. Empty = the MID's currency"
+                                >
+                                    <Select
+                                        value={data.fee_currency || NONE}
+                                        onValueChange={(value) =>
+                                            setData(
+                                                'fee_currency',
+                                                value === NONE ? '' : value,
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={NONE}>
+                                                The MID's currency
+                                            </SelectItem>
+                                            {currencies.map((c) => (
+                                                <SelectItem
+                                                    key={c.value}
+                                                    value={c.value}
+                                                >
+                                                    {c.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </Field>
                                 {input(
                                     'rolling_reserve_cap',
