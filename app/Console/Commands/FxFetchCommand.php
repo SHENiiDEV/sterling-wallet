@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\Currency;
 use App\Models\FxRate;
+use App\Services\AuditLogger;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Console\Attributes\Description;
@@ -65,7 +66,10 @@ class FxFetchCommand extends Command
                     ['rate_date' => $day, 'base' => $from, 'quote' => $to],
                     ['rate' => (string) $rate->toScale(8, RoundingMode::HalfUp), 'source' => 'frankfurter'],
                 );
-                $stored += $row->wasRecentlyCreated ? 1 : 0;
+                if ($row->wasRecentlyCreated) {
+                    $stored++;
+                    AuditLogger::log('fx_rate.fetched', $row, ['pair' => "{$from}/{$to}", 'rate_date' => (string) $day, 'rate' => $row->rate, 'source' => 'frankfurter']);
+                }
             }
         }
 

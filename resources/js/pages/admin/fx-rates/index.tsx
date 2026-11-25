@@ -224,7 +224,15 @@ export default function FxRates({
                             </TableHeader>
                             <TableBody>
                                 {rates.data.map((rate) => (
-                                    <TableRow key={rate.id}>
+                                    <TableRow
+                                        key={rate.id}
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                            router.visit(
+                                                admin.fxRates.show.url(rate.id),
+                                            )
+                                        }
+                                    >
                                         <TableCell className="pl-4 tabular-nums">
                                             {formatDate(rate.rate_date)}
                                         </TableCell>
@@ -244,7 +252,10 @@ export default function FxRates({
                                             {rate.created_by &&
                                                 ` · ${rate.created_by}`}
                                         </TableCell>
-                                        <TableCell className="pr-4 text-right">
+                                        <TableCell
+                                            className="pr-4 text-right"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             <Button
                                                 size="icon"
                                                 variant="ghost"

@@ -67,4 +67,28 @@ class FxFetchTest extends TestCase
                 ->where('rates.data.1.change_percent', null)
                 ->where('pairs', ['EUR-GBP', 'EUR-USD']));
     }
+
+    public function test_a_rate_has_a_page_with_its_journal_neighbours_and_reports()
+    {
+        $admin = \App\Models\User::factory()->create(['role' => \App\Enums\UserRole::SuperAdmin]);
+        $older = FxRate::query()->create(['rate_date' => '2026-11-20', 'base' => 'GBP', 'quote' => 'EUR', 'rate' => '1.20', 'source' => 'frankfurter']);
+        // A hand-typed change of the same day is journaled with what it was before.
+        $this->actingAs($admin)->post(route('admin.fx-rates.store'), ['rate_date' => '2026-11-23', 'base' => 'GBP', 'quote' => 'EUR', 'rate' => '1.25'])->assertRedirect();
+        $this->actingAs($admin)->post(route('admin.fx-rates.store'), ['rate_date' => '2026-11-23', 'base' => 'GBP', 'quote' => 'EUR', 'rate' => '1.30'])->assertRedirect();
+        $rate = FxRate::query()->where('rate_date', '2026-11-23')->sole();
+
+        $this->get(route('admin.fx-rates.show', $rate))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('rate.rate_date', '2026-11-23')
+                ->where('previous.id', $older->id)
+                ->where('next', null)
+                ->has('journal', 2)
+                ->where('journal.0.action', 'fx_rate.updated')
+                ->where('journal.0.meta.before.rate', '1.25000000')
+                ->where('journal.1.action', 'fx_rate.created')
+                ->where('reportsCount', 0));
+
+        $this->delete(route('admin.fx-rates.destroy', $rate))->assertRedirect();
+        $this->assertDatabaseHas('admin_audit_logs', ['action' => 'fx_rate.deleted', 'subject_id' => $rate->id]);
+    }
 }
