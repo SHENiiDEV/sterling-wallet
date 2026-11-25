@@ -41,7 +41,7 @@ class CommercialOfferController extends Controller
                 ->with('merchant:id,public_id,name', 'creator:id,name')
                 ->when($filters['status'] ?? null, fn (Builder $q, string $s) => $q->where('status', $s))
                 ->when($filters['search'] ?? null, fn (Builder $q, string $s) => $q->where(fn (Builder $q) => $q
-                    ->where('company_name', 'like', "%{$s}%")->orWhere('number', $s)->orWhere('contact_email', 'like', "%{$s}%")))
+                    ->where('company_name', 'like', "%{$s}%")->orWhere('number', $s)->orWhere('public_offer_id', $s)->orWhere('contact_email', 'like', "%{$s}%")))
                 ->latest('id')
                 ->paginate(25)
                 ->withQueryString()
@@ -63,6 +63,7 @@ class CommercialOfferController extends Controller
             $offer = CommercialOffer::query()->create([
                 ...$request->validated(),
                 'number' => 'OFF-TMP-'.uniqid(),
+                'public_offer_id' => CommercialOffer::newPublicId(),
                 'status' => OfferStatus::Draft,
                 'created_by' => $request->user()->id,
             ]);
@@ -168,7 +169,7 @@ class CommercialOfferController extends Controller
     {
         return response($proposal->render($offer), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="'.$offer->number.'.pdf"',
+            'Content-Disposition' => 'attachment; filename="'.$offer->clientNumber().'.pdf"',
         ]);
     }
 
@@ -180,6 +181,7 @@ class CommercialOfferController extends Controller
         return [
             'id' => $o->id,
             'number' => $o->number,
+            'public_offer_id' => $o->public_offer_id,
             'status' => $o->status->value,
             'status_label' => $o->status->label(),
             'company_name' => $o->company_name,

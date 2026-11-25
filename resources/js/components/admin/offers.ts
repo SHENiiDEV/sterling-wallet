@@ -3,6 +3,7 @@ import type { StatusColor } from '@/types';
 export type OfferItem = {
     id: number;
     number: string;
+    public_offer_id: string | null;
     status: string;
     status_label: string;
     company_name: string;
