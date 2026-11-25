@@ -267,8 +267,10 @@ class DailyReportGenerator
         if ($collabs->isNotEmpty()) {
             $feeGroups['collab'] = $collabs;
         }
+        // A contract in another currency than the MID's (EUR on a GBP terminal): its fixed amounts at the day's rate.
+        $contractRate = $this->contractRate($task);
         foreach ($feeGroups as $name => $ops) {
-            $unit = $fee->fixed($name);
+            $unit = $fee->fixed($name)->multipliedBy($contractRate)->toScale(4, RoundingMode::HalfUp);
             $total = $unit->multipliedBy($ops->count());
             $merchantFixedFee = $merchantFixedFee->plus($total);
             $fixedLines[$name] = ['count' => $ops->count(), 'unit' => (string) $unit, 'total' => (string) $this->round($total)];
@@ -369,6 +371,8 @@ class DailyReportGenerator
                         'percent' => (string) $this->round($merchantPercentFee),
                         'fixed' => (string) $this->round($merchantFixedFee),
                         'fixed_lines' => $fixedLines,
+                        'contract_currency' => $merchant->fee_currency,
+                        'contract_rate' => (string) $contractRate->toScale(8, RoundingMode::HalfUp),
                         'fx_markup' => (string) $fxFee,
                         'fx_markup_percent' => $fxApplies ? (string) $fee->percent('settlement_fx') : '0',
                         'wallet' => [
@@ -452,6 +456,26 @@ class DailyReportGenerator
      * Reserve may not push the MID balance past its limit (0 = no limit).
      * This report's own earlier holds don't count: they get reversed.
      */
+    /**
+     * How many units of the MID's currency one unit of the contract's currency is worth on the report's day; 1 when the
+     * contract is in the MID's own currency. No rate blocks the report rather than guessing one.
+     */
+    private function contractRate(DailyReportTask $task): BigDecimal
+    {
+        $contract = $task->merchantMid->merchant->fee_currency;
+        $currency = $task->merchantMid->currency->value;
+        if ($contract === null || $contract === '' || $contract === $currency) {
+            return BigDecimal::one();
+        }
+
+        $rate = $this->fx->rate($contract, $currency, $task->report_date);
+        if ($rate === null) {
+            throw new ReportBlocked("No {$contract}→{$currency} FX rate on or before {$task->report_date->toDateString()} for the contract's fixed fees.");
+        }
+
+        return $rate;
+    }
+
     private function capReserve(DailyReportTask $task, BigDecimal $reserve): BigDecimal
     {
         $others = fn () => ReserveLedgerEntry::query()
@@ -480,7 +504,7 @@ class DailyReportGenerator
 
         // Merchant-wide cap (Appendix 1: maximum reserve balance): once the
         // balance reaches it nothing more is held and the rest is paid out.
-        $cap = BigDecimal::of($task->merchantMid->merchant->rolling_reserve_cap ?? 0);
+        $cap = BigDecimal::of($task->merchantMid->merchant->rolling_reserve_cap ?? 0)->multipliedBy($this->contractRate($task));
         if ($cap->isPositive()) {
             $balance = BigDecimal::of((string) $others()
                 ->where('merchant_id', $task->merchant_id)

@@ -284,6 +284,7 @@ class MerchantController extends Controller
             'companies' => Company::query()->orderBy('name')->get(['id', 'name']),
             'cryptoProviders' => Provider::query()->ofType(ProviderType::Crypto)->orderBy('name')->get(['id', 'name']),
             'statuses' => MerchantStatus::options(),
+            'currencies' => Currency::options(),
             'defaults' => config('sterling.merchant_defaults'),
             'products' => array_map(fn (TariffProduct $p) => ['value' => $p->value, 'label' => $p->label()], TariffProduct::separate()),
         ];

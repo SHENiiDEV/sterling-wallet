@@ -207,6 +207,7 @@ export type Merchant = {
     fee_settlement_fixed: string;
     min_settlement_amount: string | null;
     rolling_reserve_cap: string | null;
+    fee_currency: string | null;
     settlement_terms: string | null;
     settlement_lag_days: number | null;
     rolling_reserve_percent: string;

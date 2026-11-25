@@ -150,7 +150,9 @@ class DailyStatement
      */
     private function terms(Merchant $merchant, string $currency): array
     {
-        $money = fn (mixed $value) => PdfRenderer::money($this->dec($value), $currency);
+        // Fixed amounts are those of the contract: in its currency when that is not the terminal's.
+        $contract = $merchant->fee_currency ?: $currency;
+        $money = fn (mixed $value) => PdfRenderer::money($this->dec($value), $contract);
         $terms = [];
 
         if ($merchant->rolling_reserve_percent !== null) {

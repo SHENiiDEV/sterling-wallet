@@ -9,6 +9,7 @@ use App\Models\Company;
 use App\Models\Merchant;
 use App\Support\ProductScope;
 use Illuminate\Foundation\Http\FormRequest;
+use App\Enums\Currency;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -65,6 +66,7 @@ class MerchantRequest extends FormRequest
             'fee_settlement_fixed' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'min_settlement_amount' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
             'rolling_reserve_cap' => ['nullable', 'numeric', 'min:0', 'max:10000000000'],
+            'fee_currency' => ['nullable', Rule::enum(Currency::class)],
             'settlement_terms' => ['nullable', 'string', 'max:255'],
             'settlement_lag_days' => ['nullable', 'integer', 'min:0', 'max:30'],
             'tariffs' => ['sometimes', 'array'],
