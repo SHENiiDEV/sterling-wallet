@@ -168,7 +168,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::middleware('module:providers')->group(function () {
         Route::resource('providers', ProviderController::class)->except(['show']);
-        Route::resource('fx-rates', FxRateController::class)->only(['index', 'store', 'destroy']);
+        Route::resource('fx-rates', FxRateController::class)->only(['index', 'store', 'show', 'destroy']);
         Route::resource('bank-holidays', BankHolidayController::class)->only(['index', 'store', 'destroy']);
     });
 

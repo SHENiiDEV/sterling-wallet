@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Enums\Currency;
 use App\Http\Controllers\Controller;
+use App\Models\AdminAuditLog;
+use App\Models\DailyReportTask;
 use App\Models\FxRate;
+use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -47,10 +50,14 @@ class FxRateController extends Controller
             'rate' => ['required', 'numeric', 'gt:0', 'max:100000'],
         ]);
 
-        FxRate::query()->updateOrCreate(
-            ['rate_date' => $data['rate_date'], 'base' => $data['base'], 'quote' => $data['quote']],
-            ['rate' => $data['rate'], 'source' => 'manual', 'created_by' => $request->user()->id],
-        );
+        $rate = FxRate::query()->firstOrNew(['rate_date' => $data['rate_date'], 'base' => $data['base'], 'quote' => $data['quote']]);
+        $before = $rate->exists ? ['rate' => $rate->rate, 'source' => $rate->source] : null;
+        $rate->fill(['rate' => $data['rate'], 'source' => 'manual', 'created_by' => $request->user()->id])->save();
+
+        AuditLogger::log($before === null ? 'fx_rate.created' : 'fx_rate.updated', $rate, [
+            'pair' => "{$rate->base}/{$rate->quote}", 'rate_date' => $rate->rate_date->toDateString(),
+            'rate' => $rate->rate, 'source' => 'manual', 'before' => $before,
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Rate saved.']);
 
@@ -59,11 +66,57 @@ class FxRateController extends Controller
 
     public function destroy(FxRate $fxRate): RedirectResponse
     {
+        AuditLogger::log('fx_rate.deleted', $fxRate, [
+            'pair' => "{$fxRate->base}/{$fxRate->quote}", 'rate_date' => $fxRate->rate_date->toDateString(), 'rate' => $fxRate->rate, 'source' => $fxRate->source,
+        ]);
         $fxRate->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Rate removed.']);
 
         return back();
+    }
+
+    /**
+     * One rate: what it is, how it moved, its journal (who and what set, changed or removed it) and the reports that
+     * were converted at it.
+     */
+    public function show(FxRate $fxRate): Response
+    {
+        $fxRate->load('creator:id,name');
+        $pair = ['base' => $fxRate->base, 'quote' => $fxRate->quote];
+        $previous = FxRate::query()->where($pair)->where('rate_date', '<', $fxRate->rate_date)->orderByDesc('rate_date')->first();
+        $next = FxRate::query()->where($pair)->where('rate_date', '>', $fxRate->rate_date)->orderBy('rate_date')->first();
+
+        // Reports in the reporting currency converted at this rate: the pair's days from this one until the next rate.
+        $reports = DailyReportTask::query()
+            ->with('merchantMid:id,mid')
+            ->where(fn ($q) => $q->where(['currency' => $fxRate->base, 'base_currency' => $fxRate->quote])->orWhere(['currency' => $fxRate->quote, 'base_currency' => $fxRate->base]))
+            ->where('report_date', '>=', $fxRate->rate_date->toDateString())
+            ->when($next, fn ($q) => $q->where('report_date', '<', $next->rate_date->toDateString()));
+
+        return Inertia::render('admin/fx-rates/show', [
+            'rate' => [...$this->present($fxRate, true), 'created_at' => $fxRate->created_at?->toIso8601String(), 'updated_at' => $fxRate->updated_at?->toIso8601String(), 'inverse' => (float) $fxRate->rate > 0 ? round(1 / (float) $fxRate->rate, 8) : null],
+            'previous' => $previous ? ['id' => $previous->id, 'rate_date' => $previous->rate_date->toDateString(), 'rate' => $previous->rate] : null,
+            'next' => $next ? ['id' => $next->id, 'rate_date' => $next->rate_date->toDateString(), 'rate' => $next->rate] : null,
+            'journal' => AdminAuditLog::query()->with('user:id,name')
+                ->where('subject_type', $fxRate->getMorphClass())->where('subject_id', $fxRate->id)
+                ->latest('id')->limit(100)->get()
+                ->map(fn (AdminAuditLog $log) => [
+                    'id' => $log->id,
+                    'at' => $log->created_at?->toIso8601String(),
+                    'action' => $log->action,
+                    'user' => $log->user?->name,
+                    'meta' => $log->meta,
+                ]),
+            'reportsCount' => (clone $reports)->count(),
+            'reports' => (clone $reports)->orderByDesc('report_date')->limit(20)->get()->map(fn (DailyReportTask $r) => [
+                'id' => $r->id,
+                'report_date' => $r->report_date->toDateString(),
+                'mid' => $r->merchantMid->mid,
+                'currency' => $r->currency,
+                'fx_rate' => $r->fx_rate,
+            ]),
+        ]);
     }
 
     /**
