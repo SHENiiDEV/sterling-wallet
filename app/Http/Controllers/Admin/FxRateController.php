@@ -13,18 +13,25 @@ use Inertia\Response;
 
 class FxRateController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $rates = FxRate::query()->with('creator:id,name')->latest('rate_date')->latest('id')->paginate(30);
+        $pair = preg_match('/^([A-Z]{3,4})-([A-Z]{3,4})$/', (string) $request->query('pair'), $m) ? [$m[1], $m[2]] : null;
 
-        $latest = FxRate::query()
-            ->whereIn('id', FxRate::query()->selectRaw('max(id)')->groupBy('base', 'quote'))
-            ->orderBy('base')->orderBy('quote')
-            ->get();
+        $rates = FxRate::query()->with('creator:id,name')
+            ->when($pair, fn ($q, array $p) => $q->where(['base' => $p[0], 'quote' => $p[1]]))
+            ->latest('rate_date')->orderBy('base')->orderBy('quote')
+            ->paginate(30)->withQueryString();
+
+        // The newest rate of each pair by its date (a back-filled older day does not take its place).
+        $latest = FxRate::query()->select('base', 'quote')->distinct()->orderBy('base')->orderBy('quote')->get()
+            ->map(fn (FxRate $p) => FxRate::query()->where(['base' => $p->base, 'quote' => $p->quote])->orderByDesc('rate_date')->orderByDesc('id')->first())
+            ->filter();
 
         return Inertia::render('admin/fx-rates/index', [
-            'rates' => $rates->through(fn (FxRate $rate) => $this->present($rate)),
-            'latest' => $latest->map(fn (FxRate $rate) => $this->present($rate)),
+            'rates' => $rates->through(fn (FxRate $rate) => $this->present($rate, true)),
+            'pairs' => FxRate::query()->select('base', 'quote')->distinct()->orderBy('base')->orderBy('quote')->get()->map(fn (FxRate $r) => "{$r->base}-{$r->quote}")->values(),
+            'pair' => $pair ? implode('-', $pair) : null,
+            'latest' => $latest->values()->map(fn (FxRate $rate) => $this->present($rate)),
             'baseCurrency' => config('sterling.base_currency'),
             'currencies' => Currency::values(),
             'quotes' => [...Currency::values(), 'USDC', 'USDT'],
@@ -62,9 +69,15 @@ class FxRateController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function present(FxRate $rate): array
+    private function present(FxRate $rate, bool $withChange = false): array
     {
+        // The change against the pair's previous day: how the rate moved.
+        $previous = $withChange
+            ? FxRate::query()->where(['base' => $rate->base, 'quote' => $rate->quote])->where('rate_date', '<', $rate->rate_date)->orderByDesc('rate_date')->value('rate')
+            : null;
+
         return [
+            'change_percent' => $previous !== null && (float) $previous > 0 ? round(((float) $rate->rate - (float) $previous) / (float) $previous * 100, 3) : null,
             'id' => $rate->id,
             'rate_date' => $rate->rate_date->toDateString(),
             'base' => $rate->base,

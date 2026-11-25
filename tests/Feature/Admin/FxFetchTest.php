@@ -50,4 +50,21 @@ class FxFetchTest extends TestCase
         $this->artisan('fx:fetch')->assertFailed();
         $this->assertSame(0, FxRate::query()->count());
     }
+
+    public function test_the_rates_page_shows_the_daily_change_filters_by_pair_and_keeps_the_newest_day_as_latest()
+    {
+        $admin = \App\Models\User::factory()->create(['role' => \App\Enums\UserRole::SuperAdmin]);
+        // The newer day is stored first, the older one (a back-fill) after it: "latest" is still the newer day.
+        FxRate::query()->create(['rate_date' => '2026-11-24', 'base' => 'EUR', 'quote' => 'GBP', 'rate' => '0.88', 'source' => 'frankfurter']);
+        FxRate::query()->create(['rate_date' => '2026-11-23', 'base' => 'EUR', 'quote' => 'GBP', 'rate' => '0.80', 'source' => 'frankfurter']);
+        FxRate::query()->create(['rate_date' => '2026-11-24', 'base' => 'EUR', 'quote' => 'USD', 'rate' => '1.10', 'source' => 'manual']);
+
+        $this->actingAs($admin)->get(route('admin.fx-rates.index', ['pair' => 'EUR-GBP']))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('latest', fn ($latest) => collect($latest)->firstWhere('quote', 'GBP')['rate_date'] === '2026-11-24')
+                ->has('rates.data', 2)
+                ->where('rates.data.0.change_percent', 10)
+                ->where('rates.data.1.change_percent', null)
+                ->where('pairs', ['EUR-GBP', 'EUR-USD']));
+    }
 }

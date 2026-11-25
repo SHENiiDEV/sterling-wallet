@@ -33,11 +33,14 @@ type Rate = {
     rate: string;
     source: string;
     created_by: string | null;
+    change_percent?: number | null;
 };
 
 type Props = {
     rates: Paginated<Rate>;
     latest: Rate[];
+    pairs: string[];
+    pair: string | null;
     baseCurrency: string;
     currencies: string[];
     quotes: string[];
@@ -48,6 +51,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function FxRates({
     rates,
     latest,
+    pairs,
+    pair,
     baseCurrency,
     currencies,
     quotes,
@@ -170,6 +175,29 @@ export default function FxRates({
                     </Button>
                 </form>
 
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <label htmlFor="fx-pair">Pair</label>
+                    <select
+                        id="fx-pair"
+                        className="h-9 rounded-md border bg-transparent px-2"
+                        value={pair ?? ''}
+                        onChange={(e) =>
+                            router.get(
+                                admin.fxRates.index.url(),
+                                e.target.value ? { pair: e.target.value } : {},
+                                { preserveScroll: true, replace: true },
+                            )
+                        }
+                    >
+                        <option value="">All pairs</option>
+                        {pairs.map((p) => (
+                            <option key={p} value={p}>
+                                {p.replace('-', ' → ')}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
                 <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                     {rates.data.length === 0 ? (
                         <p className="px-5 py-12 text-center text-sm text-muted-foreground">
@@ -185,8 +213,11 @@ export default function FxRates({
                                     <TableHead className="text-right">
                                         Rate
                                     </TableHead>
+                                    <TableHead className="hidden text-right sm:table-cell">
+                                        vs previous day
+                                    </TableHead>
                                     <TableHead className="hidden sm:table-cell">
-                                        Added by
+                                        Source
                                     </TableHead>
                                     <TableHead className="w-12 pr-4" />
                                 </TableRow>
@@ -203,8 +234,15 @@ export default function FxRates({
                                         <TableCell className="text-right font-mono tabular-nums">
                                             {Number(rate.rate).toString()}
                                         </TableCell>
+                                        <TableCell className="hidden text-right font-mono text-xs tabular-nums sm:table-cell">
+                                            {rate.change_percent == null
+                                                ? '—'
+                                                : `${rate.change_percent > 0 ? '+' : ''}${rate.change_percent}%`}
+                                        </TableCell>
                                         <TableCell className="hidden text-muted-foreground sm:table-cell">
-                                            {rate.created_by ?? rate.source}
+                                            {rate.source}
+                                            {rate.created_by &&
+                                                ` · ${rate.created_by}`}
                                         </TableCell>
                                         <TableCell className="pr-4 text-right">
                                             <Button
