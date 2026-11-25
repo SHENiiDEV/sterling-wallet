@@ -51,7 +51,8 @@ class RunConnectorJob implements ShouldQueue
     }
 
     /**
-     * One browser per account at a time: portals dislike parallel logins.
+     * One browser per account at a time: portals dislike parallel logins. An API connector has no login to protect, so
+     * its runs (one per commerce account and period) go side by side, only the same target never twice at once.
      *
      * @return list<object>
      */
@@ -59,8 +60,17 @@ class RunConnectorJob implements ShouldQueue
     {
         $run = BotRun::query()->find($this->runId);
 
-        return [(new WithoutOverlapping('bot-account:'.($run->integration_account_id ?? $this->runId)))
+        return [(new WithoutOverlapping(self::lockKey($run, $this->runId)))
             ->releaseAfter(30)->expireAfter($this->timeout + 60)];
+    }
+
+    public static function lockKey(?BotRun $run, int $runId): string
+    {
+        if ($run !== null && str_ends_with((string) $run->connector, '-api')) {
+            return 'bot-target:'.$run->integration_account_id.':'.$run->target_key;
+        }
+
+        return 'bot-account:'.($run->integration_account_id ?? $runId);
     }
 
     public function handle(ConnectorRegistry $connectors, ReportIngestionService $ingestion): void
