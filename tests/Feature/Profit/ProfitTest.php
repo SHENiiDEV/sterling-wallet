@@ -226,7 +226,7 @@ class ProfitTest extends TestCase
         $partner->rules()->update(['percent' => 50]);
         $this->assertMoney('33.41', app(ProfitShareCalculator::class)->calculate('2026-09')->shares_total);
 
-        $this->actingAs($this->admin)->get(route('admin.profit-share.pdf', '2026-09'))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->actingAs($this->admin)->get(route('admin.profit-share.pdf', '2026-09'))->assertOk()->assertHeader('Content-Type', 'application/pdf')->assertHeader('Content-Disposition', 'attachment; filename="'.$offer->public_offer_id.'.pdf"');
 
         // Current month can't be closed yet.
         MonthlyStatement::query()->create(['month' => '2026-10', 'status' => 'draft']);
@@ -247,6 +247,7 @@ class ProfitTest extends TestCase
         $this->actingAs($this->admin)->post(route('admin.offers.store'), $payload)->assertRedirect();
         $offer = CommercialOffer::query()->sole();
         $this->assertMatchesRegularExpression('/^OFF-\d{4}-\d{4}$/', $offer->number);
+        $this->assertMatchesRegularExpression('/^SP-\d{8}$/', $offer->public_offer_id);
         $this->assertSame('LV', $offer->country);
 
         $this->actingAs($this->admin)->get(route('admin.offers.pdf', $offer))->assertOk()->assertHeader('Content-Type', 'application/pdf');

@@ -3,7 +3,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Proposal {{ $offer->number }} · {{ $offer->company_name }}</title>
+    <title>Proposal {{ $offer->clientNumber() }} · {{ $offer->company_name }}</title>
     <style>
         @page { margin: 22mm 16mm 32mm 16mm; }
         * { box-sizing: border-box; }
@@ -78,7 +78,7 @@
         <div class="for">Prepared for</div>
         <div class="company">{{ $offer->company_name }}</div>
         <div class="meta">
-            {{ $offer->number }} · {{ ($offer->created_at ?? now())->format('j F Y') }}@if ($offer->valid_until) · valid until {{ $offer->valid_until->format('j F Y') }}@endif
+            {{ $offer->clientNumber() }} · {{ ($offer->created_at ?? now())->format('j F Y') }}@if ($offer->valid_until) · valid until {{ $offer->valid_until->format('j F Y') }}@endif
         </div>
         <div class="bottom">
             <div class="t">{{ $proposal['headline'] }}</div>
@@ -109,7 +109,7 @@
                     </td>
                     <td style="width: 33%">
                         <div class="label">Proposal</div>
-                        <div class="value">{{ $offer->number }}</div>
+                        <div class="value">{{ $offer->clientNumber() }}</div>
                         <div>{{ ($offer->created_at ?? now())->format('j M Y') }}@if ($offer->valid_until) · valid until {{ $offer->valid_until->format('j M Y') }}@endif</div>
                     </td>
                 </tr>

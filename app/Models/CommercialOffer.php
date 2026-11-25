@@ -25,12 +25,13 @@ use Illuminate\Support\Carbon;
  * @property CarbonImmutable|null $valid_until
  * @property int|null $merchant_id
  * @property Carbon|null $sent_at
+ * @property string|null $public_offer_id
  * @property Carbon|null $decided_at
  * @property Carbon|null $created_at
  * @property-read Merchant|null $merchant
  */
 #[Fillable([
-    'number', 'status', 'company_name', 'contact_name', 'contact_email', 'country', 'website', 'mcc', 'currencies',
+    'number', 'public_offer_id', 'status', 'company_name', 'contact_name', 'contact_email', 'country', 'website', 'mcc', 'currencies',
     'expected_monthly_volume',
     'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',
     'fee_acq_eu_percent', 'fee_acq_non_eu_percent',
@@ -40,6 +41,26 @@ use Illuminate\Support\Carbon;
 ])]
 class CommercialOffer extends Model
 {
+    /**
+     * A random SP-12345678 for the client: it does not tell how many offers there are.
+     */
+    public static function newPublicId(): string
+    {
+        do {
+            $id = 'SP-'.random_int(10000000, 99999999);
+        } while (static::query()->where('public_offer_id', $id)->exists());
+
+        return $id;
+    }
+
+    /**
+     * The number printed for the client.
+     */
+    public function clientNumber(): string
+    {
+        return $this->public_offer_id ?: $this->number;
+    }
+
     /** Fields copied one-to-one onto the merchant tariff when the offer is accepted. */
     public const TARIFF_FIELDS = [
         'fee_visa_eu_percent', 'fee_visa_non_eu_percent', 'fee_mastercard_eu_percent', 'fee_mastercard_non_eu_percent',

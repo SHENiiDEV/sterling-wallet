@@ -262,7 +262,7 @@ export default function OfferForm({ offer, currencies }: Props) {
                 <PageHeader
                     title={
                         offer
-                            ? `${offer.number} · ${offer.company_name}`
+                            ? `${offer.number}${offer.public_offer_id ? ` (${offer.public_offer_id})` : ''} · ${offer.company_name}`
                             : 'New offer'
                     }
                     description={

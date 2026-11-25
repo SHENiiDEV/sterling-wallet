@@ -160,6 +160,12 @@ export default function OffersIndex({
                                             <div className="font-mono text-xs font-medium">
                                                 {offer.number}
                                             </div>
+                                            {offer.public_offer_id && (
+                                                <div className="font-mono text-xs text-muted-foreground">
+                                                    Client:{' '}
+                                                    {offer.public_offer_id}
+                                                </div>
+                                            )}
                                             <div className="text-xs text-muted-foreground">
                                                 {formatDate(offer.created_at)}
                                                 {offer.creator &&
