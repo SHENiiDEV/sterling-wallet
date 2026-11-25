@@ -332,7 +332,7 @@ class DailyReportGenerator
             throw new ReportBlocked("No {$currency}→{$baseCurrency} FX rate on or before {$task->report_date->toDateString()}.");
         }
 
-        DB::transaction(function () use ($terminal, $task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $gap, $reserveOnProcessing, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
+        DB::transaction(function () use ($terminal, $contractRate, $task, $merchant, $fee, $fixedLines, $fxFee, $fxCost, $fxApplies, $walletSales, $walletFee, $reserve, $currency, $baseCurrency, $rate, $sales, $refunds, $chargebacks, $collabs, $declines, $bankOps, $gateOps, $gap, $reserveOnProcessing, $turnover, $refundsAmount, $chargebacksAmount, $collabsAmount, $merchantFee, $merchantPercentFee, $merchantFixedFee, $bankCost, $gateCost, $cryptoCost, $providerCost, $netVolume, $conversionFee, $netPayout, $netProfit) {
             $this->bookReserve($task, $reserve, $merchant->rolling_reserve_days);
 
             $task->update([
