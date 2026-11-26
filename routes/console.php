@@ -14,10 +14,11 @@ Schedule::command('bots:dispatch cardaq-export')->hourly()->withoutOverlapping()
 Schedule::command('bots:dispatch corefy-export')->hourly()->between('06:00', '12:00')->timezone(config('sterling.timezone'))->withoutOverlapping();
 Schedule::command('bots:dispatch madfin-export')->hourly()->withoutOverlapping();
 // Corefy API: every 30 minutes all the payments of yesterday and today again, so the day's figures are never behind.
-Schedule::command('corefy:refresh')->everyThirtyMinutes()->withoutOverlapping();
+// The overlap lock lives 10 minutes at most: a run cut off by a restart must not hold it for a day and silence the refresh.
+Schedule::command('corefy:refresh')->everyThirtyMinutes()->withoutOverlapping(10);
 // FX: the ECB reference rates are out in the afternoon (CET); asked again in the morning in case the evening call missed.
-Schedule::command('fx:fetch')->dailyAt('18:15')->timezone(config('sterling.timezone'))->withoutOverlapping();
-Schedule::command('fx:fetch')->dailyAt('07:45')->timezone(config('sterling.timezone'))->withoutOverlapping();
+Schedule::command('fx:fetch')->dailyAt('18:15')->timezone(config('sterling.timezone'))->withoutOverlapping(10);
+Schedule::command('fx:fetch')->dailyAt('07:45')->timezone(config('sterling.timezone'))->withoutOverlapping(10);
 // FinBridges (C2B wallet API): pick up new transactions every 10 minutes.
 Schedule::command('bots:dispatch finbridges-api')->everyTenMinutes()->withoutOverlapping();
 // Accounts with their own rhythm (every N minutes, or daily at a set time): checked every minute.
