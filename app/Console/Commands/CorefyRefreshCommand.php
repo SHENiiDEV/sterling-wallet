@@ -19,7 +19,7 @@ class CorefyRefreshCommand extends Command
     {
         // Days are the gateway market's days (Riga): yesterday 00:00 up to the end of today, so the late hours of the
         // acquirer's UTC day are in as well. Rows already stored are updated, not repeated.
-        $today = CarbonImmutable::now(config('sterling.timezone'))->startOfDay();
+        $today = CarbonImmutable::createFromFormat('!Y-m-d', CarbonImmutable::now(config('sterling.timezone'))->toDateString(), 'UTC');
         $from = $today->subDays(max(0, (int) $this->option('days')));
 
         $queued = 0;
