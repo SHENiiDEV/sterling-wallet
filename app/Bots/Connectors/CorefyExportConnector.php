@@ -65,7 +65,8 @@ class CorefyExportConnector extends PlaywrightConnector implements RangeRuns
     {
         $resolver = app(ReportDateResolver::class);
         $periods = [];
-        for ($cursor = $from; $cursor->lessThanOrEqualTo($to); $cursor = $periods[array_key_last($periods)]->to->addDay()) {
+        // Calendar days are compared as dates: the cursor is in UTC (the resolver's own), the caller's days may be in any zone.
+        for ($cursor = $from; $cursor->toDateString() <= $to->toDateString(); $cursor = $periods[array_key_last($periods)]->to->addDay()) {
             $periods[] = $resolver->periodFor($cursor);
         }
 

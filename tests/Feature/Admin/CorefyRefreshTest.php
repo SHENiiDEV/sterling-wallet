@@ -36,4 +36,22 @@ class CorefyRefreshTest extends TestCase
 
         CarbonImmutable::setTestNow();
     }
+
+    public function test_a_range_given_in_riga_time_still_includes_its_last_day()
+    {
+        $corefy = $this->corefy();
+        $mid = $this->mid($this->merchantWithTariff(), $this->cardaq(), $corefy, ['mid' => 'M-1', 'gate_mid' => 'coma_A']);
+        $account = IntegrationAccount::query()->create(['provider_id' => $corefy->id, 'connector' => 'corefy-api', 'name' => 'Corefy API', 'is_active' => true, 'mid_ids' => [$mid->id]]);
+
+        // Riga midnights are 22:00 UTC of the day before: the days must be compared as dates, not as instants.
+        $targets = collect(app(\App\Bots\ConnectorRegistry::class)->get('corefy-api')->rangeTargets(
+            $account,
+            CarbonImmutable::parse('2026-11-25 00:00:00', 'Europe/Riga'),
+            CarbonImmutable::parse('2026-11-26 00:00:00', 'Europe/Riga'),
+            $account->coveredMids()->get(),
+        ))->values();
+
+        $this->assertCount(1, $targets);
+        $this->assertSame(['2026-11-25', '2026-11-26'], array_column($targets[0]->params['periods'], 'report_date'));
+    }
 }
